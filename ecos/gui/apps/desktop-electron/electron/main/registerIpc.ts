@@ -1,5 +1,12 @@
 import { BrowserWindow, ipcMain, shell, type IpcMain, type IpcMainInvokeEvent } from 'electron'
 import { desktopApiIpcChannels, type TileGenerationRequest, type TileGenerationResult } from '@ecos-studio/shared'
+import {
+  closeWindow,
+  isWindowMaximized,
+  minimizeWindow,
+  setWindowTitle,
+  toggleMaximizeWindow,
+} from '../services/windowService'
 
 export type IpcMainLike = Pick<IpcMain, 'handle'>
 
@@ -32,30 +39,23 @@ function createNotImplementedHandler<TResult>(
 
 export function registerIpc(target: IpcMainLike = ipcMain): void {
   target.handle(desktopApiIpcChannels.windowMinimize, (event) => {
-    getEventWindow(event).minimize()
+    minimizeWindow(getEventWindow(event))
   })
 
   target.handle(desktopApiIpcChannels.windowToggleMaximize, (event) => {
-    const targetWindow = getEventWindow(event)
-
-    if (targetWindow.isMaximized()) {
-      targetWindow.unmaximize()
-      return
-    }
-
-    targetWindow.maximize()
+    toggleMaximizeWindow(getEventWindow(event))
   })
 
   target.handle(desktopApiIpcChannels.windowClose, (event) => {
-    getEventWindow(event).close()
+    closeWindow(getEventWindow(event))
   })
 
   target.handle(desktopApiIpcChannels.windowSetTitle, (event, title: string) => {
-    getEventWindow(event).setTitle(title)
+    setWindowTitle(getEventWindow(event), title)
   })
 
   target.handle(desktopApiIpcChannels.windowIsMaximized, (event) => {
-    return getEventWindow(event).isMaximized()
+    return isWindowMaximized(getEventWindow(event))
   })
 
   target.handle(

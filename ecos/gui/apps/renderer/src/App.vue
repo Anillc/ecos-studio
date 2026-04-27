@@ -1,15 +1,5 @@
 <template>
   <div class="app-wrapper">
-    <!-- 窗口调整大小的边缘区域 -->
-    <div class="resize-edge resize-top" @mousedown="startResize('North')"></div>
-    <div class="resize-edge resize-bottom" @mousedown="startResize('South')"></div>
-    <div class="resize-edge resize-left" @mousedown="startResize('West')"></div>
-    <div class="resize-edge resize-right" @mousedown="startResize('East')"></div>
-    <div class="resize-corner resize-top-left" @mousedown="startResize('NorthWest')"></div>
-    <div class="resize-corner resize-top-right" @mousedown="startResize('NorthEast')"></div>
-    <div class="resize-corner resize-bottom-left" @mousedown="startResize('SouthWest')"></div>
-    <div class="resize-corner resize-bottom-right" @mousedown="startResize('SouthEast')"></div>
-
     <!-- 主应用容器 -->
     <div class="app-container">
       <!-- 全局顶部菜单栏 -->
@@ -50,11 +40,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getCurrentWindow } from '@tauri-apps/api/window'
-import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { useThemeStore } from '@/stores/themeStore'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { usePdkManager } from '@/composables/usePdkManager'
+import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
 
 import TopBar from '@/components/TopBar.vue'
 import Toast from 'primevue/toast'
@@ -70,6 +59,9 @@ const { loadRecentProjects, currentProject, openProject, newProject, apiBackendC
   useWorkspace()
 const { loadPdks } = usePdkManager()
 const { showToast } = useWorkspace()
+const desktopApi = hasDesktopApi() ? getDesktopApi() : null
+const documentationUrl =
+  'https://github.com/openecos-projects/ecos-studio/blob/main/ecos/docs/user-guide.md'
 // ---- 新建工程向导 ----
 const showNewProjectWizard = ref(false)
 
@@ -92,7 +84,11 @@ const handleMenuAction = async (action: string) => {
     }
     case 'documentation':
       try {
-        await shellOpen('https://github.com/openecos-projects/ecos-studio/blob/main/ecos/docs/user-guide.md')
+        if (desktopApi) {
+          await desktopApi.system.openExternal(documentationUrl)
+        } else {
+          window.open(documentationUrl, '_blank', 'noopener,noreferrer')
+        }
       } catch (error) {
         console.error('Failed to open documentation:', error)
         showToast({
@@ -109,18 +105,15 @@ const handleMenuAction = async (action: string) => {
   }
 }
 
-// 窗口调整大小
 let isResizing = false
-type ResizeDirection = 'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West';
 
 // 统一管理 `.window-resizing` class：
-// - `startResize` / `onResized` 任一来源都会打上这个 class
+// - 桌面窗口的 resize 事件任一来源都会打上这个 class
 // - 超过 RESIZE_IDLE_MS 没有新尺寸事件即视为结束
-// 这样即使 Linux 下 `startResizeDragging` 让 WM 接管鼠标、浏览器收不到 mouseup，
-// 也能正确解除降级状态，不会出现"resize 完后界面一直丢失阴影/模糊"。
 const RESIZE_IDLE_MS = 180
 let resizeIdleTimer: ReturnType<typeof setTimeout> | undefined
 let unlistenWindowResized: (() => void) | undefined
+let unlistenWindowMaximizedChanged: (() => void) | undefined
 
 /**
  * 快路径检测"这次 resize 是不是奔着最大化去的"。
@@ -171,11 +164,6 @@ const markResizing = () => {
   }, RESIZE_IDLE_MS)
 }
 
-const startResize = async (direction: ResizeDirection) => {
-  markResizing()
-  await getCurrentWindow().startResizeDragging(direction)
-}
-
 /**
  * 同步窗口最大化状态到 body.window-maximized。
  *
@@ -184,8 +172,12 @@ const startResize = async (direction: ResizeDirection) => {
  * 见 styles/index.css 与本文件 scoped 样式中的 `.window-maximized` 规则。
  */
 async function syncMaximizedClass() {
+  if (!desktopApi) {
+    return
+  }
+
   try {
-    const maxed = await getCurrentWindow().isMaximized()
+    const maxed = await desktopApi.window.isMaximized()
     document.body.classList.toggle('window-maximized', maxed)
   } catch {
     /* ignore: window API unavailable (e.g. SSR / test) */
@@ -210,16 +202,17 @@ onMounted(async () => {
   // 启动时先同步一次最大化状态（从持久化会话恢复的场景）
   void syncMaximizedClass()
 
-  // 由 Tauri 的 resize 事件统一驱动降级状态，覆盖所有缩放来源
-  // （边缘拖拽、标题栏双击最大化、系统贴边、快捷键等）。
-  getCurrentWindow()
-    .onResized(() => markResizing())
-    .then((unlisten) => {
-      unlistenWindowResized = unlisten
-    })
-    .catch(() => {
-      /* ignore */
-    })
+  if (!desktopApi) {
+    return
+  }
+
+  // 由桌面桥接的 resize 事件统一驱动降级状态，覆盖所有缩放来源。
+  unlistenWindowResized = desktopApi.window.onResized(() => {
+    markResizing()
+  })
+  unlistenWindowMaximizedChanged = desktopApi.window.onMaximizedChanged((isMaximized) => {
+    document.body.classList.toggle('window-maximized', isMaximized)
+  })
 })
 
 onUnmounted(() => {
@@ -229,6 +222,7 @@ onUnmounted(() => {
     resizeIdleTimer = undefined
   }
   unlistenWindowResized?.()
+  unlistenWindowMaximizedChanged?.()
   document.body.classList.remove('window-resizing')
   document.body.classList.remove('window-maximized')
   setWindowResizing(false)

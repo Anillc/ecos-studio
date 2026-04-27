@@ -1,5 +1,6 @@
 import type { WorkspaceSummary } from '../types/workspace'
 import type { TileGenerationRequest, TileGenerationResult } from '../types/tile'
+import type { DesktopEventUnsubscribe, DesktopMenuEventId } from './desktopEvents'
 
 export interface DesktopApi {
   window: {
@@ -8,6 +9,11 @@ export interface DesktopApi {
     close(): Promise<void>
     setTitle(title: string): Promise<void>
     isMaximized(): Promise<boolean>
+    onResized(listener: () => void): DesktopEventUnsubscribe
+    onMaximizedChanged(listener: (isMaximized: boolean) => void): DesktopEventUnsubscribe
+  }
+  menu: {
+    onAction(listener: (eventId: DesktopMenuEventId) => void): DesktopEventUnsubscribe
   }
   system: {
     openExternal(url: string): Promise<void>

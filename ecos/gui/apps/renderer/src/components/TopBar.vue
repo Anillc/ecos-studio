@@ -1,5 +1,5 @@
 <template>
-  <div class="topbar" @mousedown="handleMouseDown">
+  <div class="topbar">
     <!-- 左侧：应用图标和菜单栏 -->
     <div class="topbar-left" @mousedown.stop>
       <!-- 应用图标 -->
@@ -31,7 +31,7 @@
       </div>
     </div>
  
-    <div class="topbar-center">
+    <div class="topbar-center" data-window-drag-region>
       <span class="project-name">{{ props.projectName }}</span>
     </div>
 
@@ -41,45 +41,46 @@
         :title="isDark ? 'Switch to light theme' : 'Switch to dark theme'">
         <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-base"></i>
       </button>
-      <!-- 最小化 -->
-      <button @click="handleMinimize" class="window-btn" aria-label="Minimize window">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="5.5" width="8" height="1" fill="currentColor" />
-        </svg>
-      </button>
-      <!-- 最大化 / 还原 -->
-      <button
-        @click="handleMaximize"
-        class="window-btn"
-        :aria-label="isMaximized ? 'Restore window' : 'Maximize window'"
-      >
-        <!-- 最大化：单框 -->
-        <svg v-if="!isMaximized" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2.5" y="2.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
-        </svg>
-        <!-- 还原：重叠双框 -->
-        <svg v-else width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="4.5" y="4.5" width="7.5" height="7.5" fill="none" stroke="currentColor" stroke-width="1" />
-          <rect x="2.5" y="2.5" width="7.5" height="7.5" fill="none" stroke="currentColor" stroke-width="1" />
-        </svg>
-      </button>
-      <!-- 关闭 -->
-      <button @click="handleClose" class="window-btn window-btn-close" aria-label="Close window">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-        </svg>
-      </button>
+      <template v-if="desktopApi">
+        <!-- 最小化 -->
+        <button @click="handleMinimize" class="window-btn" aria-label="Minimize window">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2" y="5.5" width="8" height="1" fill="currentColor" />
+          </svg>
+        </button>
+        <!-- 最大化 / 还原 -->
+        <button
+          @click="handleMaximize"
+          class="window-btn"
+          :aria-label="isMaximized ? 'Restore window' : 'Maximize window'"
+        >
+          <!-- 最大化：单框 -->
+          <svg v-if="!isMaximized" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2.5" y="2.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+          <!-- 还原：重叠双框 -->
+          <svg v-else width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="4.5" y="4.5" width="7.5" height="7.5" fill="none" stroke="currentColor" stroke-width="1" />
+            <rect x="2.5" y="2.5" width="7.5" height="7.5" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </button>
+        <!-- 关闭 -->
+        <button @click="handleClose" class="window-btn window-btn-close" aria-label="Close window">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useThemeStore } from '@/stores/themeStore'
 import { useRoute } from 'vue-router'
 import { useWorkspace } from '@/composables/useWorkspace'
+import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
 // ---- 类型定义 ----
 interface DropdownItem {
   label?: string
@@ -109,6 +110,7 @@ const emit = defineEmits<{
 
 const themeStore = useThemeStore()
 const isDark = computed(() => themeStore.themeName === 'dark')
+const desktopApi = hasDesktopApi() ? getDesktopApi() : null
 const toggleTheme = () => {
   themeStore.toggleTheme()
 }
@@ -172,94 +174,53 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 const isMaximized = ref(false)
-// 仅在 resize 停歇后才同步一次，避免每帧触发一次跨进程 IPC
-let resizeSyncTimer: ReturnType<typeof setTimeout> | undefined
-let unlistenResized: (() => void) | undefined
+let unlistenMaximizedChanged: (() => void) | undefined
 
 async function syncMaximizedState() {
+  if (!desktopApi) {
+    return
+  }
+
   try {
-    isMaximized.value = await getCurrentWindow().isMaximized()
+    isMaximized.value = await desktopApi.window.isMaximized()
   } catch {
     /* ignore */
   }
 }
 
-function scheduleSyncMaximizedState(delay = 150) {
-  if (resizeSyncTimer) clearTimeout(resizeSyncTimer)
-  resizeSyncTimer = setTimeout(() => {
-    resizeSyncTimer = undefined
-    void syncMaximizedState()
-  }, delay)
-}
-
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
+
+  if (!desktopApi) {
+    return
+  }
+
   void syncMaximizedState()
-  // onResized 在拖动窗口时会以帧率触发，这里做去抖只在停歇后同步
-  getCurrentWindow()
-    .onResized(() => {
-      scheduleSyncMaximizedState()
-    })
-    .then((unlisten) => {
-      unlistenResized = unlisten
-    })
-    .catch(() => {
-      /* ignore */
-    })
+  unlistenMaximizedChanged = desktopApi.window.onMaximizedChanged((nextIsMaximized) => {
+    isMaximized.value = nextIsMaximized
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleKeydown)
-  if (resizeSyncTimer) {
-    clearTimeout(resizeSyncTimer)
-    resizeSyncTimer = undefined
-  }
-  unlistenResized?.()
+  unlistenMaximizedChanged?.()
 })
 
 // ---- 窗口控制 ----
-const handleMinimize = () => {
-  invoke('window_minimize')
+const handleMinimize = async () => {
+  await desktopApi?.window.minimize()
 }
 
-const handleMaximize = () => {
-  invoke('window_maximize')
-  // 部分环境下 onResized 略晚，下一帧再同步一次
-  requestAnimationFrame(() => {
-    void syncMaximizedState()
-  })
+const handleMaximize = async () => {
+  await desktopApi?.window.toggleMaximize()
 }
 
 const { closeProject } = useWorkspace()
 const handleClose = async () => {
   await closeProject()
-  invoke('window_close')
-}
-
-// 通过 mousedown 时间戳手动检测双击
-// Linux 上 startDragging() 会让窗口管理器接管鼠标，浏览器收不到 mouseup，
-// 导致 dblclick 事件永远无法合成，因此只能在 mousedown 层面自行判断。
-let lastMouseDownTime = 0
-const DOUBLE_CLICK_INTERVAL = 400
-
-const handleMouseDown = async (event: MouseEvent) => {
-  event.preventDefault()
-  const target = event.target as HTMLElement
-  if (target.closest('button') || target.closest('input') || target.closest('textarea')) {
-    return
-  }
-
-  const now = Date.now()
-  if (now - lastMouseDownTime < DOUBLE_CLICK_INTERVAL) {
-    lastMouseDownTime = 0
-    invoke('window_maximize')
-    return
-  }
-  lastMouseDownTime = now
-
-  await getCurrentWindow().startDragging()
+  await desktopApi?.window.close()
 }
 </script>
 
@@ -450,9 +411,8 @@ const handleMouseDown = async (event: MouseEvent) => {
 /* 中间拖拽区域 - 始终居中 */
 .topbar-center {
   position: absolute;
-  left: 50%;
+  inset: 0;
   top: 0;
-  transform: translateX(-50%);
   height: 100%;
   display: flex;
   align-items: center;

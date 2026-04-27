@@ -1,26 +1,14 @@
 /**
  * 原生菜单事件监听
- * 
- * 用于监听 Tauri 原生菜单的点击事件
+ *
+ * 用于监听桌面壳层转发到 renderer 的原生菜单点击事件
  */
 
 import { onMounted, onUnmounted } from 'vue'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { isTauri } from './useTauri'
+import type { DesktopMenuEventId } from '@ecos-studio/shared'
+import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
 
-export type MenuEventId = 
-  | 'new_project'
-  | 'open_project'
-  | 'save'
-  | 'save_as'
-  | 'toggle_sidebar'
-  | 'toggle_inspector'
-  | 'zoom_in'
-  | 'zoom_out'
-  | 'zoom_reset'
-  | 'documentation'
-  | 'release_notes'
-  | 'report_issue'
+export type MenuEventId = DesktopMenuEventId
 
 type MenuEventHandler = () => void
 
@@ -37,27 +25,24 @@ type MenuEventHandler = () => void
  * ```
  */
 export function useMenuEvents(handlers: Partial<Record<MenuEventId, MenuEventHandler>>) {
-  const unlisteners: UnlistenFn[] = []
+  let unsubscribe: (() => void) | undefined
 
-  onMounted(async () => {
-    if (!isTauri()) return
-
-    for (const [eventId, handler] of Object.entries(handlers)) {
-      if (handler) {
-        try {
-          const unlisten = await listen(`menu:${eventId}`, () => {
-            handler()
-          })
-          unlisteners.push(unlisten)
-        } catch (e) {
-          console.error(`Failed to listen to menu:${eventId}`, e)
-        }
-      }
+  onMounted(() => {
+    if (!hasDesktopApi()) {
+      return
     }
+
+    unsubscribe = getDesktopApi().menu.onAction((eventId) => {
+      const handler = handlers[eventId]
+
+      if (handler) {
+        handler()
+      }
+    })
   })
 
   onUnmounted(() => {
-    unlisteners.forEach(unlisten => unlisten())
+    unsubscribe?.()
   })
 }
 

@@ -47,6 +47,11 @@ const desktopBridge = {
     close: async () => undefined,
     setTitle: async (_title: string) => undefined,
     isMaximized: async () => false,
+    onResized: () => () => undefined,
+    onMaximizedChanged: () => () => undefined,
+  },
+  menu: {
+    onAction: () => () => undefined,
   },
   system: {
     openExternal: async (_url: string) => undefined,

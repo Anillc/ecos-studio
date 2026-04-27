@@ -11,6 +11,7 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     minWidth: 1024,
     minHeight: 720,
     autoHideMenuBar: true,
+    frame: false,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,

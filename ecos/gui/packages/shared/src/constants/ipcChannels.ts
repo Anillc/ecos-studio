@@ -10,6 +10,12 @@ export const desktopApiIpcChannels = {
   systemOpenExternal: 'system:open-external',
 } as const
 
+export const desktopApiEventChannels = {
+  menuAction: 'menu:action',
+  windowResized: 'window:resized',
+  windowMaximizedChanged: 'window:maximized-changed',
+} as const
+
 export const ipcChannels = {
   appReady: 'app:ready',
   ...desktopApiIpcChannels,
@@ -19,5 +25,8 @@ export const ipcChannels = {
 
 export type DesktopApiIpcChannel =
   (typeof desktopApiIpcChannels)[keyof typeof desktopApiIpcChannels]
+
+export type DesktopApiEventChannel =
+  (typeof desktopApiEventChannels)[keyof typeof desktopApiEventChannels]
 
 export type IpcChannel = (typeof ipcChannels)[keyof typeof ipcChannels]

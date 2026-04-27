@@ -104,12 +104,12 @@ body.window-maximized #app {
 }
 
 /* 防止选中文本 - 用于拖拽区域 */
-[data-tauri-drag-region] {
+[data-window-drag-region] {
   -webkit-app-region: drag;
   user-select: none;
 }
 
-[data-tauri-drag-region] button {
+[data-window-drag-region] button {
   -webkit-app-region: no-drag;
 }
 
