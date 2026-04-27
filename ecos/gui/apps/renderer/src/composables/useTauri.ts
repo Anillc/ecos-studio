@@ -1,8 +1,5 @@
 import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
 
-const DESKTOP_RUNTIME_MESSAGE =
-  'This feature is only available in the desktop app. Please run it with the ECOS desktop client.'
-
 export function isDesktopRuntime(): boolean {
   return hasDesktopApi()
 }
@@ -24,21 +21,23 @@ export function useTauri() {
   
   /**
    * 确保在桌面运行时中执行操作
-   * 如果桥接层不可用，抛出错误或显示提示
+   * 为兼容现有调用方，默认仅返回 false；
+   * 传入 `false` 时走严格模式并抛出桥接缺失错误。
    * 
-   * @param showAlert 是否显示警告弹窗，默认为 true
+   * @param showAlert 兼容旧接口保留，不再触发任何 UI 副作用
+   * @returns 是否存在桌面桥接
    * @throws {Error} 如果不在桌面运行时且 showAlert 为 false
    */
-  function ensureTauri(showAlert = true): void {
-    if (!isInTauri) {
-      const message = DESKTOP_RUNTIME_MESSAGE
-      
-      if (showAlert) {
-        alert(message)
-      } else {
-        throw new Error(message)
-      }
+  function ensureTauri(showAlert = true): boolean {
+    if (isInTauri) {
+      return true
     }
+
+    if (!showAlert) {
+      requireDesktopRuntime()
+    }
+
+    return false
   }
   
   return {
