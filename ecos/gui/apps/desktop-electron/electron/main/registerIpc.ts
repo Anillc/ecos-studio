@@ -1,12 +1,14 @@
 import { BrowserWindow, ipcMain, shell, type IpcMain, type IpcMainInvokeEvent } from 'electron'
-import {
-  desktopApiIpcChannels,
-  type TileGenerationRequest,
-  type TileGenerationResult,
-  type WorkspaceSummary,
-} from '@ecos-studio/shared'
+import { desktopApiIpcChannels, type TileGenerationRequest, type TileGenerationResult } from '@ecos-studio/shared'
 
 export type IpcMainLike = Pick<IpcMain, 'handle'>
+
+class DesktopApiNotImplementedError extends Error {
+  constructor(capabilityName: string) {
+    super(`${capabilityName} is not implemented in the Electron shell yet.`)
+    this.name = 'DesktopApiNotImplementedError'
+  }
+}
 
 function getEventWindow(event: IpcMainInvokeEvent): BrowserWindow {
   const targetWindow = BrowserWindow.fromWebContents(event.sender)
@@ -18,8 +20,14 @@ function getEventWindow(event: IpcMainInvokeEvent): BrowserWindow {
   return targetWindow
 }
 
-function notImplemented(featureName: string): never {
-  throw new Error(`${featureName} is not implemented in the Electron shell yet.`)
+function notImplemented(capabilityName: string): never {
+  throw new DesktopApiNotImplementedError(capabilityName)
+}
+
+function createNotImplementedHandler<TResult>(
+  capabilityName: string,
+): (_event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<TResult> {
+  return async () => notImplemented(capabilityName)
 }
 
 export function registerIpc(target: IpcMainLike = ipcMain): void {
@@ -51,19 +59,18 @@ export function registerIpc(target: IpcMainLike = ipcMain): void {
   })
 
   target.handle(
+    desktopApiIpcChannels.tilesGenerate,
+    createNotImplementedHandler<TileGenerationResult>('tiles.generate'),
+  )
+
+  target.handle(
     desktopApiIpcChannels.workspaceOpen,
-    async (): Promise<WorkspaceSummary | null> => null,
+    createNotImplementedHandler('workspace.openProject'),
   )
 
   target.handle(
     desktopApiIpcChannels.workspaceLoadRecent,
-    async (): Promise<WorkspaceSummary[]> => [],
-  )
-
-  target.handle(
-    desktopApiIpcChannels.tilesGenerate,
-    async (_event, _request: TileGenerationRequest): Promise<TileGenerationResult> =>
-      notImplemented('Tile generation'),
+    createNotImplementedHandler('workspace.loadRecent'),
   )
 
   target.handle(desktopApiIpcChannels.systemOpenExternal, async (_event, url: string) => {

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "pnpm run desktop:dev",
-    "build": "pnpm -r --if-present run build",
+    "build": "pnpm --filter @ecos-studio/renderer run typecheck && pnpm run desktop:build",
     "preview": "pnpm run desktop:preview",
     "test": "pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck",

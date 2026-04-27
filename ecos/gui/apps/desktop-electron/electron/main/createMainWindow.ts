@@ -15,7 +15,6 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
     },
   })
 
