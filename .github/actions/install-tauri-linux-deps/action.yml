@@ -1,5 +1,5 @@
-name: Install Tauri Linux Dependencies
-description: Install Linux packages required by Tauri GUI checks and builds.
+name: Install GUI Linux Dependencies
+description: Install Linux packages required by Electron GUI checks and packaging.
 
 inputs:
   extra-packages:
@@ -14,10 +14,18 @@ runs:
       shell: bash
       run: |
         packages=(
-          libwebkit2gtk-4.1-dev
+          libasound2-dev
+          libatk-bridge2.0-dev
+          libdrm-dev
+          libfuse2
+          libgbm-dev
           libgtk-3-dev
           libayatana-appindicator3-dev
+          libnotify-dev
+          libnss3
           librsvg2-dev
+          libxss1
+          libxtst-dev
         )
 
         if [[ -n "${{ inputs.extra-packages }}" ]]; then

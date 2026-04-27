@@ -10,11 +10,13 @@
   },
   "scripts": {
     "dev": "pnpm run desktop:dev",
+    "dev:reuse-api-server": "ECOS_REUSE_API_SERVER=1 pnpm run desktop:dev",
     "build": "pnpm --filter @ecos-studio/renderer run typecheck && pnpm run desktop:build",
     "preview": "pnpm run desktop:preview",
     "test": "pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck",
     "desktop:dev": "pnpm --filter @ecos-studio/desktop-electron run dev",
+    "desktop:dev:reuse-api-server": "ECOS_REUSE_API_SERVER=1 pnpm --filter @ecos-studio/desktop-electron run dev",
     "desktop:build": "pnpm --filter @ecos-studio/desktop-electron run build",
     "desktop:preview": "pnpm --filter @ecos-studio/desktop-electron run preview",
     "desktop:package": "pnpm --filter @ecos-studio/desktop-electron run package",
@@ -24,13 +26,6 @@
     "renderer:build": "pnpm --filter @ecos-studio/renderer run build",
     "renderer:preview": "pnpm --filter @ecos-studio/renderer run preview",
     "renderer:test": "pnpm --filter @ecos-studio/renderer run test",
-    "renderer:typecheck": "pnpm --filter @ecos-studio/renderer run typecheck",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:dev:debug": "ECOS_REUSE_API_SERVER=1 tauri dev",
-    "tauri:build": "tauri build"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.9.6"
+    "renderer:typecheck": "pnpm --filter @ecos-studio/renderer run typecheck"
   }
 }

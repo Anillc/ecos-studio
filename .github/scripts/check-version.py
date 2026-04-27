@@ -104,22 +104,6 @@ gui_default_nix = parse_regex(
 )
 versions.append(("ecos/gui/default.nix", gui_default_nix))
 
-gui_cargo_toml = tomllib.loads(read("ecos/gui/src-tauri/Cargo.toml"))["package"][
-    "version"
-]
-versions.append(("ecos/gui/src-tauri/Cargo.toml", gui_cargo_toml))
-
-gui_cargo_lock = parse_regex(
-    "ecos/gui/src-tauri/Cargo.lock",
-    r'\[\[package\]\]\s+name\s*=\s*"ecos-studio"\s+version\s*=\s*"([^"]+)"',
-    flags=re.S,
-    label="ecos/gui/src-tauri/Cargo.lock root package version",
-)
-versions.append(("ecos/gui/src-tauri/Cargo.lock", gui_cargo_lock))
-
-gui_tauri_conf = read_json("ecos/gui/src-tauri/tauri.conf.json")["version"]
-versions.append(("ecos/gui/src-tauri/tauri.conf.json", gui_tauri_conf))
-
 print("Detected versions:")
 for name, value in versions:
     print(f"  {name}: {value}")
@@ -149,10 +133,11 @@ if expected_tag and expected_tag != tag:
     )
     sys.exit(1)
 
-github_output = os.environ["GITHUB_OUTPUT"]
-with open(github_output, "a", encoding="utf-8") as fh:
-    fh.write(f"version={module_version}\n")
-    fh.write(f"tag={tag}\n")
+github_output = os.environ.get("GITHUB_OUTPUT", "").strip()
+if github_output:
+    with open(github_output, "a", encoding="utf-8") as fh:
+        fh.write(f"version={module_version}\n")
+        fh.write(f"tag={tag}\n")
 
 print("")
 print(f"Version check passed: {module_version}")

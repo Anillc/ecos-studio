@@ -5,6 +5,10 @@ directories:
 files:
   - dist/**/*
   - package.json
+extraResources:
+  - from: resources/binaries
+    to: binaries
+  - from: resources/oss-cad-suite
+    to: resources/oss-cad-suite
 linux:
-  target:
-    - dir
+  executableName: ecos-studio
