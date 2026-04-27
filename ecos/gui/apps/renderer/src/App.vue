@@ -41,6 +41,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useThemeStore } from '@/stores/themeStore'
+import { useAppMenuActions } from '@/composables/useAppMenuActions'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { usePdkManager } from '@/composables/usePdkManager'
 import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
@@ -71,39 +72,34 @@ const handleWizardCreate = async (config: WorkspaceConfig) => {
   if (success) router.push('/workspace')
 }
 
-// ---- TopBar 菜单事件 ----
-const handleMenuAction = async (action: string) => {
-  switch (action) {
-    case 'new-project':
-      showNewProjectWizard.value = true
-      break
-    case 'open-project': {
-      const success = await openProject()
-      if (success) router.push('/workspace')
-      break
+const openDocumentation = async () => {
+  try {
+    if (desktopApi) {
+      await desktopApi.system.openExternal(documentationUrl)
+    } else {
+      window.open(documentationUrl, '_blank', 'noopener,noreferrer')
     }
-    case 'documentation':
-      try {
-        if (desktopApi) {
-          await desktopApi.system.openExternal(documentationUrl)
-        } else {
-          window.open(documentationUrl, '_blank', 'noopener,noreferrer')
-        }
-      } catch (error) {
-        console.error('Failed to open documentation:', error)
-        showToast({
-          severity: 'error',
-          summary: 'Error',
-          detail: `Failed to open documentation because of ${error instanceof Error ? error.message : String(error)}`,
-          life: 3000
-        })
-      }
-      break
-    case 'about':
-      // TODO: 打开关于对话框
-      break
+  } catch (error) {
+    console.error('Failed to open documentation:', error)
+    showToast({
+      severity: 'error',
+      summary: 'Error',
+      detail: `Failed to open documentation because of ${error instanceof Error ? error.message : String(error)}`,
+      life: 3000
+    })
   }
 }
+
+const { handleMenuAction } = useAppMenuActions({
+  navigateToWorkspace: () => {
+    router.push('/workspace')
+  },
+  openDocumentation,
+  openProject,
+  showNewProjectWizard: () => {
+    showNewProjectWizard.value = true
+  },
+})
 
 let isResizing = false
 

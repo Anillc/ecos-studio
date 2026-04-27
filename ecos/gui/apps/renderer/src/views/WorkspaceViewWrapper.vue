@@ -9,35 +9,15 @@
       <!-- <RightSidebar /> -->
     </main>
   </div>
-  <NewProjectWizard v-if="showWizard" @close="showWizard = false" @create="handleWizardCreate" />
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import LeftSidebar from '../components/LeftSidebar.vue'
 // import RightSidebar from '../components/RightSidebar.vue'
-import { useMenuEvents } from '../composables/useMenuEvents'
-import NewProjectWizard from '../components/NewProjectWizard.vue'
-import type { WorkspaceConfig } from '../types'
 import { useWorkspace } from '../composables/useWorkspace'
 
 const { closeProject } = useWorkspace()
-
-const showWizard = ref(false)
-
-const handleNewProject = () => {
-  console.log('new_project');
-  showWizard.value = true
-}
-
-const handleWizardCreate = (config: WorkspaceConfig) => {
-  console.log('handleWizardCreate', config);
-}
-
-useMenuEvents({
-  new_project: handleNewProject
-})
 
 onBeforeRouteLeave(async () => {
   await closeProject()
