@@ -63,7 +63,7 @@ pnpm --filter @ecos-studio/renderer exec vitest run src/utils/sanitizeHtml.test.
 | `apps/renderer/src/composables/` | Composables (workspace state, menus, desktop integration wrappers, etc.) |
 | `apps/renderer/src/stores/` | Pinia state |
 | `apps/renderer/src/api/` | HTTP / SSE client wrappers |
-| `packages/` | Shared internal workspace packages (placeholder for phase 1) |
+| `packages/` | Shared internal workspace packages (desktop bridge, tile helper, shared contracts) |
 
 ## Related docs
 
@@ -71,8 +71,6 @@ pnpm --filter @ecos-studio/renderer exec vitest run src/utils/sanitizeHtml.test.
 - [ECOS Studio user guide](../docs/user-guide.md) — product usage  
 - [Repository root README](../../README.md) — monorepo overview  
 - [ECC development](../../ecc/docs/development.md), [ECC architecture](../../ecc/docs/architecture.md) — ECC toolchain docs  
-
-`src-tauri/` is still present during migration, but it is no longer part of the active Electron build and release path documented here.
 
 ---
 

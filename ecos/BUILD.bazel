@@ -13,12 +13,6 @@ sh_binary(
     srcs = ["scripts/prepare-ecos-server.sh"],
 )
 
-sh_binary(
-    name = "dev_symlinks",
-    srcs = ["scripts/dev-symlinks.sh"],
-    data = [":build_ecos_server"],
-)
-
 python_pyinstaller_bundle(
     name = "build_ecos_server",
     spec_file = "server/ecos.spec",

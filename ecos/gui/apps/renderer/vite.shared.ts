@@ -86,9 +86,6 @@ export function createRendererViteConfig({
     server: {
       port: 1420,
       strictPort: true,
-      watch: {
-        ignored: ['**/src-tauri/**'],
-      },
       fs: {
         allow: fsAllow,
       },
