@@ -5,11 +5,10 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { LazyStore } from '@tauri-apps/plugin-store'
 import { readTextFile } from '@tauri-apps/plugin-fs'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useToast } from 'primevue/usetoast'
 import { loadWorkspaceApi, createWorkspaceApi, waitForApiReady } from '../api'
 import { createSSEClient, type SSEClient, type ECCResponse } from '../api/sse'
-import { isTauri } from './useTauri'
+import { setDesktopWindowTitle } from './windowTitle'
 
 interface SerializedProject {
   id: string
@@ -55,12 +54,9 @@ const APP_NAME = 'ECOS Studio'
  * @param projectName 项目名称，为空时显示默认标题
  */
 async function updateWindowTitle(projectName?: string) {
-  if (!isTauri()) return
-
   try {
-    const window = getCurrentWindow()
     const title = projectName ? `${projectName}` : APP_NAME
-    await window.setTitle(title)
+    await setDesktopWindowTitle(title)
   } catch (error) {
     console.error('Failed to update window title:', error)
   }

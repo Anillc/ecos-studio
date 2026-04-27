@@ -1,22 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { desktopApiEventChannels } from '@ecos-studio/shared'
-import { bindWindowEvents, toggleMaximizeWindow } from './windowService'
+import { bindWindowEvents, confirmWindowClose, toggleMaximizeWindow } from './windowService'
 
 type WindowListener = () => void
+type CloseListener = (event: { preventDefault: () => void }) => void
 
 function createWindowDouble(isMaximized = false) {
   const listeners = new Map<string, WindowListener>()
+  const closeListeners = new Map<string, CloseListener>()
 
   return {
     close: vi.fn(),
+    closeListeners,
     isMaximized: vi.fn(() => isMaximized),
     listeners,
     maximize: vi.fn(),
     minimize: vi.fn(),
-    on: vi.fn((event: string, listener: WindowListener) => {
-      listeners.set(event, listener)
+    on: vi.fn((event: string, listener: WindowListener | CloseListener) => {
+      if (event === 'close') {
+        closeListeners.set(event, listener as CloseListener)
+        return
+      }
+
+      listeners.set(event, listener as WindowListener)
     }),
-    removeListener: vi.fn((event: string, listener: WindowListener) => {
+    removeListener: vi.fn((event: string, listener: WindowListener | CloseListener) => {
+      if (event === 'close') {
+        if (closeListeners.get(event) === listener) {
+          closeListeners.delete(event)
+        }
+        return
+      }
+
       if (listeners.get(event) === listener) {
         listeners.delete(event)
       }
@@ -73,7 +88,34 @@ describe('windowService', () => {
 
     dispose()
 
-    expect(windowDouble.removeListener).toHaveBeenCalledTimes(3)
+    expect(windowDouble.removeListener).toHaveBeenCalledTimes(4)
     expect(windowDouble.listeners.size).toBe(0)
+    expect(windowDouble.closeListeners.size).toBe(0)
+  })
+
+  it('requests renderer cleanup before allowing a native window close to finish', () => {
+    const windowDouble = createWindowDouble(false)
+    const dispose = bindWindowEvents(windowDouble)
+    const firstCloseEvent = { preventDefault: vi.fn() }
+
+    windowDouble.closeListeners.get('close')?.(firstCloseEvent)
+
+    expect(firstCloseEvent.preventDefault).toHaveBeenCalledTimes(1)
+    expect(windowDouble.webContents.send).toHaveBeenCalledWith(
+      desktopApiEventChannels.windowCloseRequested,
+    )
+
+    confirmWindowClose(windowDouble)
+
+    expect(windowDouble.close).toHaveBeenCalledTimes(1)
+
+    const secondCloseEvent = { preventDefault: vi.fn() }
+    windowDouble.closeListeners.get('close')?.(secondCloseEvent)
+
+    expect(secondCloseEvent.preventDefault).not.toHaveBeenCalled()
+
+    dispose()
+
+    expect(windowDouble.removeListener).toHaveBeenCalledTimes(4)
   })
 })

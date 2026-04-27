@@ -16,4 +16,12 @@ export const desktopMenuEventIds = {
 export type DesktopMenuEventId =
   (typeof desktopMenuEventIds)[keyof typeof desktopMenuEventIds]
 
+export const appMenuActionIds = {
+  documentation: desktopMenuEventIds.documentation,
+  newProject: desktopMenuEventIds.newProject,
+  openProject: desktopMenuEventIds.openProject,
+} as const
+
+export type AppMenuAction = (typeof appMenuActionIds)[keyof typeof appMenuActionIds]
+
 export type DesktopEventUnsubscribe = () => void

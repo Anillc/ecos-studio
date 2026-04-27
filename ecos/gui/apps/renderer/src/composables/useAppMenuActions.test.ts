@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { appMenuActionIds } from '@ecos-studio/shared'
 
 const { useMenuEvents } = vi.hoisted(() => ({
   useMenuEvents: vi.fn(),
@@ -17,7 +18,14 @@ describe('useAppMenuActions', () => {
 
   it('registers app-level native menu handlers that dispatch the real app actions', async () => {
     let registeredHandlers:
-      | Partial<Record<'documentation' | 'new_project' | 'open_project', () => void>>
+      | Partial<
+          Record<
+            | typeof appMenuActionIds.documentation
+            | typeof appMenuActionIds.newProject
+            | typeof appMenuActionIds.openProject,
+            () => void
+          >
+        >
       | undefined
 
     useMenuEvents.mockImplementation((handlers) => {
@@ -39,23 +47,23 @@ describe('useAppMenuActions', () => {
     expect(useMenuEvents).toHaveBeenCalledTimes(1)
     expect(registeredHandlers).toBeDefined()
 
-    registeredHandlers?.new_project?.()
+    registeredHandlers?.[appMenuActionIds.newProject]?.()
     await Promise.resolve()
 
     expect(showNewProjectWizard).toHaveBeenCalledTimes(1)
 
-    registeredHandlers?.open_project?.()
+    registeredHandlers?.[appMenuActionIds.openProject]?.()
     await Promise.resolve()
 
     expect(openProject).toHaveBeenCalledTimes(1)
     expect(navigateToWorkspace).toHaveBeenCalledTimes(1)
 
-    registeredHandlers?.documentation?.()
+    registeredHandlers?.[appMenuActionIds.documentation]?.()
     await Promise.resolve()
 
     expect(openDocumentation).toHaveBeenCalledTimes(1)
 
-    await handleMenuAction('open-project')
+    await handleMenuAction(appMenuActionIds.openProject)
 
     expect(openProject).toHaveBeenCalledTimes(2)
     expect(navigateToWorkspace).toHaveBeenCalledTimes(2)
@@ -72,7 +80,7 @@ describe('useAppMenuActions', () => {
       showNewProjectWizard: vi.fn(),
     })
 
-    await handleMenuAction('open-project')
+    await handleMenuAction(appMenuActionIds.openProject)
 
     expect(navigateToWorkspace).not.toHaveBeenCalled()
   })

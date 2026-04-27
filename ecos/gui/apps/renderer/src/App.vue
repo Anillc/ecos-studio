@@ -42,6 +42,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useThemeStore } from '@/stores/themeStore'
 import { useAppMenuActions } from '@/composables/useAppMenuActions'
+import { useAppWindowClose } from '@/composables/useAppWindowClose'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { usePdkManager } from '@/composables/usePdkManager'
 import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
@@ -56,7 +57,7 @@ const router = useRouter()
 const themeStore = useThemeStore()
 const route = useRoute()
 const isWelcome = computed(() => route.path === '/')
-const { loadRecentProjects, currentProject, openProject, newProject, apiBackendConnecting } =
+const { loadRecentProjects, currentProject, openProject, newProject, closeProject, apiBackendConnecting } =
   useWorkspace()
 const { loadPdks } = usePdkManager()
 const { showToast } = useWorkspace()
@@ -100,6 +101,7 @@ const { handleMenuAction } = useAppMenuActions({
     showNewProjectWizard.value = true
   },
 })
+useAppWindowClose(closeProject)
 
 let isResizing = false
 

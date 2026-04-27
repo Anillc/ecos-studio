@@ -7,8 +7,10 @@ export interface DesktopApi {
     minimize(): Promise<void>
     toggleMaximize(): Promise<void>
     close(): Promise<void>
+    confirmClose(): Promise<void>
     setTitle(title: string): Promise<void>
     isMaximized(): Promise<boolean>
+    onCloseRequested(listener: () => void): DesktopEventUnsubscribe
     onResized(listener: () => void): DesktopEventUnsubscribe
     onMaximizedChanged(listener: (isMaximized: boolean) => void): DesktopEventUnsubscribe
   }

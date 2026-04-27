@@ -6,8 +6,8 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron'
 import {
+  appMenuActionIds,
   desktopApiEventChannels,
-  desktopMenuEventIds,
   type DesktopMenuEventId,
 } from '@ecos-studio/shared'
 
@@ -57,13 +57,13 @@ export function registerApplicationMenu(): void {
     {
       label: 'File',
       submenu: [
-        createMenuAction('New Workspace', desktopMenuEventIds.newProject, 'CmdOrCtrl+N'),
-        createMenuAction('Open Workspace', desktopMenuEventIds.openProject, 'CmdOrCtrl+O'),
+        createMenuAction('New Workspace', appMenuActionIds.newProject, 'CmdOrCtrl+N'),
+        createMenuAction('Open Workspace', appMenuActionIds.openProject, 'CmdOrCtrl+O'),
       ],
     },
     {
       label: 'Help',
-      submenu: [createMenuAction('Documentation', desktopMenuEventIds.documentation)],
+      submenu: [createMenuAction('Documentation', appMenuActionIds.documentation)],
     },
   )
 

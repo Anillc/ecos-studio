@@ -2,6 +2,7 @@ export const desktopApiIpcChannels = {
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',
+  windowConfirmClose: 'window:confirm-close',
   windowSetTitle: 'window:set-title',
   windowIsMaximized: 'window:is-maximized',
   workspaceOpen: 'workspace:open',
@@ -12,6 +13,7 @@ export const desktopApiIpcChannels = {
 
 export const desktopApiEventChannels = {
   menuAction: 'menu:action',
+  windowCloseRequested: 'window:close-requested',
   windowResized: 'window:resized',
   windowMaximizedChanged: 'window:maximized-changed',
 } as const

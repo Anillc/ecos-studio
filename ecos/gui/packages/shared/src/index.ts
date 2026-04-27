@@ -8,7 +8,9 @@ export {
 } from './constants/ipcChannels'
 export type { DesktopApi } from './contracts/desktopApi'
 export {
+  appMenuActionIds,
   desktopMenuEventIds,
+  type AppMenuAction,
   type DesktopEventUnsubscribe,
   type DesktopMenuEventId,
 } from './contracts/desktopEvents'

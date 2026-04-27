@@ -58,6 +58,7 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.windowMinimize,
       desktopApiIpcChannels.windowToggleMaximize,
       desktopApiIpcChannels.windowClose,
+      desktopApiIpcChannels.windowConfirmClose,
       desktopApiIpcChannels.windowSetTitle,
       desktopApiIpcChannels.windowIsMaximized,
       desktopApiIpcChannels.workspaceOpen,
@@ -77,13 +78,14 @@ describe('registerIpc', () => {
     await handlers.get(desktopApiIpcChannels.windowSetTitle)?.(event, 'ECOS Studio')
     const isMaximized = await handlers.get(desktopApiIpcChannels.windowIsMaximized)?.(event)
     await handlers.get(desktopApiIpcChannels.windowClose)?.(event)
+    await handlers.get(desktopApiIpcChannels.windowConfirmClose)?.(event)
 
-    expect(fromWebContents).toHaveBeenCalledTimes(4)
+    expect(fromWebContents).toHaveBeenCalledTimes(5)
     expect(fromWebContents).toHaveBeenNthCalledWith(1, event.sender)
     expect(windowDouble.minimize).toHaveBeenCalledTimes(1)
     expect(windowDouble.setTitle).toHaveBeenCalledWith('ECOS Studio')
     expect(isMaximized).toBe(false)
-    expect(windowDouble.close).toHaveBeenCalledTimes(1)
+    expect(windowDouble.close).toHaveBeenCalledTimes(2)
   })
 
   it('toggles maximize by maximizing a normal window and restoring a maximized one', async () => {

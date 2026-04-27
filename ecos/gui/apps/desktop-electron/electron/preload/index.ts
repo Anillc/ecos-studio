@@ -22,8 +22,13 @@ const desktopApi: DesktopApi = {
     minimize: () => ipcRenderer.invoke(desktopApiIpcChannels.windowMinimize),
     toggleMaximize: () => ipcRenderer.invoke(desktopApiIpcChannels.windowToggleMaximize),
     close: () => ipcRenderer.invoke(desktopApiIpcChannels.windowClose),
+    confirmClose: () => ipcRenderer.invoke(desktopApiIpcChannels.windowConfirmClose),
     setTitle: (title) => ipcRenderer.invoke(desktopApiIpcChannels.windowSetTitle, title),
     isMaximized: () => ipcRenderer.invoke(desktopApiIpcChannels.windowIsMaximized),
+    onCloseRequested: (listener) =>
+      subscribeToDesktopEvent(desktopApiEventChannels.windowCloseRequested, () => {
+        listener()
+      }),
     onResized: (listener) =>
       subscribeToDesktopEvent(desktopApiEventChannels.windowResized, () => {
         listener()

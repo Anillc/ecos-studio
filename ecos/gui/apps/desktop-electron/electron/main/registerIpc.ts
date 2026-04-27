@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, shell, type IpcMain, type IpcMainInvokeEvent } 
 import { desktopApiIpcChannels, type TileGenerationRequest, type TileGenerationResult } from '@ecos-studio/shared'
 import {
   closeWindow,
+  confirmWindowClose,
   isWindowMaximized,
   minimizeWindow,
   setWindowTitle,
@@ -48,6 +49,10 @@ export function registerIpc(target: IpcMainLike = ipcMain): void {
 
   target.handle(desktopApiIpcChannels.windowClose, (event) => {
     closeWindow(getEventWindow(event))
+  })
+
+  target.handle(desktopApiIpcChannels.windowConfirmClose, (event) => {
+    confirmWindowClose(getEventWindow(event))
   })
 
   target.handle(desktopApiIpcChannels.windowSetTitle, (event, title: string) => {

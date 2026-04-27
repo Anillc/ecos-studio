@@ -76,17 +76,18 @@
 </template>
 
 <script setup lang="ts">
+import type { AppMenuAction } from '@ecos-studio/shared'
+import { appMenuActionIds } from '@ecos-studio/shared'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useThemeStore } from '@/stores/themeStore'
 import { useRoute } from 'vue-router'
-import { useWorkspace } from '@/composables/useWorkspace'
 import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
 // ---- 类型定义 ----
 interface DropdownItem {
   label?: string
   icon?: string
   shortcut?: string
-  event?: string
+  event?: AppMenuAction
   separator?: boolean
   disabled?: boolean
 }
@@ -105,7 +106,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'menu-action', action: string): void
+  (e: 'menu-action', action: AppMenuAction): void
 }>()
 
 const themeStore = useThemeStore()
@@ -121,8 +122,8 @@ const menus: Menu[] = [
     label: 'File',
     action: 'file',
     children: [
-      { label: 'New Workspace', icon: 'ri-add-line', shortcut: '⌘N', event: 'new-project' },
-      { label: 'Open Workspace', icon: 'ri-folder-open-line', shortcut: '⌘O', event: 'open-project' },
+      { label: 'New Workspace', icon: 'ri-add-line', shortcut: '⌘N', event: appMenuActionIds.newProject },
+      { label: 'Open Workspace', icon: 'ri-folder-open-line', shortcut: '⌘O', event: appMenuActionIds.openProject },
       // { separator: true },
     ]
   },
@@ -130,7 +131,7 @@ const menus: Menu[] = [
     label: 'Help',
     action: 'help',
     children: [
-      { label: 'Documentation', icon: 'ri-book-open-line', event: 'documentation' },
+      { label: 'Documentation', icon: 'ri-book-open-line', event: appMenuActionIds.documentation },
     ]
   }
 ]
@@ -152,7 +153,7 @@ const handleMenuHover = (action: string) => {
 }
 
 /** 下拉项点击 */
-const handleItemClick = (event?: string) => {
+const handleItemClick = (event?: AppMenuAction) => {
   activeMenu.value = null
   if (event) {
     emit('menu-action', event)
@@ -217,9 +218,7 @@ const handleMaximize = async () => {
   await desktopApi?.window.toggleMaximize()
 }
 
-const { closeProject } = useWorkspace()
 const handleClose = async () => {
-  await closeProject()
   await desktopApi?.window.close()
 }
 </script>
