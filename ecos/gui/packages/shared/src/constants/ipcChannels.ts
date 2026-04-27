@@ -14,6 +14,7 @@ export const desktopApiIpcChannels = {
   workspaceRegisterProjectRoot: 'workspace:register-project-root',
   workspaceClearProjectRoot: 'workspace:clear-project-root',
   workspaceRequestProjectPathAccess: 'workspace:request-project-path-access',
+  workspaceReadProjectTextFile: 'workspace:read-project-text-file',
   workspaceScanPdkDirectory: 'workspace:scan-pdk-directory',
   tilesGenerate: 'tiles:generate',
   systemOpenExternal: 'system:open-external',

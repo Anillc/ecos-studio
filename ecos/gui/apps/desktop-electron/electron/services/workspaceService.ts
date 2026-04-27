@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import type { ScannedPdkDirectory } from '@ecos-studio/shared'
 
 export interface ApiPortProvider {
@@ -7,8 +8,8 @@ export interface ApiPortProvider {
 export interface ProjectScopeProvider {
   clearProjectRoot(): Promise<void>
   isProjectDirectory(path: string): Promise<boolean>
-  registerProjectRoot(path: string): Promise<string>
   requestProjectPathAccess(path: string): Promise<string>
+  registerProjectRoot(path: string): Promise<string>
   scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
 }
 
@@ -44,6 +45,11 @@ export class WorkspaceService {
 
   async requestProjectPathAccess(path: string): Promise<string> {
     return await this.projectScopeProvider.requestProjectPathAccess(path)
+  }
+
+  async readProjectTextFile(path: string): Promise<string> {
+    const canonicalPath = await this.projectScopeProvider.requestProjectPathAccess(path)
+    return await readFile(canonicalPath, 'utf8')
   }
 
   async scanPdkDirectory(path: string): Promise<ScannedPdkDirectory> {

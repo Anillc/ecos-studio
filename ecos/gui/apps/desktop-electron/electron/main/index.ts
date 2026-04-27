@@ -60,16 +60,21 @@ async function launchMainWindow(): Promise<void> {
   bindWindowEvents(mainWindow)
 }
 
+function handleLaunchError(error: unknown): void {
+  console.error('[desktop-electron] Failed to launch main window:', error)
+  app.quit()
+}
+
 app.whenReady().then(() => {
   registerApplicationMenu()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void launchMainWindow()
+      void launchMainWindow().catch(handleLaunchError)
     }
   })
 
-  void launchMainWindow()
+  void launchMainWindow().catch(handleLaunchError)
 })
 
 app.on('before-quit', (event) => {

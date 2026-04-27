@@ -61,6 +61,7 @@ export interface DesktopApi {
     registerProjectRoot(path: string): Promise<string>
     clearProjectRoot(): Promise<void>
     requestProjectPathAccess(path: string): Promise<string>
+    readProjectTextFile(path: string): Promise<string>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
   }
   tiles: {

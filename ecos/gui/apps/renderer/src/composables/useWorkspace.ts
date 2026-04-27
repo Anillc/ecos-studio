@@ -2,7 +2,6 @@ import { ref, getCurrentInstance } from 'vue'
 import type { DesktopSettingsValue } from '@ecos-studio/shared'
 import type { Project, ProjectStatus, WorkspaceConfig } from '../types'
 import { useRouter } from 'vue-router'
-import { readTextFile } from '@tauri-apps/plugin-fs'
 import { useToast } from 'primevue/usetoast'
 import { getDesktopApi } from '@/platform/desktop'
 import { loadWorkspaceApi, createWorkspaceApi, waitForApiReady } from '../api'
@@ -60,6 +59,10 @@ async function deleteSetting(key: string): Promise<void> {
 
 async function pickDirectory(title: string): Promise<string | null> {
   return await getDesktopApi().dialog.pickDirectory({ title })
+}
+
+async function readProjectTextFile(path: string): Promise<string> {
+  return await getDesktopApi().workspace.readProjectTextFile(path)
 }
 
 /**
@@ -510,7 +513,7 @@ export function useWorkspace() {
     const snapshot: Partial<Project> = {}
 
     try {
-      const flowContent = await readTextFile(`${project.path}/home/flow.json`)
+      const flowContent = await readProjectTextFile(`${project.path}/home/flow.json`)
       const flowData = JSON.parse(flowContent)
       const steps: Array<{ name: string; state: string; runtime: string }> = flowData.steps || []
 
@@ -548,7 +551,7 @@ export function useWorkspace() {
     }
 
     try {
-      const paramsContent = await readTextFile(`${project.path}/home/parameters.json`)
+      const paramsContent = await readProjectTextFile(`${project.path}/home/parameters.json`)
       const params = JSON.parse(paramsContent)
       snapshot.pdk = params['PDK'] || undefined
       snapshot.topModule = params['Top module'] || undefined
@@ -559,7 +562,7 @@ export function useWorkspace() {
     }
 
     try {
-      const homeContent = await readTextFile(`${project.path}/home/home.json`)
+      const homeContent = await readProjectTextFile(`${project.path}/home/home.json`)
       const homeData = JSON.parse(homeContent)
       const monitor = homeData.monitor
       if (monitor) {

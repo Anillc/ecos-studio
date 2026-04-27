@@ -308,9 +308,10 @@ async function waitForServerReady(
 }
 
 export class ApiServerService {
-  private currentPort = DEFAULT_API_PORT
+  private currentPort: number | null = null
   private ownedProcess: ChildProcess | null = null
   private ownership: ServerOwnership = 'none'
+  private startupError: Error | null = null
   private startupPromise: Promise<void> | null = null
 
   async start(): Promise<void> {
@@ -331,12 +332,16 @@ export class ApiServerService {
       return await this.startupPromise
     }
 
+    this.startupError = null
     this.startupPromise = this.startInternal()
       .catch((error) => {
-        this.currentPort = DEFAULT_API_PORT
+        const startupError =
+          error instanceof Error ? error : new Error(String(error))
+        this.currentPort = null
         this.ownedProcess = null
         this.ownership = 'none'
-        console.warn('[desktop-electron] Failed to start API server:', error)
+        this.startupError = startupError
+        throw startupError
       })
       .finally(() => {
         this.startupPromise = null
@@ -350,6 +355,14 @@ export class ApiServerService {
       await this.startupPromise
     }
 
+    if (this.startupError) {
+      throw this.startupError
+    }
+
+    if (this.currentPort == null) {
+      throw new Error('API server has not been started.')
+    }
+
     return this.currentPort
   }
 
@@ -359,6 +372,7 @@ export class ApiServerService {
     }
 
     const child = this.ownedProcess
+    this.currentPort = null
     this.ownedProcess = null
     this.ownership = 'none'
 
@@ -370,6 +384,7 @@ export class ApiServerService {
     this.currentPort = result.port
     this.ownership = result.ownership
     this.ownedProcess = result.process
+    this.startupError = null
   }
 
   private async startServer(): Promise<ServerStartResult> {

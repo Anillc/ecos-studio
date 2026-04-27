@@ -37,4 +37,21 @@ describe('SettingsStore', () => {
 
     await expect(store.get('recent_projects')).resolves.toBeNull()
   })
+
+  it('preserves concurrent updates to different keys', async () => {
+    const directory = await createTempDir('ecos-settings-')
+    const store = new SettingsStore({
+      filePath: join(directory, 'settings.json'),
+    })
+
+    await Promise.all([
+      store.set('recent_projects', [{ id: 'demo', path: '/tmp/demo' }]),
+      store.set('current_project_path', '/tmp/demo'),
+    ])
+
+    await expect(store.get('recent_projects')).resolves.toEqual([
+      { id: 'demo', path: '/tmp/demo' },
+    ])
+    await expect(store.get('current_project_path')).resolves.toBe('/tmp/demo')
+  })
 })

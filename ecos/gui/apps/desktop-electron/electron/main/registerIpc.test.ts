@@ -38,6 +38,7 @@ function registerHandlers() {
       clearProjectRoot: vi.fn(),
       getApiPort: vi.fn(),
       isProjectDirectory: vi.fn(),
+      readProjectTextFile: vi.fn(),
       registerProjectRoot: vi.fn(),
       requestProjectPathAccess: vi.fn(),
       scanPdkDirectory: vi.fn(),
@@ -93,6 +94,7 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceRegisterProjectRoot,
       desktopApiIpcChannels.workspaceClearProjectRoot,
       desktopApiIpcChannels.workspaceRequestProjectPathAccess,
+      desktopApiIpcChannels.workspaceReadProjectTextFile,
       desktopApiIpcChannels.workspaceScanPdkDirectory,
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.systemOpenExternal,
@@ -156,6 +158,7 @@ describe('registerIpc', () => {
     services.settingsStore.get.mockResolvedValue([{ id: 'recent' }])
     services.workspaceService.getApiPort.mockResolvedValue(9123)
     services.workspaceService.isProjectDirectory.mockResolvedValue(true)
+    services.workspaceService.readProjectTextFile.mockResolvedValue('{"steps":[]}')
     services.workspaceService.registerProjectRoot.mockResolvedValue('/tmp/project')
     services.workspaceService.requestProjectPathAccess.mockResolvedValue('/tmp/project/home.json')
     services.workspaceService.scanPdkDirectory.mockResolvedValue({
@@ -203,6 +206,12 @@ describe('registerIpc', () => {
       ),
     ).resolves.toBe('/tmp/project/home.json')
     await expect(
+      handlers.get(desktopApiIpcChannels.workspaceReadProjectTextFile)?.(
+        event,
+        '/tmp/project/home/flow.json',
+      ),
+    ).resolves.toBe('{"steps":[]}')
+    await expect(
       handlers.get(desktopApiIpcChannels.workspaceScanPdkDirectory)?.(event, '/tmp/pdk'),
     ).resolves.toMatchObject({
       canonicalPath: '/tmp/pdk',
@@ -216,6 +225,9 @@ describe('registerIpc', () => {
       properties: ['openDirectory'],
       title: 'Select Project',
     })
+    expect(services.workspaceService.readProjectTextFile).toHaveBeenCalledWith(
+      '/tmp/project/home/flow.json',
+    )
     expect(services.workspaceService.clearProjectRoot).toHaveBeenCalledTimes(1)
   })
 

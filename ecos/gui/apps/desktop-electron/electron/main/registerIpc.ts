@@ -35,6 +35,7 @@ export interface DesktopBridgeServices {
     clearProjectRoot(): Promise<void>
     getApiPort(): Promise<number>
     isProjectDirectory(path: string): Promise<boolean>
+    readProjectTextFile(path: string): Promise<string>
     registerProjectRoot(path: string): Promise<string>
     requestProjectPathAccess(path: string): Promise<string>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
@@ -162,6 +163,13 @@ export function registerIpc(
     desktopApiIpcChannels.workspaceRequestProjectPathAccess,
     async (_event, path: string) => {
       return await services.workspaceService.requestProjectPathAccess(path)
+    },
+  )
+
+  target.handle(
+    desktopApiIpcChannels.workspaceReadProjectTextFile,
+    async (_event, path: string) => {
+      return await services.workspaceService.readProjectTextFile(path)
     },
   )
 
