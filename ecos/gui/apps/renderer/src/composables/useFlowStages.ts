@@ -1,10 +1,10 @@
 import { ref, computed, watch } from 'vue'
-import { readTextFile } from '@tauri-apps/plugin-fs'
 import { useWorkspace } from './useWorkspace'
 import { useTauri, isTauri } from './useTauri'
 import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
 import { STEP_METADATA, getStepMetadata } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
+import { readProjectTextFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 
 // ============ 类型定义 ============
@@ -89,7 +89,7 @@ export async function loadFlowRunStepKeysFromProject(projectPath: string): Promi
     if (!resolvedFlowPath) {
       return fallbackRunStepKeys()
     }
-    const fileContent = await readTextFile(resolvedFlowPath)
+    const fileContent = await readProjectTextFile(resolvedFlowPath)
     const flowData: FlowData = JSON.parse(fileContent)
     const stages = transformFlowData(flowData)
     return stages.map((s) => s.path)
@@ -138,7 +138,7 @@ export function useFlowStages() {
    */
   async function loadFlowStagesFromPath(flowJsonPath: string): Promise<void> {
     if (!isInTauri || !flowJsonPath) {
-      console.warn('Cannot load flow.json: not in Tauri environment or path is empty')
+      console.warn('Cannot load flow.json: desktop bridge unavailable or path is empty')
       return
     }
 
@@ -151,7 +151,7 @@ export function useFlowStages() {
       console.log('Loading flow.json from path:', resolvedPath ?? localPath)
       if (!resolvedPath) return
 
-      const fileContent = await readTextFile(resolvedPath)
+      const fileContent = await readProjectTextFile(resolvedPath)
       const flowData: FlowData = JSON.parse(fileContent)
 
       console.log('Loaded flow data from path:', flowData)
@@ -179,7 +179,7 @@ export function useFlowStages() {
       const resolvedHomePath = await resolveProjectPathAccess(localHomePath)
       if (!resolvedHomePath) return
 
-      const homeContent = await readTextFile(resolvedHomePath)
+      const homeContent = await readProjectTextFile(resolvedHomePath)
       const homeData = JSON.parse(homeContent)
       const flowPath = homeData.flow
       if (flowPath) {
@@ -196,7 +196,7 @@ export function useFlowStages() {
    */
   async function loadFlowStages(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('Cannot load flow.json: not in Tauri environment or no project is open')
+      console.warn('Cannot load flow.json: desktop bridge unavailable or no project is open')
       dynamicFlowStages.value = []
       return
     }
@@ -231,7 +231,7 @@ export function useFlowStages() {
         dynamicFlowStages.value = []
         return
       }
-      const flowContent = await readTextFile(resolvedFlowPath)
+      const flowContent = await readProjectTextFile(resolvedFlowPath)
       const flowData: FlowData = JSON.parse(flowContent)
 
       console.log('Loaded flow data:', flowData)

@@ -1,10 +1,10 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { readTextFile } from '@tauri-apps/plugin-fs'
 import { useTauri } from './useTauri'
 import { useWorkspace } from './useWorkspace'
 import { convertRemoteToLocalPath } from './useHomeData'
-import { requestProjectPathAccess } from '@/utils/projectFs'
+import { readProjectTextFile } from '@/utils/projectFiles'
+import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { getInfoApi } from '@/api/flow'
 import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
@@ -194,17 +194,22 @@ export function useSubflow() {
         return
       }
 
-      // 2. 使用 Tauri 读取 JSON 文件
+      // 2. 使用桌面桥接读取 JSON 文件
       if (!isInTauri) {
-        console.warn('Not in Tauri environment, cannot read local file')
+        console.warn('Desktop bridge unavailable, cannot read local file')
         return
       }
 
-      if (!(await requestProjectPathAccess(subflowPath))) {
+      const projectPath = currentProject.value?.path
+      const localPath = projectPath
+        ? convertRemoteToLocalPath(subflowPath, projectPath)
+        : subflowPath
+      const resolvedPath = await resolveProjectPathAccess(localPath)
+      if (!resolvedPath) {
         subflowSteps.value = []
         return
       }
-      const fileContent = await readTextFile(subflowPath)
+      const fileContent = await readProjectTextFile(resolvedPath)
       const subflowData: SubflowData = JSON.parse(fileContent)
 
       console.log('subflow data:', subflowData)
@@ -227,7 +232,7 @@ export function useSubflow() {
    */
   async function loadSubflowFromPath(subflowPath: string): Promise<void> {
     if (!isInTauri || !subflowPath) {
-      console.warn('Cannot load subflow: not in Tauri environment or path is empty')
+      console.warn('Cannot load subflow: desktop bridge unavailable or path is empty')
       return
     }
 
@@ -237,9 +242,10 @@ export function useSubflow() {
         : subflowPath
 
       console.log('Loading subflow from SSE path:', localPath)
-      if (!(await requestProjectPathAccess(localPath))) return
+      const resolvedPath = await resolveProjectPathAccess(localPath)
+      if (!resolvedPath) return
 
-      const fileContent = await readTextFile(localPath)
+      const fileContent = await readProjectTextFile(resolvedPath)
       const subflowData: SubflowData = JSON.parse(fileContent)
 
       console.log('Subflow data from SSE path:', subflowData)

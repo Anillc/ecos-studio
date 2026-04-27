@@ -65,6 +65,7 @@ const desktopBridge = {
   },
   dialog: {
     pickDirectory: async () => null,
+    pickFiles: async () => null,
   },
   workspace: {
     getApiPort: async () => 8765,
@@ -74,6 +75,7 @@ const desktopBridge = {
     requestProjectPathAccess: async (path: string) => path,
     readProjectTextFile: async () => '',
     readProjectBinaryFile: async () => new Uint8Array(),
+    writeProjectTextFile: async () => undefined,
     scanPdkDirectory: async () => ({
       canonicalPath: '',
       name: '',

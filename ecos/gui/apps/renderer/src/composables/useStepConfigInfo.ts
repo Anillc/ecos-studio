@@ -1,10 +1,10 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { getInfoApi } from '@/api/flow'
 import { CMDEnum, InfoEnum, ResponseEnum, StepEnum } from '@/api/type'
 import { convertRemoteToLocalPath } from '@/composables/useHomeData'
-import { requestProjectPathAccess } from '@/utils/projectFs'
+import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
+import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { useTauri } from '@/composables/useTauri'
 import { useWorkspace } from '@/composables/useWorkspace'
 
@@ -226,17 +226,18 @@ export function useStepConfigInfo() {
 
     if (!isInTauri) {
       stepConfigReadError.value =
-        'Reading local config requires ECOS Studio desktop (Tauri). Browser mode cannot access project files.'
+        'Reading local config requires the ECOS Studio desktop runtime. Browser mode cannot access project files.'
       return
     }
 
     try {
-      if (!(await requestProjectPathAccess(localPath))) {
+      const resolvedPath = await resolveProjectPathAccess(localPath)
+      if (!resolvedPath) {
         stepConfigRaw.value = null
         stepConfigReadError.value = `No file-system access to ${localPath}`
         return
       }
-      stepConfigRaw.value = await readTextFile(localPath)
+      stepConfigRaw.value = await readProjectTextFile(resolvedPath)
       stepConfigReadError.value = null
     } catch (e) {
       stepConfigRaw.value = null
@@ -320,19 +321,20 @@ export function useStepConfigInfo() {
       return false
     }
     if (!isInTauri) {
-      stepConfigSaveError.value = 'Saving requires ECOS Studio desktop (Tauri)'
+      stepConfigSaveError.value = 'Saving requires the ECOS Studio desktop runtime'
       return false
     }
     isSavingStepConfig.value = true
     try {
-      if (!(await requestProjectPathAccess(path))) {
+      const resolvedPath = await resolveProjectPathAccess(path)
+      if (!resolvedPath) {
         stepConfigSaveError.value = `No file-system access to ${path}`
         return false
       }
       let text: string
       if (!rawLooksValidJson(stepConfigRaw.value ?? '')) {
         text = stepConfigTextDraft.value
-        await writeTextFile(path, text)
+        await writeProjectTextFile(resolvedPath, text)
         stepConfigRaw.value = text
         stepConfigTextBaseline.value = text
         return true
@@ -342,7 +344,7 @@ export function useStepConfigInfo() {
         return false
       }
       text = JSON.stringify(stepConfigDraft.value, null, 4)
-      await writeTextFile(path, text)
+      await writeProjectTextFile(resolvedPath, text)
       stepConfigRaw.value = text
       stepConfigBaselineSig.value = stableJsonSig(stepConfigDraft.value)
       return true

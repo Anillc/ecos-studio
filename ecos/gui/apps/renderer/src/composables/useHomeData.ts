@@ -1,18 +1,12 @@
 import { ref, watch, onUnmounted } from 'vue'
 import type { Ref } from 'vue'
-import {
-  readTextFile,
-  readFile,
-  watch as fsWatch,
-  exists,
-} from '@tauri-apps/plugin-fs'
-import { dirname } from '@tauri-apps/api/path'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
 import { flowExecutionActive } from './useFlowRunner'
 import { getHomePageApi } from '@/api/flow'
 import { ResponseEnum } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
+import { readProjectBlobUrl, readProjectTextFile } from '@/utils/projectFiles'
 import { requestProjectPathAccess, resolveProjectPathAccess } from '@/utils/projectFs'
 
 // ============ 类型定义 ============
@@ -186,7 +180,7 @@ function logCacheSet(key: string, entry: LogFileCacheEntry): void {
 /** resolveProjectPathAccess 结果缓存，key = local path, value = resolved/canonical path */
 const resolvedPathCache = new Map<string, string>()
 
-/** 跑 IO 时的并发上限（Tauri IPC 不适合全量并发） */
+/** 跑 IO 时的并发上限（桌面桥接 IPC 不适合全量并发） */
 const LOG_READ_CONCURRENCY = 6
 /**
  * 单个 log 文件默认展示上限（**JS 字符串 `.length`**，即 UTF-16 code unit 数；
@@ -197,11 +191,8 @@ const LOG_READ_CONCURRENCY = 6
  * `forceFull: true` 再读一次，拿到整个文件。
  *
  * **TODO**: 真·流式尾部读还没做。`readLogFileSmart` 当前仍把**整个文件**
- * 读进 JS 字符串再切片（Tauri `plugin-fs` 的 `readTextFile` 没有 offset/length
- * 参数，且 `tauri.conf.json` 的 capabilities 只开了 `fs:allow-read-text-file`）。
- * 100MB 的日志会照样走一遍 IPC。后续要做真 tail read，需要：
- *   1) capabilities 加 `fs:allow-open` + `fs:allow-seek`；或
- *   2) Rust 侧加一个 `read_log_tail(path, max_chars)` 自定义命令，直接 `seek(End)` 读尾部。
+ * 读进 JS 字符串再切片，100MB 的日志会照样走一遍桌面桥接 IPC。
+ * 后续要做真 tail read，需要给桥接层补一个自定义 "read log tail" 能力。
  */
 const MAX_LOG_READ_CHARS = 512 * 1024
 
@@ -225,13 +216,7 @@ interface LogReadResult {
  * 读取单个 step log 文件内容。
  *
  * 设计要点：
- * - 直接用 `readTextFile`。当前 tauri.conf 的 capabilities 里只有
- *   `fs:allow-read-text-file`，没有 `fs:allow-stat` / `fs:allow-open`，
- *   所以依赖 stat/open 的版本会被 plugin-fs 判为权限错误。
- * - 不再对每个 logPath 单独 `request_project_permission`：
- *     1) `register_project_root` 已经用 `allow_directory(path, true)` 递归授权整个工程；
- *     2) Rust 侧的 `request_project_permission` 会 `canonicalize(path)`，当 log
- *        还没落盘时 canonicalize 失败 → 前端误报 "log file not found or unreadable"。
+ * - 直接走桌面桥接的整文件文本读取，不在 renderer 侧做额外的文件系统 SDK 调用。
  * - 大文件（> MAX_LOG_READ_CHARS）就地切尾部 + `truncated: true`，并把完整
  *   字符数返回给 UI；"查看完整日志"按钮会以 `forceFull` 再读一次。
  *   （尾部读的**读盘侧**当前未优化，见 `MAX_LOG_READ_CHARS` 的 TODO。）
@@ -259,7 +244,7 @@ async function readLogFileSmart(
   }
 
   try {
-    const fullContent = await readTextFile(logPath)
+    const fullContent = await readProjectTextFile(logPath)
     const totalSize = fullContent.length
     const shouldTruncate = !opts.forceFull && totalSize > MAX_LOG_READ_CHARS
 
@@ -409,7 +394,7 @@ async function runWithConcurrency<T>(
  * 同时调用时只发起 **一次** API 请求 + 一次文件读取。
  *
  * @param projectPath 当前项目路径
- * @param isInTauri   是否在 Tauri 环境
+ * @param isInTauri   是否在桌面运行时
  * @returns 解析后的 HomeData，失败返回 null
  */
 export async function fetchSharedHomeData(
@@ -462,7 +447,7 @@ export async function fetchSharedHomeData(
       if (!resolvedHomePath) return null
       console.log('Loading home.json from:', resolvedHomePath)
 
-      const content = await readTextFile(resolvedHomePath)
+      const content = await readProjectTextFile(resolvedHomePath)
       const data: HomeData = JSON.parse(content)
 
       if (isStale()) return null
@@ -532,11 +517,8 @@ export function useHomeData() {
 
   /** flow log 渐进刷新会话：递增后旧异步回调全部失效 */
   let liveSession = 0
-  let unwatchFlowJson: (() => void) | null = null
-  let unwatchLog: (() => void) | null = null
   let pollFlowJsonTimer: ReturnType<typeof setInterval> | null = null
   let pollLogFallbackTimer: ReturnType<typeof setInterval> | null = null
-  let waitPathTimer: ReturnType<typeof setInterval> | null = null
   let lastOngoingKey: string | null = null
 
   /**
@@ -603,9 +585,7 @@ export function useHomeData() {
         return
       }
 
-      const fileData = await readFile(resolvedPath)
-      const blob = new Blob([fileData], { type: 'image/png' })
-      const nextBlobUrl = URL.createObjectURL(blob)
+      const nextBlobUrl = await readProjectBlobUrl(resolvedPath, { mimeType: 'image/png' })
 
       // 新 blob 落位后，再 revoke 旧的——<img :src> 不会出现瞬断
       const prevBlobUrl = _currentLayoutBlobUrl
@@ -655,9 +635,7 @@ export function useHomeData() {
           const localPath = convertToLocalPath(imagePath as string)
           const resolvedPath = await resolvedPathMemo(localPath)
           if (!resolvedPath) return { label, blobUrl: '' }
-          const fileData = await readFile(resolvedPath)
-          const blob = new Blob([fileData], { type: 'image/png' })
-          const blobUrl = URL.createObjectURL(blob)
+          const blobUrl = await readProjectBlobUrl(resolvedPath)
           return { label, blobUrl }
         } catch (err) {
           console.warn(`Failed to load metric image for "${label}":`, err)
@@ -705,7 +683,7 @@ export function useHomeData() {
         return
       }
 
-      const fileContent = await readTextFile(resolvedPath)
+      const fileContent = await readProjectTextFile(resolvedPath)
       const data: ChecklistData = JSON.parse(fileContent)
 
       checklistItemsState.value = data.checklist || []
@@ -743,7 +721,7 @@ export function useHomeData() {
     const resolvedWorkspaceRoot = await resolvedPathMemo(workspaceRoot)
     if (!resolvedFlowPath || !resolvedWorkspaceRoot) return null
 
-    const fileContent = await readTextFile(resolvedFlowPath)
+    const fileContent = await readProjectTextFile(resolvedFlowPath)
     const flowData = JSON.parse(fileContent) as {
       steps?: Array<{ name: string; tool: string; state: string }>
     }
@@ -777,9 +755,7 @@ export function useHomeData() {
    * 并发 + 缓存的日志读取；把结果就地写回 `segments[i]` 并同步到目标 ref，
    * UI 可以看到首批文件读完就显示。
    *
-   * 不再对每个 logPath 单独走 `request_project_permission`——
-   * `register_project_root` 里已经把工程根 `allow_directory(path, true)`，
-   * 子文件全覆盖；而 canonicalize 在 log 还没写出时反倒会失败。
+   * 命中的模块级缓存会先同步到 UI，再由后台桥接读取结果覆盖，避免重新挂载闪烁。
    */
   async function hydrateSegmentsWithLogs(
     target: Ref<FlowLogSegment[]>,
@@ -906,21 +882,13 @@ export function useHomeData() {
   }
 
   function cleanupLogWatchOnly(): void {
-    unwatchLog?.()
-    unwatchLog = null
     if (pollLogFallbackTimer != null) {
       clearInterval(pollLogFallbackTimer)
       pollLogFallbackTimer = null
     }
-    if (waitPathTimer != null) {
-      clearInterval(waitPathTimer)
-      waitPathTimer = null
-    }
   }
 
   function cleanupFlowLogLiveWatch(): void {
-    unwatchFlowJson?.()
-    unwatchFlowJson = null
     cleanupLogWatchOnly()
     if (pollFlowJsonTimer != null) {
       clearInterval(pollFlowJsonTimer)
@@ -937,7 +905,7 @@ export function useHomeData() {
       try {
         const resolvedLogPath = await resolvedPathMemo(logPath)
         if (!resolvedLogPath) return
-        const t = await readTextFile(resolvedLogPath)
+        const t = await readProjectTextFile(resolvedLogPath)
         const i = flowLogSegments.value.findIndex((s) => s.live)
         if (i >= 0) {
           const cur = flowLogSegments.value[i]!
@@ -949,72 +917,11 @@ export function useHomeData() {
       }
     }
 
-    function startBackupPoll(): void {
-      if (pollLogFallbackTimer != null) {
-        clearInterval(pollLogFallbackTimer)
-      }
-      pollLogFallbackTimer = setInterval(() => {
-        void patchLive()
-      }, 1200)
-    }
-
-    const tryAttachWatch = async (): Promise<boolean> => {
-      if (sid !== liveSession) return true
-      try {
-        if (await exists(logPath)) {
-          const resolvedLogPath = await resolvedPathMemo(logPath)
-          if (!resolvedLogPath) return false
-          try {
-            unwatchLog = await fsWatch(resolvedLogPath, () => {
-              void patchLive()
-            }, { delayMs: 100 })
-          } catch (we) {
-            console.warn('watch step log file failed, fallback poll:', we)
-          }
-          await patchLive()
-          startBackupPoll()
-          return true
-        }
-        const logDir = await dirname(logPath)
-        if (await exists(logDir)) {
-          const resolvedLogDir = await resolvedPathMemo(logDir)
-          if (!resolvedLogDir) return false
-          try {
-            unwatchLog = await fsWatch(resolvedLogDir, () => {
-              void patchLive()
-            }, { delayMs: 120 })
-          } catch (we) {
-            console.warn('watch log directory failed, fallback poll:', we)
-          }
-          await patchLive()
-          startBackupPoll()
-          return true
-        }
-      } catch (e) {
-        console.warn('bindLogFileWatch path check:', e)
-      }
-      return false
-    }
-
-    if (await tryAttachWatch()) {
-      return
-    }
+    await patchLive()
 
     pollLogFallbackTimer = setInterval(() => {
       void patchLive()
     }, 650)
-
-    waitPathTimer = setInterval(() => {
-      void (async () => {
-        if (sid !== liveSession) return
-        if (await tryAttachWatch()) {
-          if (waitPathTimer != null) {
-            clearInterval(waitPathTimer)
-            waitPathTimer = null
-          }
-        }
-      })()
-    }, 500)
   }
 
   async function refreshFlowLogLivePanel(sid: number): Promise<void> {
@@ -1203,7 +1110,7 @@ export function useHomeData() {
    */
   async function loadHomeData(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('Cannot load home.json: not in Tauri environment or no project is open')
+      console.warn('Cannot load home.json: desktop bridge unavailable or no project is open')
       clearHomeData()
       return
     }
@@ -1254,7 +1161,7 @@ export function useHomeData() {
    */
   async function loadHomeDataFromPath(homePath: string): Promise<void> {
     if (!isInTauri || !homePath) {
-      console.warn('Cannot load home data: not in Tauri environment or path is empty')
+      console.warn('Cannot load home data: desktop bridge unavailable or path is empty')
       return
     }
 
@@ -1270,7 +1177,7 @@ export function useHomeData() {
       // 请求文件系统访问权限
       if (!resolvedHomePath) return
 
-      const fileContent = await readTextFile(resolvedHomePath)
+      const fileContent = await readProjectTextFile(resolvedHomePath)
       const homeData: HomeData = JSON.parse(fileContent)
 
       // 更新共享缓存，让其他 composable 也能获取最新数据
@@ -1374,14 +1281,6 @@ export function useHomeData() {
       const flowLocal = convertToLocalPath(flowRemote)
       const resolvedFlowPath = await resolvedPathMemo(flowLocal)
       if (!resolvedFlowPath) return
-
-      try {
-        unwatchFlowJson = await fsWatch(resolvedFlowPath, () => {
-          void refreshFlowLogLivePanel(sid)
-        }, { delayMs: 340 })
-      } catch (e) {
-        console.warn('watch flow.json failed (using interval only):', e)
-      }
 
       pollFlowJsonTimer = setInterval(() => {
         void refreshFlowLogLivePanel(sid)

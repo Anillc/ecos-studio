@@ -15,6 +15,17 @@ export interface DesktopDirectoryDialogOptions {
   title?: string
 }
 
+export interface DesktopFileDialogFilter {
+  name: string
+  extensions: string[]
+}
+
+export interface DesktopFileDialogOptions {
+  title?: string
+  multiple?: boolean
+  filters?: DesktopFileDialogFilter[]
+}
+
 export interface PdkDetectedFiles {
   directories: string[]
   files: string[]
@@ -54,6 +65,7 @@ export interface DesktopApi {
   }
   dialog: {
     pickDirectory(options?: DesktopDirectoryDialogOptions): Promise<string | null>
+    pickFiles(options?: DesktopFileDialogOptions): Promise<string[] | null>
   }
   workspace: {
     getApiPort(): Promise<number>
@@ -63,6 +75,7 @@ export interface DesktopApi {
     requestProjectPathAccess(path: string): Promise<string>
     readProjectTextFile(path: string): Promise<string>
     readProjectBinaryFile(path: string): Promise<Uint8Array>
+    writeProjectTextFile(path: string, content: string): Promise<void>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
   }
   tiles: {

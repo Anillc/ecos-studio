@@ -62,10 +62,10 @@
 
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
-import { readFile } from '@tauri-apps/plugin-fs'
 import { useTauri } from '../composables/useTauri'
 import { useWorkspace } from '../composables/useWorkspace'
 import { useMessageStore } from '../stores/messageStore'
+import { readProjectBlobUrl } from '@/utils/projectFiles'
 
 // Props
 interface MapInfo {
@@ -138,20 +138,6 @@ function convertToLocalPath(remotePath: string): string {
   return localPath
 }
 
-// 根据文件扩展名获取 MIME 类型
-function getMimeType(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase()
-  switch (ext) {
-    case 'png': return 'image/png'
-    case 'jpg':
-    case 'jpeg': return 'image/jpeg'
-    case 'gif': return 'image/gif'
-    case 'webp': return 'image/webp'
-    case 'svg': return 'image/svg+xml'
-    default: return 'image/png'
-  }
-}
-
 // 异步加载图片并创建 blob URL
 async function loadImage(key: string, path: string): Promise<void> {
   // 如果已经加载过，跳过
@@ -171,16 +157,7 @@ async function loadImage(key: string, path: string): Promise<void> {
 
     const localPath = convertToLocalPath(path)
     console.log('Loading image from:', localPath)
-
-    // 使用 fs plugin 读取文件
-    const fileData = await readFile(localPath)
-
-    // 创建 Blob
-    const mimeType = getMimeType(path)
-    const blob = new Blob([fileData], { type: mimeType })
-
-    // 创建 blob URL
-    const blobUrl = URL.createObjectURL(blob)
+    const blobUrl = await readProjectBlobUrl(localPath)
     imageUrls.value[key] = blobUrl
 
     console.log('Created blob URL for', key, ':', blobUrl)

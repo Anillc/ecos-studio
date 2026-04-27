@@ -4,6 +4,7 @@ import {
   desktopApiIpcChannels,
   type DesktopApi,
   type DesktopDirectoryDialogOptions,
+  type DesktopFileDialogOptions,
   type DesktopMenuEventId,
   type DesktopSettingsValue,
 } from '@ecos-studio/shared'
@@ -64,6 +65,8 @@ const desktopApi: DesktopApi = {
   dialog: {
     pickDirectory: (options?: DesktopDirectoryDialogOptions) =>
       ipcRenderer.invoke(desktopApiIpcChannels.dialogPickDirectory, options),
+    pickFiles: (options?: DesktopFileDialogOptions) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.dialogPickFiles, options),
   },
   workspace: {
     getApiPort: () => ipcRenderer.invoke(desktopApiIpcChannels.workspaceGetApiPort),
@@ -79,6 +82,8 @@ const desktopApi: DesktopApi = {
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectTextFile, path),
     readProjectBinaryFile: (path) =>
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectBinaryFile, path),
+    writeProjectTextFile: (path, content) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceWriteProjectTextFile, path, content),
     scanPdkDirectory: (path) =>
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceScanPdkDirectory, path),
   },

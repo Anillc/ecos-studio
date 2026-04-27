@@ -9,6 +9,8 @@ export {
 export type {
   DesktopApi,
   DesktopDirectoryDialogOptions,
+  DesktopFileDialogFilter,
+  DesktopFileDialogOptions,
   DesktopSettingsValue,
   PdkDetectedFiles,
   ScannedPdkDirectory,

@@ -5,12 +5,10 @@ const {
   unmountedCallbacks,
   hasDesktopApi,
   getDesktopApi,
-  tauriListen,
 } = vi.hoisted(() => ({
   getDesktopApi: vi.fn(),
   hasDesktopApi: vi.fn(),
   mountedCallbacks: [] as Array<() => void | Promise<void>>,
-  tauriListen: vi.fn(),
   unmountedCallbacks: [] as Array<() => void>,
 }))
 
@@ -28,10 +26,6 @@ vi.mock('@/platform/desktop', () => ({
   hasDesktopApi,
 }))
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: tauriListen,
-}))
-
 import { useMenuEvents } from './useMenuEvents'
 
 describe('useMenuEvents', () => {
@@ -40,7 +34,6 @@ describe('useMenuEvents', () => {
     unmountedCallbacks.length = 0
     hasDesktopApi.mockReset()
     getDesktopApi.mockReset()
-    tauriListen.mockReset()
   })
 
   afterEach(() => {
@@ -78,7 +71,6 @@ describe('useMenuEvents', () => {
     expect(getDesktopApi).toHaveBeenCalledTimes(1)
     expect(newProject).toHaveBeenCalledTimes(1)
     expect(documentation).toHaveBeenCalledTimes(1)
-    expect(tauriListen).not.toHaveBeenCalled()
 
     unmountedCallbacks[0]?.()
 
@@ -95,7 +87,6 @@ describe('useMenuEvents', () => {
     await mountedCallbacks[0]?.()
 
     expect(getDesktopApi).not.toHaveBeenCalled()
-    expect(tauriListen).not.toHaveBeenCalled()
 
     unmountedCallbacks[0]?.()
   })

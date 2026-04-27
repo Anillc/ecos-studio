@@ -1,9 +1,9 @@
 import { ref, reactive, watch, computed } from 'vue'
-import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
 import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
+import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
 
 // ============ 类型定义 ============
 // 与 ecc/chipcompiler/data/parameter.py 中 ICS55_PARAMETERS_TEMPLATE 及 workspace 写入的 PDK Root 对齐
@@ -256,7 +256,7 @@ export function useParameters() {
 
   async function loadParameters(): Promise<void> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('Cannot load parameters: not in Tauri environment or no project is open')
+      console.warn('Cannot load parameters: desktop bridge unavailable or no project is open')
       resetParametersState()
       return
     }
@@ -289,7 +289,7 @@ export function useParameters() {
         return
       }
 
-      const fileContent = await readTextFile(resolvedPath)
+      const fileContent = await readProjectTextFile(resolvedPath)
       const parametersData = parseParametersData(fileContent)
 
       console.log('Loaded parameters data:', parametersData)
@@ -314,7 +314,7 @@ export function useParameters() {
 
   async function saveParameters(): Promise<boolean> {
     if (!isInTauri || !currentProject.value?.path) {
-      console.warn('Cannot save parameters: not in Tauri environment or no project is open')
+      console.warn('Cannot save parameters: desktop bridge unavailable or no project is open')
       return false
     }
 
@@ -336,7 +336,7 @@ export function useParameters() {
       const parametersData = transformConfigToParameters(config)
       const fileContent = JSON.stringify(parametersData, null, 4)
 
-      await writeTextFile(resolvedPath, fileContent)
+      await writeProjectTextFile(resolvedPath, fileContent)
 
       originalConfig = JSON.stringify(config)
       hasChanges.value = false

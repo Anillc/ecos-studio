@@ -9,6 +9,7 @@ import {
 import {
   desktopApiIpcChannels,
   type DesktopDirectoryDialogOptions,
+  type DesktopFileDialogOptions,
   type DesktopSettingsValue,
   type ScannedPdkDirectory,
   type TileGenerationRequest,
@@ -40,6 +41,7 @@ export interface DesktopBridgeServices {
     registerProjectRoot(path: string): Promise<string>
     requestProjectPathAccess(path: string): Promise<string>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
+    writeProjectTextFile(path: string, content: string): Promise<void>
   }
   tileService: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
@@ -69,6 +71,22 @@ async function pickDirectory(
   }
 
   return result.filePaths[0] ?? null
+}
+
+async function pickFiles(
+  options?: DesktopFileDialogOptions,
+): Promise<string[] | null> {
+  const result = await dialog.showOpenDialog({
+    properties: options?.multiple ? ['openFile', 'multiSelections'] : ['openFile'],
+    title: options?.title,
+    filters: options?.filters,
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null
+  }
+
+  return result.filePaths
 }
 
 export function registerIpc(
@@ -121,6 +139,13 @@ export function registerIpc(
     },
   )
 
+  target.handle(
+    desktopApiIpcChannels.dialogPickFiles,
+    async (_event, options?: DesktopFileDialogOptions) => {
+      return await pickFiles(options)
+    },
+  )
+
   target.handle(desktopApiIpcChannels.workspaceGetApiPort, async () => {
     return await services.workspaceService.getApiPort()
   })
@@ -164,6 +189,13 @@ export function registerIpc(
     desktopApiIpcChannels.workspaceReadProjectBinaryFile,
     async (_event, path: string) => {
       return await services.workspaceService.readProjectBinaryFile(path)
+    },
+  )
+
+  target.handle(
+    desktopApiIpcChannels.workspaceWriteProjectTextFile,
+    async (_event, path: string, content: string) => {
+      await services.workspaceService.writeProjectTextFile(path, content)
     },
   )
 

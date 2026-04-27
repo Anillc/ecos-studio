@@ -103,8 +103,8 @@ import { getInfoApi } from '../api/flow'
 import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '../api/type'
 import { useTauri } from '../composables/useTauri'
 import { useWorkspace } from '../composables/useWorkspace'
-import { readTextFile } from '@tauri-apps/plugin-fs'
 import { requestProjectPathAccess } from '@/utils/projectFs'
+import { readProjectTextFile } from '@/utils/projectFiles'
 import MapsGallery from './MapsGallery.vue'
 import type { MapInfo as MapInfoType } from '../types'
 
@@ -374,7 +374,7 @@ async function handleKeyClick(key: string, value: unknown) {
     // 如果有 path，尝试读取文件
     if (path) {
       if (!isInTauri) {
-        content = `File path: ${path}\n(Readable only in Tauri environment)`
+        content = `File path: ${path}\n(Readable only in the ECOS Studio desktop runtime)`
       } else {
         // 转换远程路径为本地路径
         const localPath = convertToLocalPath(path)
@@ -382,17 +382,17 @@ async function handleKeyClick(key: string, value: unknown) {
         if (!(await requestProjectPathAccess(localPath))) {
           content = `File path: ${localPath}\n(No file-system access in current workspace scope)`
         } else {
-        const fileContent = await readTextFile(localPath)
+          const fileContent = await readProjectTextFile(localPath)
 
-        if (format === 'json') {
-          try {
-            content = JSON.parse(fileContent)
-          } catch {
+          if (format === 'json') {
+            try {
+              content = JSON.parse(fileContent)
+            } catch {
+              content = fileContent
+            }
+          } else {
             content = fileContent
           }
-        } else {
-          content = fileContent
-        }
         }
       }
     } else {

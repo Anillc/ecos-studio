@@ -546,9 +546,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { open } from '@tauri-apps/plugin-dialog'
 import type { WorkspaceConfig } from '../types'
 import { usePdkManager } from '../composables/usePdkManager'
+import { getDesktopApi } from '@/platform/desktop'
 
 interface Emits {
   (e: 'close'): void
@@ -642,18 +642,16 @@ const canProceed = computed(() => {
 })
 
 const selectLocation = async () => {
-  const result = await open({
-    directory: true,
-    multiple: false,
+  const result = await getDesktopApi().dialog.pickDirectory({
     title: 'Select Project Save Location'
   })
   if (result) {
-    config.value.directory = result as string
+    config.value.directory = result
   }
 }
 
 const selectDesignFiles = async () => {
-  const result = await open({
+  const result = await getDesktopApi().dialog.pickFiles({
     multiple: true,
     filters: [{
       name: 'HDL Files',
@@ -662,8 +660,7 @@ const selectDesignFiles = async () => {
     title: 'Select Design Files'
   })
   if (result) {
-    const files = Array.isArray(result) ? result : [result]
-    addFiles(files as string[])
+    addFiles(result)
   }
 }
 
@@ -671,9 +668,10 @@ const handleFileDrop = (event: DragEvent) => {
   isDragging.value = false
   const files = event.dataTransfer?.files
   if (files) {
-    const paths = Array.from(files).map(f => f.name)
-    // Note: In Tauri, we need to handle this differently
-    console.log('Dropped files:', paths)
+    const paths = Array.from(files)
+      .map((file) => (file as File & { path?: string }).path ?? file.name)
+      .filter((path): path is string => Boolean(path))
+    addFiles(paths)
   }
 }
 

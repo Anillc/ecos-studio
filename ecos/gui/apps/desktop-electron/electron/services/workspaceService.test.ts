@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { WorkspaceService } from './workspaceService'
@@ -82,6 +82,39 @@ describe('WorkspaceService', () => {
     ).resolves.toEqual(Uint8Array.from([0x45, 0x43, 0x4f, 0x53]))
     expect(projectScopeProvider.requestProjectPathAccess).toHaveBeenCalledWith(
       '/workspace/.ecos/tile-cache/layout/route/cells.bin',
+    )
+  })
+
+  it('writes project-scoped text through the validated canonical path', async () => {
+    const directory = await createTempDir('ecos-workspace-service-write-')
+    const filePath = join(directory, 'parameters.json')
+
+    const projectScopeProvider = {
+      clearProjectRoot: vi.fn(),
+      isProjectDirectory: vi.fn(),
+      registerProjectRoot: vi.fn(),
+      requestProjectPathAccess: vi.fn().mockResolvedValue(filePath),
+      scanPdkDirectory: vi.fn(),
+    }
+
+    const service = new WorkspaceService({
+      apiPortProvider: {
+        getPort: vi.fn(),
+      },
+      projectScopeProvider,
+    })
+
+    await expect(
+      (
+        service as WorkspaceService & {
+          writeProjectTextFile(path: string, content: string): Promise<void>
+        }
+      ).writeProjectTextFile('/workspace/home/parameters.json', '{"PDK":"ics55"}'),
+    ).resolves.toBeUndefined()
+
+    await expect(readFile(filePath, 'utf8')).resolves.toBe('{"PDK":"ics55"}')
+    expect(projectScopeProvider.requestProjectPathAccess).toHaveBeenCalledWith(
+      '/workspace/home/parameters.json',
     )
   })
 })

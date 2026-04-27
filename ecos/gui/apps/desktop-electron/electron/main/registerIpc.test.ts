@@ -43,6 +43,7 @@ function registerHandlers() {
       registerProjectRoot: vi.fn(),
       requestProjectPathAccess: vi.fn(),
       scanPdkDirectory: vi.fn(),
+      writeProjectTextFile: vi.fn(),
     },
     tileService: {
       generate: vi.fn(),
@@ -93,6 +94,7 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.settingsSet,
       desktopApiIpcChannels.settingsDelete,
       desktopApiIpcChannels.dialogPickDirectory,
+      desktopApiIpcChannels.dialogPickFiles,
       desktopApiIpcChannels.workspaceGetApiPort,
       desktopApiIpcChannels.workspaceIsProjectDirectory,
       desktopApiIpcChannels.workspaceRegisterProjectRoot,
@@ -100,6 +102,7 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceRequestProjectPathAccess,
       desktopApiIpcChannels.workspaceReadProjectTextFile,
       desktopApiIpcChannels.workspaceReadProjectBinaryFile,
+      desktopApiIpcChannels.workspaceWriteProjectTextFile,
       desktopApiIpcChannels.workspaceScanPdkDirectory,
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.systemOpenExternal,
@@ -197,6 +200,17 @@ describe('registerIpc', () => {
         title: 'Select Project',
       }),
     ).resolves.toBe('/tmp/project')
+    showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['/tmp/a.v', '/tmp/b.sv'],
+    })
+    await expect(
+      handlers.get(desktopApiIpcChannels.dialogPickFiles)?.(event, {
+        title: 'Select RTL',
+        multiple: true,
+        filters: [{ name: 'HDL Files', extensions: ['v', 'sv'] }],
+      }),
+    ).resolves.toEqual(['/tmp/a.v', '/tmp/b.sv'])
     await expect(handlers.get(desktopApiIpcChannels.workspaceGetApiPort)?.(event)).resolves.toBe(
       9123,
     )
@@ -225,6 +239,11 @@ describe('registerIpc', () => {
         '/tmp/project/.ecos/tile-cache/layout/route/cells.bin',
       ),
     ).resolves.toEqual(Uint8Array.from([0x45, 0x43, 0x4f, 0x53]))
+    await handlers.get(desktopApiIpcChannels.workspaceWriteProjectTextFile)?.(
+      event,
+      '/tmp/project/home/parameters.json',
+      '{"PDK":"ics55"}',
+    )
     await expect(
       handlers.get(desktopApiIpcChannels.workspaceScanPdkDirectory)?.(event, '/tmp/pdk'),
     ).resolves.toMatchObject({
@@ -239,11 +258,20 @@ describe('registerIpc', () => {
       properties: ['openDirectory'],
       title: 'Select Project',
     })
+    expect(showOpenDialog).toHaveBeenCalledWith({
+      properties: ['openFile', 'multiSelections'],
+      title: 'Select RTL',
+      filters: [{ name: 'HDL Files', extensions: ['v', 'sv'] }],
+    })
     expect(services.workspaceService.readProjectTextFile).toHaveBeenCalledWith(
       '/tmp/project/home/flow.json',
     )
     expect(services.workspaceService.readProjectBinaryFile).toHaveBeenCalledWith(
       '/tmp/project/.ecos/tile-cache/layout/route/cells.bin',
+    )
+    expect(services.workspaceService.writeProjectTextFile).toHaveBeenCalledWith(
+      '/tmp/project/home/parameters.json',
+      '{"PDK":"ics55"}',
     )
     expect(services.workspaceService.clearProjectRoot).toHaveBeenCalledTimes(1)
   })
