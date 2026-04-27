@@ -1,6 +1,9 @@
-import { isAbsolute, join, normalize } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { TileGenerationRequest, TileGenerationResult } from '@ecos-studio/shared'
+import {
+  resolveProjectFileAbsolutePath,
+  type TileGenerationRequest,
+  type TileGenerationResult,
+} from '@ecos-studio/shared'
 import {
   finalizeLayoutTileCacheMeta,
   generateLayoutTiles,
@@ -19,20 +22,7 @@ export function resolveLayoutJsonAbsolutePath(
   projectPath: string,
   layoutJsonRelative: string,
 ): string {
-  const trimmed = layoutJsonRelative.trim()
-  if (!trimmed) {
-    throw new Error('布局 JSON 路径为空')
-  }
-
-  if (isAbsolute(trimmed)) {
-    return normalize(trimmed)
-  }
-
-  if (trimmed.startsWith('home/') || trimmed.startsWith('Users/')) {
-    return normalize(`/${trimmed}`)
-  }
-
-  return join(projectPath, trimmed)
+  return resolveProjectFileAbsolutePath(projectPath, layoutJsonRelative)
 }
 
 export class TileService {

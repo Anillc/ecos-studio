@@ -24,3 +24,12 @@ export type { DesktopErrorCode, DesktopErrorShape } from './contracts/errors'
 export type { DesktopFailure, DesktopResult, DesktopSuccess, VoidDesktopResult } from './types/desktop'
 export type { WorkspaceConfig, WorkspaceParameters, WorkspaceStatus, WorkspaceSummary } from './types/workspace'
 export type { TileGenerationRequest, TileGenerationResult } from './types/tile'
+export {
+  isAbsoluteLocalPath,
+  isWindowsDrivePath,
+  joinLocalPath,
+  LocalPathOutsideRootError,
+  normalizeLocalPath,
+  resolveContainedLocalPath,
+  resolveProjectFileAbsolutePath,
+} from './utils/localPath'

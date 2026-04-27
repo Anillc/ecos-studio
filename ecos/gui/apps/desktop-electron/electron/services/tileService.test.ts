@@ -1,3 +1,4 @@
+import { resolveProjectFileAbsolutePath } from '@ecos-studio/shared'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const {
@@ -29,6 +30,35 @@ describe('resolveLayoutJsonAbsolutePath', () => {
     expect(resolveLayoutJsonAbsolutePath('/tmp/project', 'Users/alice/layout.json')).toBe(
       '/Users/alice/layout.json',
     )
+  })
+
+  it('preserves already-absolute Windows paths', () => {
+    expect(resolveLayoutJsonAbsolutePath('/tmp/project', 'C:\\Layouts\\demo\\layout.json')).toBe(
+      'C:\\Layouts\\demo\\layout.json',
+    )
+  })
+
+  it('stays in parity with the shared path resolver', () => {
+    const cases = [
+      {
+        projectPath: '/workspace/project',
+        layoutJsonRelative: './home/tiles/../layout.json',
+      },
+      {
+        projectPath: '/workspace/project',
+        layoutJsonRelative: 'Users/alice/layout.json',
+      },
+      {
+        projectPath: '/workspace/project',
+        layoutJsonRelative: 'C:\\Layouts\\demo\\layout.json',
+      },
+    ]
+
+    for (const testCase of cases) {
+      expect(resolveLayoutJsonAbsolutePath(testCase.projectPath, testCase.layoutJsonRelative)).toBe(
+        resolveProjectFileAbsolutePath(testCase.projectPath, testCase.layoutJsonRelative),
+      )
+    }
   })
 })
 

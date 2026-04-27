@@ -1,87 +1,13 @@
+import { resolveProjectFileAbsolutePath } from '@ecos-studio/shared'
 import { isTauri } from '@/composables/useTauri'
 import { getDesktopApi } from '@/platform/desktop'
-
-function isWindowsDrivePath(path: string): boolean {
-  return /^[A-Za-z]:[\\/]/.test(path)
-}
-
-function isAbsoluteLocalPath(path: string): boolean {
-  return path.startsWith('/') || path.startsWith('\\\\') || isWindowsDrivePath(path)
-}
-
-function normalizeLocalPath(path: string): string {
-  if (!path) {
-    return path
-  }
-
-  const isUnc = path.startsWith('\\\\')
-  const drivePrefix = path.match(/^[A-Za-z]:/)?.[0] ?? ''
-  const hasDrivePrefix = drivePrefix.length > 0
-  const normalizedSource = path.replace(/[\\/]+/g, '/')
-  let remainder = normalizedSource
-  let separator = '/'
-
-  if (isUnc) {
-    remainder = normalizedSource.replace(/^\/+/, '')
-    separator = '\\'
-  } else if (hasDrivePrefix) {
-    remainder = normalizedSource.slice(drivePrefix.length).replace(/^\/+/, '')
-    separator = '\\'
-  } else if (normalizedSource.startsWith('/')) {
-    remainder = normalizedSource.replace(/^\/+/, '')
-  }
-
-  const parts: string[] = []
-  for (const part of remainder.split('/')) {
-    if (!part || part === '.') continue
-    if (part === '..') {
-      const last = parts[parts.length - 1]
-      if (last && last !== '..') {
-        parts.pop()
-      } else if (!isUnc && !hasDrivePrefix && !normalizedSource.startsWith('/')) {
-        parts.push(part)
-      }
-      continue
-    }
-    parts.push(part)
-  }
-
-  if (isUnc) {
-    return `\\\\${parts.join('\\')}`
-  }
-  if (hasDrivePrefix) {
-    return parts.length > 0 ? `${drivePrefix}\\${parts.join('\\')}` : `${drivePrefix}\\`
-  }
-  if (normalizedSource.startsWith('/')) {
-    return parts.length > 0 ? `/${parts.join('/')}` : '/'
-  }
-  return parts.join(separator)
-}
-
-function joinLocalPath(basePath: string, relativePath: string): string {
-  const separator = isWindowsDrivePath(basePath) || basePath.includes('\\') ? '\\' : '/'
-  return normalizeLocalPath(
-    `${basePath.replace(/[\\/]+$/, '')}${separator}${relativePath.replace(/^[\\/]+/, '')}`,
-  )
-}
 
 /** 与 `runLayoutTileGeneration` 使用同一解析规则，供 single-flight 键与调用方复用 */
 export async function resolveLayoutJsonAbsolutePath(
   projectPath: string,
   layoutJsonRelative: string,
 ): Promise<string> {
-  const trimmed = layoutJsonRelative.trim()
-  if (!trimmed) {
-    throw new Error('布局 JSON 路径为空')
-  }
-  if (isAbsoluteLocalPath(trimmed)) {
-    return normalizeLocalPath(trimmed)
-  }
-  // Linux 下缺 `/`；macOS 下缺 `/` 的 `Users/...`
-  if (trimmed.startsWith('home/') || trimmed.startsWith('Users/')) {
-    return normalizeLocalPath(`/${trimmed}`)
-  }
-  return joinLocalPath(projectPath, trimmed)
+  return resolveProjectFileAbsolutePath(projectPath, layoutJsonRelative)
 }
 
 /** 逻辑任务键：同键并发应合并为 single-flight（路径已解析为绝对路径） */

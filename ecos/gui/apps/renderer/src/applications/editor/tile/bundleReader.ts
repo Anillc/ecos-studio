@@ -1,54 +1,15 @@
+import {
+  LocalPathOutsideRootError,
+  resolveContainedLocalPath,
+} from '@ecos-studio/shared'
 import { getDesktopApi } from '@/platform/desktop'
 
 function ensureTrailingSlash(url: string): string {
   return url.endsWith('/') ? url : `${url}/`
 }
 
-function isWindowsDrivePath(path: string): boolean {
-  return /^[A-Za-z]:[\\/]/.test(path)
-}
-
-function normalizeLocalPath(path: string): string {
-  const isUnc = path.startsWith('\\\\')
-  const drivePrefix = path.match(/^[A-Za-z]:/)?.[0] ?? ''
-  const hasDrivePrefix = drivePrefix.length > 0
-  const normalized = path.replace(/[\\/]+/g, '/')
-  let remainder = normalized
-
-  if (isUnc) {
-    remainder = normalized.replace(/^\/+/, '')
-  } else if (hasDrivePrefix) {
-    remainder = normalized.slice(drivePrefix.length).replace(/^\/+/, '')
-  } else if (normalized.startsWith('/')) {
-    remainder = normalized.replace(/^\/+/, '')
-  }
-
-  const parts: string[] = []
-  for (const part of remainder.split('/')) {
-    if (!part || part === '.') continue
-    if (part === '..') {
-      const last = parts[parts.length - 1]
-      if (last && last !== '..') {
-        parts.pop()
-      } else if (!isUnc && !hasDrivePrefix && !normalized.startsWith('/')) {
-        parts.push(part)
-      }
-      continue
-    }
-    parts.push(part)
-  }
-
-  if (isUnc) return `\\\\${parts.join('\\')}`
-  if (hasDrivePrefix) return parts.length > 0 ? `${drivePrefix}\\${parts.join('\\')}` : `${drivePrefix}\\`
-  if (normalized.startsWith('/')) return parts.length > 0 ? `/${parts.join('/')}` : '/'
-  return parts.join('/')
-}
-
 export function joinBundleLocalPath(localRoot: string, relativePath: string): string {
-  const separator = isWindowsDrivePath(localRoot) || localRoot.includes('\\') ? '\\' : '/'
-  return normalizeLocalPath(
-    `${localRoot.replace(/[\\/]+$/, '')}${separator}${relativePath.replace(/^[\\/]+/, '')}`,
-  )
+  return resolveContainedLocalPath(localRoot, relativePath)
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -64,6 +25,13 @@ export class BundleFileNotFoundError extends Error {
   constructor(relativePath: string) {
     super(`${relativePath} not found`)
     this.name = 'BundleFileNotFoundError'
+  }
+}
+
+export class BundlePathOutsideRootError extends Error {
+  constructor(relativePath: string, _cause?: unknown) {
+    super(`Refusing bundle path outside bundle root: ${relativePath}`)
+    this.name = 'BundlePathOutsideRootError'
   }
 }
 
@@ -119,6 +87,9 @@ export function createTileBundleReader(
       const bytes = await readProjectBinaryFile(joinBundleLocalPath(options.localRoot!, relativePath))
       return toArrayBuffer(bytes)
     } catch (error) {
+      if (error instanceof LocalPathOutsideRootError) {
+        throw new BundlePathOutsideRootError(relativePath, error)
+      }
       if (isFileNotFoundError(error)) {
         throw new BundleFileNotFoundError(relativePath)
       }
@@ -130,6 +101,9 @@ export function createTileBundleReader(
     try {
       return await readProjectTextFile(joinBundleLocalPath(options.localRoot!, relativePath))
     } catch (error) {
+      if (error instanceof LocalPathOutsideRootError) {
+        throw new BundlePathOutsideRootError(relativePath, error)
+      }
       if (isFileNotFoundError(error)) {
         throw new BundleFileNotFoundError(relativePath)
       }

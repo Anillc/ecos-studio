@@ -1,3 +1,4 @@
+import { resolveProjectFileAbsolutePath } from '@ecos-studio/shared'
 import { describe, it, expect } from 'vitest'
 import {
   deriveDrcStepPathFromLayoutJsonRelative,
@@ -39,5 +40,30 @@ describe('resolveLayoutJsonAbsolutePath', () => {
     await expect(
       resolveLayoutJsonAbsolutePath('/workspace/project', 'C:\\Layouts\\demo\\layout.json'),
     ).resolves.toBe('C:\\Layouts\\demo\\layout.json')
+  })
+
+  it('stays in parity with the shared path resolver for stable path cases', async () => {
+    const cases = [
+      {
+        projectPath: '/workspace/project',
+        layoutJsonRelative: './home/tiles/../layout.json',
+      },
+      {
+        projectPath: '/workspace/project',
+        layoutJsonRelative: 'Users/alice/layout.json',
+      },
+      {
+        projectPath: '/workspace/project',
+        layoutJsonRelative: 'C:\\Layouts\\demo\\layout.json',
+      },
+    ]
+
+    for (const testCase of cases) {
+      await expect(
+        resolveLayoutJsonAbsolutePath(testCase.projectPath, testCase.layoutJsonRelative),
+      ).resolves.toBe(
+        resolveProjectFileAbsolutePath(testCase.projectPath, testCase.layoutJsonRelative),
+      )
+    }
   })
 })

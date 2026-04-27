@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   BundleFileNotFoundError,
+  BundlePathOutsideRootError,
   createTileBundleReader,
   joinBundleLocalPath,
 } from './bundleReader'
@@ -61,5 +62,29 @@ describe('createTileBundleReader', () => {
     await expect(reader.readBinary('tiles/vector/0/0/0.bin')).rejects.toBeInstanceOf(
       BundleFileNotFoundError,
     )
+  })
+
+  it('rejects bundle-relative traversal that escapes the generated bundle root', async () => {
+    const readProjectTextFile = vi.fn()
+    const readProjectBinaryFile = vi.fn()
+    const reader = createTileBundleReader(
+      {
+        baseUrl: 'asset://unused',
+        localRoot: '/tmp/project/.ecos/tile-cache/layout/route',
+      },
+      {
+        readProjectTextFile,
+        readProjectBinaryFile,
+      },
+    )
+
+    await expect(reader.readText('../../other/file')).rejects.toBeInstanceOf(
+      BundlePathOutsideRootError,
+    )
+    await expect(reader.readBinary('../../other/file')).rejects.toBeInstanceOf(
+      BundlePathOutsideRootError,
+    )
+    expect(readProjectTextFile).not.toHaveBeenCalled()
+    expect(readProjectBinaryFile).not.toHaveBeenCalled()
   })
 })
