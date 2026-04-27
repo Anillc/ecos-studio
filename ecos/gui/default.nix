@@ -26,18 +26,20 @@ rustPlatform.buildRustPackage (finalAttrs: {
       root = ./.;
       fileset = unions [
         ./README.md
-        ./index.html
         ./.gitignore
         ./.nvmrc
+        ./apps/renderer/index.html
+        ./apps/renderer/package.json
+        ./apps/renderer/public
+        ./apps/renderer/src
+        ./apps/renderer/tsconfig.json
+        ./apps/renderer/tsconfig.node.json
+        ./apps/renderer/vite.config.ts
         ./package.json
         ./pnpm-lock.yaml
+        ./pnpm-workspace.yaml
         ./tailwind.config.ts
-        ./tsconfig.json
-        ./tsconfig.node.json
-        ./vite.config.ts
-        ./src
         ./src-tauri
-        ./public
       ];
     };
 

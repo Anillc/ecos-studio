@@ -44,19 +44,22 @@ jobs:
               - 'ecos/server/uv.lock'
               - 'ecos/gui/default.nix'
               - 'ecos/gui/package.json'
+              - 'ecos/gui/apps/renderer/package.json'
               - 'ecos/gui/src-tauri/Cargo.toml'
               - 'ecos/gui/src-tauri/Cargo.lock'
               - 'ecos/gui/src-tauri/tauri.conf.json'
             server:
               - 'ecos/server/**'
             gui:
-              - 'ecos/gui/src/**'
-              - 'ecos/gui/public/**'
-              - 'ecos/gui/index.html'
+              - 'ecos/gui/apps/renderer/src/**'
+              - 'ecos/gui/apps/renderer/public/**'
+              - 'ecos/gui/apps/renderer/index.html'
+              - 'ecos/gui/apps/renderer/package.json'
               - 'ecos/gui/package.json'
               - 'ecos/gui/pnpm-lock.yaml'
-              - 'ecos/gui/tsconfig*.json'
-              - 'ecos/gui/vite.config.ts'
+              - 'ecos/gui/pnpm-workspace.yaml'
+              - 'ecos/gui/apps/renderer/tsconfig*.json'
+              - 'ecos/gui/apps/renderer/vite.config.ts'
               - 'ecos/gui/tailwind.config.ts'
             rust:
               - 'ecos/gui/src-tauri/**'
@@ -154,7 +157,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck Vue
-        run: pnpm exec vue-tsc --noEmit
+        run: pnpm run typecheck
 
   build-appimage:
     name: Build AppImage

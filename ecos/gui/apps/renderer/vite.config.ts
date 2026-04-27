@@ -37,7 +37,7 @@ export default defineConfig(({ command, mode }) => {
       },
       // 配置 /data 路径服务 feature 图片等静态资源
       fs: {
-        allow: ['..']
+        allow: ['../../..']
       }
     },
     esbuild: {
@@ -73,4 +73,3 @@ export default defineConfig(({ command, mode }) => {
     },
   }
 })
-

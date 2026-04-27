@@ -21,15 +21,21 @@ pnpm install
 ### Development
 
 ```bash
-# Tauri shell + frontend
+# Tauri shell + renderer workspace
 pnpm run tauri:dev
 ```
 
 ### Build and preview
 
 ```bash
-# Typecheck + production build (output to dist/, used by Tauri beforeBuildCommand)
+# Typecheck + production renderer build (output to apps/renderer/dist/, used by Tauri beforeBuildCommand)
 pnpm run build
+```
+
+```bash
+# Renderer-only smoke checks
+pnpm run typecheck
+pnpm --filter @ecos-studio/renderer exec vitest run src/utils/sanitizeHtml.test.ts
 ```
 
 ## Stack
@@ -45,12 +51,12 @@ pnpm run build
 
 | Path | Description |
 |------|-------------|
-| `src/applications/editor/` | Canvas editor core, layout rendering, plugins, tile logic |
-| `src/components/` | Reusable UI (toolbar, sidebars, panels, etc.) |
-| `src/views/` | Routed pages |
-| `src/composables/` | Composables (workspace, menus, Tauri wrappers, etc.) |
-| `src/stores/` | Pinia state |
-| `src/api/` | HTTP / SSE client wrappers |
+| `apps/renderer/src/applications/editor/` | Canvas editor core, layout rendering, plugins, tile logic |
+| `apps/renderer/src/components/` | Reusable UI (toolbar, sidebars, panels, etc.) |
+| `apps/renderer/src/views/` | Routed pages |
+| `apps/renderer/src/composables/` | Composables (workspace, menus, Tauri wrappers, etc.) |
+| `apps/renderer/src/stores/` | Pinia state |
+| `apps/renderer/src/api/` | HTTP / SSE client wrappers |
 | `src-tauri/` | Tauri backend (Rust), packaging and window config |
 
 ## Related docs

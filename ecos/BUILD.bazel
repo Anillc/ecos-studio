@@ -38,13 +38,15 @@ python_pyinstaller_bundle(
 genrule(
     name = "ecos_studio_bundle",
     srcs = glob([
-        "gui/src/**/*",
-        "gui/public/**/*",
-        "gui/index.html",
+        "gui/apps/renderer/src/**/*",
+        "gui/apps/renderer/public/**/*",
+        "gui/apps/renderer/index.html",
+        "gui/apps/renderer/package.json",
+        "gui/apps/renderer/tsconfig*.json",
+        "gui/apps/renderer/vite.config.ts",
         "gui/package.json",
         "gui/pnpm-lock.yaml",
-        "gui/tsconfig*.json",
-        "gui/vite.config.ts",
+        "gui/pnpm-workspace.yaml",
         "gui/tailwind.config.ts",
     ]) + [
         "//ecos/gui/src-tauri:tauri_rust_sources",

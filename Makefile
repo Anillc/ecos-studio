@@ -110,7 +110,7 @@ check-platform:
 
 dev: check-setup check-platform
 	@cd ecos/server && uv sync --frozen --all-groups --all-extras --python 3.11
-	@cd ecos/gui && pnpm install
+	@cd ecos/gui && pnpm install --frozen-lockfile
 	bazel run //ecos:dev_symlinks
 
 use-local-ecc: check-setup check-platform
