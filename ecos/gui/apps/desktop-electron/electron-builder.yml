@@ -1,0 +1,10 @@
+appId: org.openecos.ecos-studio
+productName: ECOS Studio
+directories:
+  output: release
+files:
+  - dist/**/*
+  - package.json
+linux:
+  target:
+    - dir
