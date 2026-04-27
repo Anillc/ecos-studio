@@ -43,7 +43,7 @@ make setup
 make dev
 
 # Run GUI in dev mode
-cd ecos/gui && pnpm tauri dev
+cd ecos/gui && pnpm dev
 ```
 
 ### DreamPlace Development
