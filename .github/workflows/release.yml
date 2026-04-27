@@ -45,7 +45,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Linux GUI dependencies
-        uses: ./.github/actions/install-tauri-linux-deps
+        uses: ./.github/actions/install-gui-linux-deps
         with:
           extra-packages: >-
             git curl ca-certificates build-essential pkg-config
