@@ -18,6 +18,7 @@ import { useWorkspace } from '@/composables/useWorkspace'
 import { useEDA } from '@/composables/useEDA'
 import { useLayoutState } from '@/composables/useLayoutState'
 import { isTauri } from '@/composables/useTauri'
+import { getDesktopApi } from '@/platform/desktop'
 import {
   deriveDrcStepPathFromLayoutJsonRelative,
   pickDrcJsonPath,
@@ -25,7 +26,6 @@ import {
   resolveLayoutJsonAbsolutePath,
 } from '@/composables/useLayoutTileGen'
 import { parseDrcStepJson, violationToFitRect } from '@/composables/drcStepParser'
-import { readTextFile } from '@tauri-apps/plugin-fs'
 import { requestProjectPathAccess } from '@/utils/projectFs'
 import { runLayoutTileGenerationSingleFlight } from '@/composables/layoutTilePipeline'
 import { useLayoutTilePrefetchStore } from '@/stores/layoutTilePrefetchStore'
@@ -311,7 +311,7 @@ async function loadDrcViolationOverlayAfterTiles(_ed: Editor, dieWorldH: number)
   try {
     const abs = await resolveLayoutJsonAbsolutePath(projectPath, drcRel)
     if (!(await requestProjectPathAccess(abs))) return
-    const text = await readTextFile(abs)
+    const text = await getDesktopApi().workspace.readProjectTextFile(abs)
     const raw = JSON.parse(text) as unknown
     const violations = parseDrcStepJson(raw, dieWorldH)
     drcViolationOverlay.setViolations(violations)
@@ -325,7 +325,7 @@ async function loadDrcViolationOverlayAfterTiles(_ed: Editor, dieWorldH: number)
   }
 }
 
-/** @param localRoot 瓦片输出目录绝对路径；在 Tauri 下传入可避免 asset:// 无法用 fetch 读 manifest/瓦片 */
+/** @param localRoot 瓦片输出目录绝对路径；桌面端通过桥接按项目作用域读取该 bundle 根目录下的文件。 */
 async function loadTileLayout(baseUrl: string, localRoot?: string): Promise<void> {
   const ed = editor.value
   if (!ed?.view) return

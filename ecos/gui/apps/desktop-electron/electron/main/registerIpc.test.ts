@@ -38,6 +38,7 @@ function registerHandlers() {
       clearProjectRoot: vi.fn(),
       getApiPort: vi.fn(),
       isProjectDirectory: vi.fn(),
+      readProjectBinaryFile: vi.fn(),
       readProjectTextFile: vi.fn(),
       registerProjectRoot: vi.fn(),
       requestProjectPathAccess: vi.fn(),
@@ -98,6 +99,7 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceClearProjectRoot,
       desktopApiIpcChannels.workspaceRequestProjectPathAccess,
       desktopApiIpcChannels.workspaceReadProjectTextFile,
+      desktopApiIpcChannels.workspaceReadProjectBinaryFile,
       desktopApiIpcChannels.workspaceScanPdkDirectory,
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.systemOpenExternal,
@@ -162,6 +164,9 @@ describe('registerIpc', () => {
     services.workspaceService.getApiPort.mockResolvedValue(9123)
     services.workspaceService.isProjectDirectory.mockResolvedValue(true)
     services.workspaceService.readProjectTextFile.mockResolvedValue('{"steps":[]}')
+    services.workspaceService.readProjectBinaryFile.mockResolvedValue(
+      Uint8Array.from([0x45, 0x43, 0x4f, 0x53]),
+    )
     services.workspaceService.registerProjectRoot.mockResolvedValue('/tmp/project')
     services.workspaceService.requestProjectPathAccess.mockResolvedValue('/tmp/project/home.json')
     services.workspaceService.scanPdkDirectory.mockResolvedValue({
@@ -215,6 +220,12 @@ describe('registerIpc', () => {
       ),
     ).resolves.toBe('{"steps":[]}')
     await expect(
+      handlers.get(desktopApiIpcChannels.workspaceReadProjectBinaryFile)?.(
+        event,
+        '/tmp/project/.ecos/tile-cache/layout/route/cells.bin',
+      ),
+    ).resolves.toEqual(Uint8Array.from([0x45, 0x43, 0x4f, 0x53]))
+    await expect(
       handlers.get(desktopApiIpcChannels.workspaceScanPdkDirectory)?.(event, '/tmp/pdk'),
     ).resolves.toMatchObject({
       canonicalPath: '/tmp/pdk',
@@ -230,6 +241,9 @@ describe('registerIpc', () => {
     })
     expect(services.workspaceService.readProjectTextFile).toHaveBeenCalledWith(
       '/tmp/project/home/flow.json',
+    )
+    expect(services.workspaceService.readProjectBinaryFile).toHaveBeenCalledWith(
+      '/tmp/project/.ecos/tile-cache/layout/route/cells.bin',
     )
     expect(services.workspaceService.clearProjectRoot).toHaveBeenCalledTimes(1)
   })

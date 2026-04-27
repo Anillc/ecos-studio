@@ -77,6 +77,8 @@ const desktopApi: DesktopApi = {
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceRequestProjectPathAccess, path),
     readProjectTextFile: (path) =>
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectTextFile, path),
+    readProjectBinaryFile: (path) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectBinaryFile, path),
     scanPdkDirectory: (path) =>
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceScanPdkDirectory, path),
   },

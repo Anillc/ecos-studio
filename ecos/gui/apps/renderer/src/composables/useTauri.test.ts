@@ -73,6 +73,7 @@ const desktopBridge = {
     clearProjectRoot: async () => undefined,
     requestProjectPathAccess: async (path: string) => path,
     readProjectTextFile: async () => '',
+    readProjectBinaryFile: async () => new Uint8Array(),
     scanPdkDirectory: async () => ({
       canonicalPath: '',
       name: '',

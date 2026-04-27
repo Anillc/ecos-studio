@@ -62,6 +62,7 @@ export interface DesktopApi {
     clearProjectRoot(): Promise<void>
     requestProjectPathAccess(path: string): Promise<string>
     readProjectTextFile(path: string): Promise<string>
+    readProjectBinaryFile(path: string): Promise<Uint8Array>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
   }
   tiles: {

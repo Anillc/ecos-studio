@@ -12,14 +12,17 @@
  *   8. 未保存编辑（dirty）时：低 Z 仍走矢量瓦片，避免栅格快照与编辑状态不一致
  */
 
-import { readFile, readTextFile } from '@tauri-apps/plugin-fs'
-import { join } from '@tauri-apps/api/path'
 import { Container, Sprite, Graphics, Texture, Ticker } from 'pixi.js'
 import type { Viewport } from 'pixi-viewport'
 import type {
   Manifest, TileInstance, CellDef, LayerDef,
   PreparedLayer, ParsedVectorTile, FlatLayerGroup,
 } from './manifest'
+import {
+  BundleFileNotFoundError,
+  createTileBundleReader,
+  type TileBundleReader,
+} from './bundleReader'
 import { CellDefStore } from './CellDefStore'
 import { GlobalLayerStore } from './GlobalLayerStore'
 
@@ -70,21 +73,10 @@ function hexToNum(hex: string): number {
 }
 
 // ─── TileManager ─────────────────────────────────────────────────────────────
-function u8ToArrayBuffer(u8: Uint8Array): ArrayBuffer {
-  const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)
-  return ab as ArrayBuffer
-}
-
-function isFsNotFound(e: unknown): boolean {
-  const m = e instanceof Error ? e.message : String(e)
-  return /ENOENT|not found|No such file|os error 2/i.test(m)
-}
 
 export class TileManager {
   private viewport: Viewport
-  private baseUrl:  string
-  /** 若设置，则从本地目录读瓦片（Tauri），避免 convertFileSrc 的 asset:// 无法用 fetch */
-  private readonly localRoot: string | undefined
+  private readonly bundleReader: TileBundleReader
   manifest: Manifest | null = null
   readonly cellStore   = new CellDefStore()
   readonly globalStore = new GlobalLayerStore()
@@ -147,8 +139,7 @@ export class TileManager {
 
   constructor(viewport: Viewport, baseUrl: string, localRoot?: string) {
     this.viewport = viewport
-    this.baseUrl  = baseUrl
-    this.localRoot = localRoot
+    this.bundleReader = createTileBundleReader({ baseUrl, localRoot })
 
     this.rootContainer.label = 'tile-root'
     this.globalContainer.label = 'global-layer'
@@ -227,15 +218,8 @@ export class TileManager {
 
   // ─── 初始化 ─────────────────────────────────────────────────────────────────
   async init(): Promise<void> {
-    if (this.localRoot) {
-      const manifestPath = await join(this.localRoot, 'manifest.json')
-      const text = await readTextFile(manifestPath)
-      this.manifest = JSON.parse(text) as Manifest
-    } else {
-      const res = await fetch(`${this.baseUrl}/manifest.json`)
-      if (!res.ok) throw new Error(`manifest.json fetch failed: ${res.status}`)
-      this.manifest = await res.json() as Manifest
-    }
+    const manifestText = await this.bundleReader.readText('manifest.json')
+    this.manifest = JSON.parse(manifestText) as Manifest
 
     const { dieArea, layers } = this.manifest
     this._maxSide = Math.max(dieArea.w, dieArea.h)
@@ -279,20 +263,8 @@ export class TileManager {
     // 并行加载 cells.bin 和 global.bin
     const man = this.manifest!
     const [cellsBuf, globalBuf] = await Promise.all([
-      this.localRoot
-        ? u8ToArrayBuffer(await readFile(await join(this.localRoot, man.cellsFile.path)))
-        : (async () => {
-            const r = await fetch(`${this.baseUrl}/${man.cellsFile.path}`)
-            if (!r.ok) throw new Error(`cells.bin fetch failed: ${r.status}`)
-            return r.arrayBuffer()
-          })(),
-      this.localRoot
-        ? u8ToArrayBuffer(await readFile(await join(this.localRoot, man.globalFile.path)))
-        : (async () => {
-            const r = await fetch(`${this.baseUrl}/${man.globalFile.path}`)
-            if (!r.ok) throw new Error(`global.bin fetch failed: ${r.status}`)
-            return r.arrayBuffer()
-          })(),
+      this.bundleReader.readBinary(man.cellsFile.path),
+      this.bundleReader.readBinary(man.globalFile.path),
     ])
 
     void this.cellStore.load(cellsBuf)
@@ -756,34 +728,18 @@ export class TileManager {
     const worldY = dieArea.y + y * size
 
     let blob: Blob
-    if (this.localRoot) {
-      try {
-        const u8 = await readFile(await join(this.localRoot, relRaster))
-        blob = new Blob([u8])
-      } catch (e) {
-        if (signal.aborted) return
-        if (isFsNotFound(e)) {
-          this._knownEmpty.add(key)
-          this._scheduleUpdate()
-          return
-        }
-        this._scheduleUpdate()
-        this._debounceTileLoads()
-        return
-      }
-    } else {
-      const res = await fetch(`${this.baseUrl}/${relRaster}`, { signal })
-      if (res.status === 404) {
+    try {
+      blob = await this.bundleReader.readBlob(relRaster, signal)
+    } catch (e) {
+      if (signal.aborted) return
+      if (e instanceof BundleFileNotFoundError) {
         this._knownEmpty.add(key)
         this._scheduleUpdate()
         return
       }
-      if (!res.ok) {
-        this._scheduleUpdate()
-        this._debounceTileLoads()
-        return
-      }
-      blob = await res.blob()
+      this._scheduleUpdate()
+      this._debounceTileLoads()
+      return
     }
     if (signal.aborted) return
 
@@ -827,34 +783,18 @@ export class TileManager {
     const relVec = `tiles/vector/${z}/${x}/${y}.bin`
 
     let buf: ArrayBuffer
-    if (this.localRoot) {
-      try {
-        const u8 = await readFile(await join(this.localRoot, relVec))
-        buf = u8ToArrayBuffer(u8)
-      } catch (e) {
-        if (signal.aborted) return
-        if (isFsNotFound(e)) {
-          this._knownEmpty.add(key)
-          this._scheduleUpdate()
-          return
-        }
-        this._scheduleUpdate()
-        this._debounceTileLoads()
-        return
-      }
-    } else {
-      const res = await fetch(`${this.baseUrl}/${relVec}`, { signal })
-      if (res.status === 404) {
+    try {
+      buf = await this.bundleReader.readBinary(relVec, signal)
+    } catch (e) {
+      if (signal.aborted) return
+      if (e instanceof BundleFileNotFoundError) {
         this._knownEmpty.add(key)
         this._scheduleUpdate()
         return
       }
-      if (!res.ok) {
-        this._scheduleUpdate()
-        this._debounceTileLoads()
-        return
-      }
-      buf = await res.arrayBuffer()
+      this._scheduleUpdate()
+      this._debounceTileLoads()
+      return
     }
     if (signal.aborted) return
 

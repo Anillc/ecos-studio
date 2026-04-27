@@ -52,6 +52,11 @@ export class WorkspaceService {
     return await readFile(canonicalPath, 'utf8')
   }
 
+  async readProjectBinaryFile(path: string): Promise<Uint8Array> {
+    const canonicalPath = await this.projectScopeProvider.requestProjectPathAccess(path)
+    return new Uint8Array(await readFile(canonicalPath))
+  }
+
   async scanPdkDirectory(path: string): Promise<ScannedPdkDirectory> {
     return await this.projectScopeProvider.scanPdkDirectory(path)
   }

@@ -52,4 +52,36 @@ describe('WorkspaceService', () => {
       '/workspace/home/flow.json',
     )
   })
+
+  it('reads project-scoped binary through the validated canonical path', async () => {
+    const directory = await createTempDir('ecos-workspace-service-bin-')
+    const filePath = join(directory, 'cells.bin')
+    await writeFile(filePath, Buffer.from([0x45, 0x43, 0x4f, 0x53]))
+
+    const projectScopeProvider = {
+      clearProjectRoot: vi.fn(),
+      isProjectDirectory: vi.fn(),
+      registerProjectRoot: vi.fn(),
+      requestProjectPathAccess: vi.fn().mockResolvedValue(filePath),
+      scanPdkDirectory: vi.fn(),
+    }
+
+    const service = new WorkspaceService({
+      apiPortProvider: {
+        getPort: vi.fn(),
+      },
+      projectScopeProvider,
+    })
+
+    await expect(
+      (
+        service as WorkspaceService & {
+          readProjectBinaryFile(path: string): Promise<Uint8Array>
+        }
+      ).readProjectBinaryFile('/workspace/.ecos/tile-cache/layout/route/cells.bin'),
+    ).resolves.toEqual(Uint8Array.from([0x45, 0x43, 0x4f, 0x53]))
+    expect(projectScopeProvider.requestProjectPathAccess).toHaveBeenCalledWith(
+      '/workspace/.ecos/tile-cache/layout/route/cells.bin',
+    )
+  })
 })
