@@ -1,4 +1,9 @@
-export { ipcChannels, type IpcChannel } from './constants/ipcChannels'
+export {
+  desktopApiIpcChannels,
+  ipcChannels,
+  type DesktopApiIpcChannel,
+  type IpcChannel,
+} from './constants/ipcChannels'
 export type { DesktopApi } from './contracts/desktopApi'
 export type { DesktopErrorCode, DesktopErrorShape } from './contracts/errors'
 export type { DesktopFailure, DesktopResult, DesktopSuccess, VoidDesktopResult } from './types/desktop'

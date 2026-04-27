@@ -1,3 +1,10 @@
+import type {
+  WorkspaceConfig as SharedWorkspaceConfig,
+  WorkspaceParameters as SharedWorkspaceParameters,
+  WorkspaceStatus as SharedWorkspaceStatus,
+  WorkspaceSummary,
+} from '@ecos-studio/shared'
+
 // Info 消息中的单个数据项
 export interface InfoItem {
   label: string
@@ -56,54 +63,16 @@ export interface Thumbnail {
   format?: string
 }
 
-export type ProjectStatus = 'success' | 'failed' | 'running' | 'in_progress' | 'not_started'
+export type ProjectStatus = SharedWorkspaceStatus
 
-export interface Project {
-  id: string
-  name: string
-  path: string
+export interface Project extends Omit<WorkspaceSummary, 'lastOpened'> {
   lastOpened: Date
-  /** 是否被识别为 ECOS workspace（加载时异步检测，undefined 表示尚未检测） */
-  workspaceRecognized?: boolean
-
-  // Workspace summary — written on closeProject()
-  pdk?: string
-  topModule?: string
-  frequencyTarget?: number
-  coreUtilization?: number
-  status?: ProjectStatus
-  totalSteps?: number
-  completedSteps?: number
-  currentStep?: string
-  totalRuntime?: string
-  cellCount?: number
-  frequency?: number
 }
 
 // New Project Wizard Types
-export interface WorkspaceParameters {
-  // 基本信息
-  design: string;           // 项目/设计名称
-  description?: string;     // 项目描述
-  // 设计参数
-  top_module: string;       // 顶层模块名
-  clock: string;            // 时钟信号名
-  // 工艺参数
-  frequency_max: number;    // 目标频率 (MHz)
-  core_utilization: number; // 核心利用率 (0-1)
-  target_density: number;   // 目标密度 (0-1)
-  max_fanout: number;       // 最大扇出
-}
+export type WorkspaceParameters = SharedWorkspaceParameters
 
-export interface WorkspaceConfig {
-  directory: string;
-  pdk: string;
-  pdk_root: string;
-  parameters: Partial<WorkspaceParameters> & Record<string, unknown>;
-  origin_def: string;
-  origin_verilog: string;
-  rtl_list: string[];
-}
+export type WorkspaceConfig = SharedWorkspaceConfig
 
 // 已导入的 PDK 信息（持久化存储）
 export interface ImportedPdk {

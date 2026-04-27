@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { DesktopApi } from '@ecos-studio/shared'
 import { DESKTOP_BRIDGE_UNAVAILABLE_MESSAGE, getDesktopApi, hasDesktopApi } from '@/platform/desktop'
 import { isDesktopRuntime, isTauri, requireDesktopRuntime, useTauri } from './useTauri'
 
@@ -57,7 +58,7 @@ const desktopBridge = {
   tiles: {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
   },
-}
+} satisfies DesktopApi
 
 describe('useTauri desktop bridge guard', () => {
   afterEach(() => {

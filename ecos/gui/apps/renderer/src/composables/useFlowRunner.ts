@@ -20,7 +20,7 @@ export const flowExecutionActive = ref(false)
  * 本 Hook 只负责调用 API 并等待结果。
  */
 export function useFlowRunner() {
-  const { isInTauri, ensureTauri } = useTauri()
+  const { ensureTauri } = useTauri()
   const { showToast } = useWorkspace()
   const route = useRoute()
 
@@ -41,6 +41,15 @@ export function useFlowRunner() {
     }
   }
 
+  function showDesktopRequiredToast() {
+    showToast({
+      severity: 'warn',
+      summary: 'Desktop App Required',
+      detail: 'Flow execution is only available in the desktop app.',
+      life: 5000,
+    })
+  }
+
   /**
    * 运行当前步骤
    */
@@ -54,9 +63,9 @@ export function useFlowRunner() {
     }
 
     // 检查是否在 Tauri 环境中
-    if (!isInTauri) {
+    if (!ensureTauri()) {
       console.warn('Not running in Tauri environment, cannot execute Python script')
-      ensureTauri(true) // 显示警告弹窗
+      showDesktopRequiredToast()
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
 
@@ -119,9 +128,9 @@ export function useFlowRunner() {
    */
   async function runAllFlow(): Promise<any | null> {
     // 检查是否在 Tauri 环境中
-    if (!isInTauri) {
+    if (!ensureTauri()) {
       console.warn('Not running in Tauri environment, cannot execute Python script')
-      ensureTauri(true) // 显示警告弹窗
+      showDesktopRequiredToast()
       return null
     }
 
