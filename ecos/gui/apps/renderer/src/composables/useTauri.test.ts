@@ -58,9 +58,31 @@ const desktopBridge = {
   system: {
     openExternal: async (_url: string) => undefined,
   },
+  settings: {
+    get: async () => null,
+    set: async () => undefined,
+    delete: async () => undefined,
+  },
+  dialog: {
+    pickDirectory: async () => null,
+  },
   workspace: {
-    loadRecent: async () => [],
-    openProject: async () => null,
+    getApiPort: async () => 8765,
+    isProjectDirectory: async () => false,
+    registerProjectRoot: async (path: string) => path,
+    clearProjectRoot: async () => undefined,
+    requestProjectPathAccess: async (path: string) => path,
+    scanPdkDirectory: async () => ({
+      canonicalPath: '',
+      name: '',
+      description: '',
+      techNode: '',
+      pdkId: '',
+      detectedFiles: {
+        directories: [],
+        files: [],
+      },
+    }),
   },
   tiles: {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),

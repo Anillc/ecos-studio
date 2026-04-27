@@ -1,11 +1,10 @@
 import { ref, getCurrentInstance } from 'vue'
+import type { DesktopSettingsValue } from '@ecos-studio/shared'
 import type { Project, ProjectStatus, WorkspaceConfig } from '../types'
 import { useRouter } from 'vue-router'
-import { open } from '@tauri-apps/plugin-dialog'
-import { invoke } from '@tauri-apps/api/core'
-import { LazyStore } from '@tauri-apps/plugin-store'
 import { readTextFile } from '@tauri-apps/plugin-fs'
 import { useToast } from 'primevue/usetoast'
+import { getDesktopApi } from '@/platform/desktop'
 import { loadWorkspaceApi, createWorkspaceApi, waitForApiReady } from '../api'
 import { createSSEClient, type SSEClient, type ECCResponse } from '../api/sse'
 import { setDesktopWindowTitle } from './windowTitle'
@@ -28,8 +27,6 @@ interface SerializedProject {
   frequency?: number
 }
 
-// 共享的状态实例（单例模式）
-const store = new LazyStore('settings.json')
 const currentProject = ref<Project | null>()
 const recentProjects = ref<Project[]>([])
 
@@ -48,6 +45,22 @@ let _toast: ReturnType<typeof useToast> | null = null
 
 // 应用名称常量
 const APP_NAME = 'ECOS Studio'
+
+async function getSetting<T>(key: string): Promise<T | null> {
+  return (await getDesktopApi().settings.get(key)) as T | null
+}
+
+async function setSetting(key: string, value: unknown): Promise<void> {
+  await getDesktopApi().settings.set(key, value as DesktopSettingsValue)
+}
+
+async function deleteSetting(key: string): Promise<void> {
+  await getDesktopApi().settings.delete(key)
+}
+
+async function pickDirectory(title: string): Promise<string | null> {
+  return await getDesktopApi().dialog.pickDirectory({ title })
+}
 
 /**
  * 更新窗口标题
@@ -152,26 +165,26 @@ export function useWorkspace() {
    */
   const isProjectValid = async (path: string): Promise<boolean> => {
     try {
-      return await invoke<boolean>('is_project_directory', { path })
+      return await getDesktopApi().workspace.isProjectDirectory(path)
     } catch (error) {
       console.error(`Failed to check path existence: ${path}`, error)
       return false
     }
   }
 
-  const registerProjectRoot = async (path: string): Promise<boolean> => {
+  const registerProjectRoot = async (path: string): Promise<string | null> => {
     try {
-      await invoke('register_project_root', { path })
-      return true
+      const canonicalPath = await getDesktopApi().workspace.registerProjectRoot(path)
+      return normalizePath(canonicalPath)
     } catch (error) {
       console.error('Failed to register project root permission:', error)
-      return false
+      return null
     }
   }
 
   const clearProjectRoot = async (): Promise<void> => {
     try {
-      await invoke('clear_project_root')
+      await getDesktopApi().workspace.clearProjectRoot()
     } catch (error) {
       console.error('Failed to clear project root permission:', error)
     }
@@ -187,7 +200,7 @@ export function useWorkspace() {
    */
   const loadRecentProjects = async () => {
     try {
-      const savedProjects = await store.get<SerializedProject[]>('recent_projects')
+      const savedProjects = await getSetting<SerializedProject[]>('recent_projects')
       if (!savedProjects || savedProjects.length === 0) {
         return
       }
@@ -207,7 +220,7 @@ export function useWorkspace() {
 
       // 4. 恢复 currentProject：优先从持久化的 current_project_path 精确匹配
       if (!currentProject.value) {
-        const savedCurrentPath = await store.get<string>('current_project_path')
+        const savedCurrentPath = await getSetting<string>('current_project_path')
         let restored: Project | undefined
 
         if (savedCurrentPath) {
@@ -233,12 +246,13 @@ export function useWorkspace() {
               const response = await loadWorkspaceApi(restored.path)
               if (response.response === 'success') {
                 const resolvedPath = normalizePath(response.data.directory || restored.path)
-                if (!(await registerProjectRoot(resolvedPath))) {
+                const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
+                if (!canonicalProjectRoot) {
                   return
                 }
                 currentProject.value = {
                   ...restored,
-                  path: resolvedPath
+                  path: canonicalProjectRoot
                 }
                 await updateWindowTitle(restored.name)
                 const workspaceId = response.data.workspace_id || response.data.directory
@@ -261,8 +275,7 @@ export function useWorkspace() {
   const removeRecentProject = async (projectId: string) => {
     recentProjects.value = recentProjects.value.filter(p => p.id !== projectId)
     const serialized = recentProjects.value.map(serializeProject)
-    await store.set('recent_projects', serialized)
-    await store.save()
+    await setSetting('recent_projects', serialized)
   }
 
   /**
@@ -286,8 +299,7 @@ export function useWorkspace() {
 
       // 序列化并持久化到磁盘
       const serialized = recentProjects.value.map(serializeProject)
-      await store.set('recent_projects', serialized)
-      await store.save()
+      await setSetting('recent_projects', serialized)
 
       return true
     } catch (error) {
@@ -307,13 +319,8 @@ export function useWorkspace() {
         selectedPath = project.path
       } else {
         // 1. 弹出文件夹选择对话框
-        const result = await open({
-          directory: true,
-          multiple: false,
-          title: 'Select ECOS Studio Project Directory'
-        })
-        if (!result) return
-        selectedPath = result as string
+        selectedPath = await pickDirectory('Select ECOS Studio Project Directory')
+        if (!selectedPath) return
       }
 
       if (!(await ensureApiReady())) return false
@@ -322,7 +329,8 @@ export function useWorkspace() {
       const response = await loadWorkspaceApi(selectedPath)
       if (response.response === 'success') {
         const resolvedPath = normalizePath(response.data.directory || selectedPath)
-        if (!(await registerProjectRoot(resolvedPath))) {
+        const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
+        if (!canonicalProjectRoot) {
           showToast({
             severity: 'error',
             summary: 'Permission Setup Failed',
@@ -337,17 +345,16 @@ export function useWorkspace() {
         const resolvedName = project?.name || existingProject?.name || fallbackName
 
         const loadedProject: Project = {
-          id: resolvedPath,
+          id: canonicalProjectRoot,
           name: resolvedName,
-          path: resolvedPath,
+          path: canonicalProjectRoot,
           lastOpened: new Date()
         }
 
         currentProject.value = loadedProject
 
         // 持久化当前项目路径，以便 reload 后恢复
-        await store.set('current_project_path', normalizePath(loadedProject.path))
-        await store.save()
+        await setSetting('current_project_path', normalizePath(loadedProject.path))
 
         // 建立 SSE 连接
         const workspaceId = response.data.workspace_id || response.data.directory
@@ -389,14 +396,10 @@ export function useWorkspace() {
         selectedPath = config.directory
       } else {
         // 回退到旧的文件选择方式
-        const result = await open({
-          directory: true,
-          multiple: false,
-          title: 'Select New Project Save Location'
-        })
+        const result = await pickDirectory('Select New Project Save Location')
 
         if (!result) return false
-        selectedPath = result as string
+        selectedPath = result
       }
 
       if (!(await ensureApiReady())) return false
@@ -444,7 +447,8 @@ export function useWorkspace() {
       console.log(response)
       if (response.response === 'success') {
         const resolvedPath = normalizePath(response.data.directory)
-        if (!(await registerProjectRoot(resolvedPath))) {
+        const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
+        if (!canonicalProjectRoot) {
           showToast({
             severity: 'error',
             summary: 'Permission Setup Failed',
@@ -453,17 +457,16 @@ export function useWorkspace() {
           return false
         }
         const createdProject: Project = {
-          id: resolvedPath,
+          id: canonicalProjectRoot,
           name: backendParameters['Design'] as string,
-          path: resolvedPath,
+          path: canonicalProjectRoot,
           lastOpened: new Date()
         }
 
         currentProject.value = createdProject
 
         // 持久化当前项目路径，以便 reload 后恢复
-        await store.set('current_project_path', normalizePath(createdProject.path))
-        await store.save()
+        await setSetting('current_project_path', normalizePath(createdProject.path))
 
         // 建立 SSE 连接
         const workspaceId = response.data.workspace_id || response.data.directory
@@ -574,8 +577,7 @@ export function useWorkspace() {
 
     Object.assign(recentProjects.value[idx], snapshot)
     const serialized = recentProjects.value.map(serializeProject)
-    await store.set('recent_projects', serialized)
-    await store.save()
+    await setSetting('recent_projects', serialized)
   }
 
   const closeProject = async () => {
@@ -590,8 +592,7 @@ export function useWorkspace() {
     currentProject.value = null
     disconnectSSE()
     await clearProjectRoot()
-    await store.delete('current_project_path')
-    await store.save()
+    await deleteSetting('current_project_path')
     await updateWindowTitle()
   }
 

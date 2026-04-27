@@ -6,7 +6,13 @@ export {
   type DesktopApiIpcChannel,
   type IpcChannel,
 } from './constants/ipcChannels'
-export type { DesktopApi } from './contracts/desktopApi'
+export type {
+  DesktopApi,
+  DesktopDirectoryDialogOptions,
+  DesktopSettingsValue,
+  PdkDetectedFiles,
+  ScannedPdkDirectory,
+} from './contracts/desktopApi'
 export {
   appMenuActionIds,
   desktopMenuEventIds,

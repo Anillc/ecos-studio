@@ -1,16 +1,60 @@
 import { app, BrowserWindow } from 'electron'
+import { join } from 'node:path'
 import { createMainWindow } from './createMainWindow'
 import { registerIpc } from './registerIpc'
+import { ApiServerService } from '../services/apiServerService'
 import { registerApplicationMenu } from '../services/menuService'
+import { ProjectScopeService } from '../services/projectScopeService'
+import { SettingsStore } from '../services/settingsStore'
 import { bindWindowEvents } from '../services/windowService'
+import { WorkspaceService } from '../services/workspaceService'
 
 let ipcRegistered = false
+let isShuttingDown = false
+let services:
+  | {
+      apiServerService: ApiServerService
+      settingsStore: SettingsStore
+      workspaceService: WorkspaceService
+    }
+  | null = null
+
+function getDesktopServices() {
+  if (services) {
+    return services
+  }
+
+  const settingsStore = new SettingsStore({
+    filePath: join(app.getPath('userData'), 'settings.json'),
+  })
+  const projectScopeService = new ProjectScopeService()
+  const apiServerService = new ApiServerService()
+  const workspaceService = new WorkspaceService({
+    apiPortProvider: apiServerService,
+    projectScopeProvider: projectScopeService,
+  })
+
+  services = {
+    apiServerService,
+    settingsStore,
+    workspaceService,
+  }
+
+  return services
+}
 
 async function launchMainWindow(): Promise<void> {
+  const desktopServices = getDesktopServices()
+
   if (!ipcRegistered) {
-    registerIpc()
+    registerIpc(undefined, {
+      settingsStore: desktopServices.settingsStore,
+      workspaceService: desktopServices.workspaceService,
+    })
     ipcRegistered = true
   }
+
+  await desktopServices.apiServerService.start()
 
   const mainWindow = await createMainWindow()
   bindWindowEvents(mainWindow)
@@ -26,6 +70,19 @@ app.whenReady().then(() => {
   })
 
   void launchMainWindow()
+})
+
+app.on('before-quit', (event) => {
+  if (isShuttingDown) {
+    return
+  }
+
+  event.preventDefault()
+  isShuttingDown = true
+
+  void (services?.apiServerService.stop() ?? Promise.resolve()).finally(() => {
+    app.exit(0)
+  })
 })
 
 app.on('window-all-closed', () => {

@@ -3,7 +3,9 @@ import {
   desktopApiEventChannels,
   desktopApiIpcChannels,
   type DesktopApi,
+  type DesktopDirectoryDialogOptions,
   type DesktopMenuEventId,
+  type DesktopSettingsValue,
 } from '@ecos-studio/shared'
 
 function subscribeToDesktopEvent(
@@ -53,9 +55,28 @@ const desktopApi: DesktopApi = {
   system: {
     openExternal: (url) => ipcRenderer.invoke(desktopApiIpcChannels.systemOpenExternal, url),
   },
+  settings: {
+    get: <T extends DesktopSettingsValue = DesktopSettingsValue>(key: string) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.settingsGet, key) as Promise<T | null>,
+    set: (key, value) => ipcRenderer.invoke(desktopApiIpcChannels.settingsSet, key, value),
+    delete: (key) => ipcRenderer.invoke(desktopApiIpcChannels.settingsDelete, key),
+  },
+  dialog: {
+    pickDirectory: (options?: DesktopDirectoryDialogOptions) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.dialogPickDirectory, options),
+  },
   workspace: {
-    loadRecent: () => ipcRenderer.invoke(desktopApiIpcChannels.workspaceLoadRecent),
-    openProject: () => ipcRenderer.invoke(desktopApiIpcChannels.workspaceOpen),
+    getApiPort: () => ipcRenderer.invoke(desktopApiIpcChannels.workspaceGetApiPort),
+    isProjectDirectory: (path) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceIsProjectDirectory, path),
+    registerProjectRoot: (path) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceRegisterProjectRoot, path),
+    clearProjectRoot: () =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceClearProjectRoot),
+    requestProjectPathAccess: (path) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceRequestProjectPathAccess, path),
+    scanPdkDirectory: (path) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceScanPdkDirectory, path),
   },
   tiles: {
     generate: (request) => ipcRenderer.invoke(desktopApiIpcChannels.tilesGenerate, request),

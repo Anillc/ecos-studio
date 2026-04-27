@@ -1,7 +1,6 @@
 import { ref } from 'vue'
-import { LazyStore } from '@tauri-apps/plugin-store'
-import { open } from '@tauri-apps/plugin-dialog'
-import { invoke } from '@tauri-apps/api/core'
+import type { DesktopSettingsValue, ScannedPdkDirectory } from '@ecos-studio/shared'
+import { getDesktopApi } from '@/platform/desktop'
 import { useWorkspace } from './useWorkspace'
 import type { ImportedPdk } from '../types'
 
@@ -12,23 +11,16 @@ function pathHasInvalidChars(path: string): boolean {
   return hasSpace || hasChinese
 }
 
-// 共享单例 store（与 useWorkspace 共用同一个 settings.json）
-const store = new LazyStore('settings.json')
-
 // 全局共享状态
 const importedPdks = ref<ImportedPdk[]>([])
 const isLoaded = ref(false)
 
-interface ScannedPdkDirectory {
-  canonicalPath: string
-  name: string
-  description: string
-  techNode: string
-  pdkId: string
-  detectedFiles: {
-    directories: string[]
-    files: string[]
-  }
+async function getSetting<T>(key: string): Promise<T | null> {
+  return (await getDesktopApi().settings.get(key)) as T | null
+}
+
+async function setSetting(key: string, value: unknown): Promise<void> {
+  await getDesktopApi().settings.set(key, value as DesktopSettingsValue)
 }
 
 /**
@@ -44,7 +36,7 @@ export function usePdkManager() {
   const loadPdks = async () => {
     if (isLoaded.value) return // 避免重复加载
     try {
-      const saved = await store.get<ImportedPdk[]>('imported_pdks')
+      const saved = await getSetting<ImportedPdk[]>('imported_pdks')
       if (saved && saved.length > 0) {
         importedPdks.value = saved
       }
@@ -57,8 +49,7 @@ export function usePdkManager() {
   /** 将当前 PDK 列表持久化到磁盘 */
   const savePdks = async () => {
     try {
-      await store.set('imported_pdks', importedPdks.value)
-      await store.save()
+      await setSetting('imported_pdks', importedPdks.value)
     } catch (error) {
       console.error('[usePdkManager] Save PDKs error:', error)
     }
@@ -71,7 +62,7 @@ export function usePdkManager() {
    * 读取顶层目录结构，根据已知模式识别 PDK
    */
   const scanPdkDirectory = async (path: string): Promise<ScannedPdkDirectory> => {
-    return await invoke<ScannedPdkDirectory>('scan_pdk_directory', { path })
+    return await getDesktopApi().workspace.scanPdkDirectory(path)
   }
 
   // ============ PDK 操作 ============
@@ -82,15 +73,13 @@ export function usePdkManager() {
    */
   const importPdk = async (): Promise<ImportedPdk | null> => {
     try {
-      const result = await open({
-        directory: true,
-        multiple: false,
+      const result = await getDesktopApi().dialog.pickDirectory({
         title: 'Select PDK Root Directory'
       })
 
       if (!result) return null
 
-      const path = result as string
+      const path = result
 
       // 路径不允许包含中文或空格，避免工具链异常
       if (pathHasInvalidChars(path)) {

@@ -2,13 +2,13 @@
  * Alova HTTP client configuration for ChipCompiler API
  *
  * The API port is determined dynamically at runtime:
- * - In Tauri mode: queries the actual port from the Rust backend (which auto-discovers a free port)
+ * - In desktop mode: queries the actual port from the Electron main process (which auto-discovers a free port)
  * - In browser-only mode: falls back to the default port (8765)
  */
 
 import { createAlova } from 'alova'
 import adapterFetch from 'alova/fetch'
-import { isTauri } from '@/composables/useTauri'
+import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
 
 // API server configuration
 const API_HOST = '127.0.0.1'
@@ -56,23 +56,22 @@ function createAlovaClient() {
 export let alovaInstance = createAlovaClient()
 
 /**
- * Initialise the API port by querying the Tauri backend.
+ * Initialise the API port by querying the desktop bridge.
  *
  * Must be called once during application startup (before any API requests).
- * In non-Tauri environments (browser-only dev) this is a no-op that keeps the
+ * In non-desktop environments (browser-only dev) this is a no-op that keeps the
  * default port.
  *
  * @returns The resolved API port number.
  */
 export async function initApiPort(): Promise<number> {
-  if (!isTauri()) {
-    console.log(`[api] Not running in Tauri, using default port ${DEFAULT_API_PORT}`)
+  if (!hasDesktopApi()) {
+    console.log(`[api] Desktop bridge unavailable, using default port ${DEFAULT_API_PORT}`)
     return API_PORT
   }
 
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const port = await invoke<number>('get_api_port')
+    const port = await getDesktopApi().workspace.getApiPort()
 
     if (port && port !== API_PORT) {
       API_PORT = port
@@ -84,7 +83,10 @@ export async function initApiPort(): Promise<number> {
       console.log(`[api] API port confirmed as ${API_PORT}`)
     }
   } catch (err) {
-    console.warn(`[api] Failed to query API port from Tauri, using default ${DEFAULT_API_PORT}:`, err)
+    console.warn(
+      `[api] Failed to query API port from the desktop bridge, using default ${DEFAULT_API_PORT}:`,
+      err,
+    )
   }
 
   return API_PORT
