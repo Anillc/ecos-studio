@@ -17,6 +17,9 @@ importers:
 
   apps/renderer:
     dependencies:
+      '@ecos-studio/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@fontsource-variable/inter':
         specifier: ^5.2.8
         version: 5.2.8
@@ -111,6 +114,8 @@ importers:
       vue-tsc:
         specifier: ^2.0.6
         version: 2.2.12(typescript@5.9.3)
+
+  packages/shared: {}
 
 packages:
 
