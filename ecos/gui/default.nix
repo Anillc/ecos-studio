@@ -24,23 +24,18 @@ rustPlatform.buildRustPackage (finalAttrs: {
     with lib.fileset;
     toSource {
       root = ./.;
-      fileset = unions [
+      fileset = intersection (gitTracked ./. ) (unions [
         ./README.md
         ./.gitignore
         ./.nvmrc
-        ./apps/renderer/index.html
-        ./apps/renderer/package.json
-        ./apps/renderer/public
-        ./apps/renderer/src
-        ./apps/renderer/tsconfig.json
-        ./apps/renderer/tsconfig.node.json
-        ./apps/renderer/vite.config.ts
+        ./apps
+        ./packages
         ./package.json
         ./pnpm-lock.yaml
         ./pnpm-workspace.yaml
         ./tailwind.config.ts
         ./src-tauri
-      ];
+      ]);
     };
 
   cargoHash = "sha256-P3EAtI+ZyKM+cZK/ybzPmRTiKAkZ8fhAvrmhzl6nlI8=";
