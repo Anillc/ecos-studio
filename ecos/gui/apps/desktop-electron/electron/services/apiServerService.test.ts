@@ -153,6 +153,9 @@ import { ApiServerService } from './apiServerService'
 describe('ApiServerService', () => {
   const originalFetch = globalThis.fetch
   const originalReuseFlag = process.env.ECOS_REUSE_API_SERVER
+  const originalServerDirectory = process.env.ECOS_SERVER_DIRECTORY
+  const originalBinariesDirectory = process.env.ECOS_ELECTRON_BINARIES_DIR
+  const originalOssCadDirectory = process.env.ECOS_ELECTRON_OSS_CAD_DIR
   let processKillSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -164,6 +167,9 @@ describe('ApiServerService', () => {
     socketConnectQueue.splice(0)
     electronApp.isPackaged = false
     process.env.ECOS_REUSE_API_SERVER = ''
+    delete process.env.ECOS_SERVER_DIRECTORY
+    delete process.env.ECOS_ELECTRON_BINARIES_DIR
+    delete process.env.ECOS_ELECTRON_OSS_CAD_DIR
     globalThis.fetch = vi.fn()
     processKillSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
   })
@@ -179,6 +185,24 @@ describe('ApiServerService', () => {
       delete process.env.ECOS_REUSE_API_SERVER
     } else {
       process.env.ECOS_REUSE_API_SERVER = originalReuseFlag
+    }
+
+    if (originalServerDirectory == null) {
+      delete process.env.ECOS_SERVER_DIRECTORY
+    } else {
+      process.env.ECOS_SERVER_DIRECTORY = originalServerDirectory
+    }
+
+    if (originalBinariesDirectory == null) {
+      delete process.env.ECOS_ELECTRON_BINARIES_DIR
+    } else {
+      process.env.ECOS_ELECTRON_BINARIES_DIR = originalBinariesDirectory
+    }
+
+    if (originalOssCadDirectory == null) {
+      delete process.env.ECOS_ELECTRON_OSS_CAD_DIR
+    } else {
+      process.env.ECOS_ELECTRON_OSS_CAD_DIR = originalOssCadDirectory
     }
 
     processKillSpy.mockRestore()
@@ -246,5 +270,49 @@ describe('ApiServerService', () => {
     await stopPromise
 
     expect(processKillSpy).toHaveBeenCalledWith(-4321, 'SIGTERM')
+  })
+
+  it('prefers configured binary and resource directories for packaged launches', async () => {
+    electronApp.isPackaged = true
+    portAvailabilityQueue.push(true, true)
+    socketConnectQueue.push(true)
+    process.env.ECOS_ELECTRON_BINARIES_DIR = '/opt/ecos/resources/binaries'
+    process.env.ECOS_ELECTRON_OSS_CAD_DIR = '/opt/ecos/resources/oss-cad-suite'
+
+    access.mockImplementation(async (path: string) => {
+      if (path === '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu') {
+        return
+      }
+      if (path === '/opt/ecos/resources/oss-cad-suite') {
+        return
+      }
+      throw new Error(`missing: ${path}`)
+    })
+
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: async () => ({
+        instance_token: 'deterministic-token',
+        status: 'ok',
+      }),
+      ok: true,
+    })
+
+    const ownedChild = new FakeChildProcess(4321)
+    spawn.mockReturnValue(ownedChild)
+
+    const service = new ApiServerService()
+    await service.start()
+
+    expect(spawn).toHaveBeenCalledWith(
+      '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu',
+      ['--host', '127.0.0.1', '--port', '8765', '--disable-stdio-redirect'],
+      expect.objectContaining({
+        cwd: '/opt/ecos/resources/binaries',
+        env: expect.objectContaining({
+          CHIPCOMPILER_OSS_CAD_DIR: '/opt/ecos/resources/oss-cad-suite',
+          ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
+        }),
+      }),
+    )
   })
 })

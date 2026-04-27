@@ -106,6 +106,9 @@ PY
     makeWrapper ${electron}/bin/electron "$out/bin/ecos-studio" \
       --add-flags "$app_root/apps/desktop-electron" \
       --prefix PATH : ${lib.makeBinPath [ python3 ]} \
+      --set-default ECOS_SERVER_DIRECTORY "$app_root/server" \
+      --set-default ECOS_ELECTRON_BINARIES_DIR "$app_root/apps/desktop-electron/resources/binaries" \
+      --set-default ECOS_ELECTRON_OSS_CAD_DIR "$app_root/apps/desktop-electron/resources/oss-cad-suite" \
       --set-default CHIPCOMPILER_OSS_CAD_DIR "$app_root/apps/desktop-electron/resources/oss-cad-suite"
 
     runHook postInstall

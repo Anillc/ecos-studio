@@ -136,6 +136,11 @@ async function isApiServerHealthy(
 }
 
 function getServerDirectory(): string {
+  const configuredServerDirectory = process.env.ECOS_SERVER_DIRECTORY?.trim()
+  if (configuredServerDirectory) {
+    return configuredServerDirectory
+  }
+
   return fileURLToPath(new URL('../../../../../server/', import.meta.url))
 }
 
@@ -171,6 +176,21 @@ function getBundledBinaryCandidates(): string[] {
   }
 
   return [...archSpecificCandidates, `api-server${extension}`]
+}
+
+function getConfiguredBinariesDirectory(): string | null {
+  const configuredDirectory = process.env.ECOS_ELECTRON_BINARIES_DIR?.trim()
+  return configuredDirectory ? configuredDirectory : null
+}
+
+function getConfiguredOssCadDirectory(): string | null {
+  const configuredDirectory = process.env.ECOS_ELECTRON_OSS_CAD_DIR?.trim()
+  return configuredDirectory ? configuredDirectory : null
+}
+
+function getProcessResourcesPath(): string | null {
+  const resourcesPath = process.resourcesPath?.trim()
+  return resourcesPath ? resourcesPath : null
 }
 
 async function resolveLaunchSpec(port: number, token: string): Promise<LaunchSpec> {
@@ -209,12 +229,14 @@ async function resolveLaunchSpec(port: number, token: string): Promise<LaunchSpe
   }
 
   const binaryCandidates = getBundledBinaryCandidates()
+  const processResourcesPath = getProcessResourcesPath()
   const searchDirectories = [
+    getConfiguredBinariesDirectory(),
     dirname(process.execPath),
     join(dirname(process.execPath), 'binaries'),
-    process.resourcesPath,
-    join(process.resourcesPath, 'binaries'),
-  ]
+    processResourcesPath,
+    processResourcesPath ? join(processResourcesPath, 'binaries') : null,
+  ].filter((directory): directory is string => !!directory)
 
   for (const directory of searchDirectories) {
     for (const binaryName of binaryCandidates) {
@@ -224,13 +246,17 @@ async function resolveLaunchSpec(port: number, token: string): Promise<LaunchSpe
         continue
       }
 
-      const resourcesDirectory = join(process.resourcesPath, 'resources', 'oss-cad-suite')
+      const resourcesDirectory =
+        getConfiguredOssCadDirectory()
+        ?? (processResourcesPath
+          ? join(processResourcesPath, 'resources', 'oss-cad-suite')
+          : null)
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         ECOS_SERVER_INSTANCE_TOKEN: token,
       }
 
-      if (await pathExists(resourcesDirectory)) {
+      if (resourcesDirectory && (await pathExists(resourcesDirectory))) {
         env.CHIPCOMPILER_OSS_CAD_DIR = resourcesDirectory
       }
 
