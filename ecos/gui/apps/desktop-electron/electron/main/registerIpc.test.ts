@@ -43,6 +43,9 @@ function registerHandlers() {
       requestProjectPathAccess: vi.fn(),
       scanPdkDirectory: vi.fn(),
     },
+    tileService: {
+      generate: vi.fn(),
+    },
   }
 
   registerIpc({
@@ -231,15 +234,28 @@ describe('registerIpc', () => {
     expect(services.workspaceService.clearProjectRoot).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects unfinished tile handlers explicitly', async () => {
-    const { handlers } = registerHandlers()
+  it('delegates tile generation to the provided tile service', async () => {
+    const { handlers, services } = registerHandlers()
     const event = { sender: { id: 'web-contents' } }
+    services.tileService.generate.mockResolvedValue({
+      baseUrl: 'file:///tmp/project/.ecos/tile-cache/layout/route',
+      outDir: '/tmp/project/.ecos/tile-cache/layout/route',
+      fromCache: true,
+    })
+    const request = {
+      projectPath: '/tmp/project',
+      layoutJsonRelative: 'home/layout.json',
+      stepKey: 'route',
+    }
 
     await expect(
-      handlers.get(desktopApiIpcChannels.tilesGenerate)?.(event, { layoutPath: 'layout.json' }),
-    ).rejects.toMatchObject({
-      name: 'DesktopApiNotImplementedError',
-      message: 'tiles.generate is not implemented in the Electron shell yet.',
+      handlers.get(desktopApiIpcChannels.tilesGenerate)?.(event, request),
+    ).resolves.toEqual({
+      baseUrl: 'file:///tmp/project/.ecos/tile-cache/layout/route',
+      outDir: '/tmp/project/.ecos/tile-cache/layout/route',
+      fromCache: true,
     })
+
+    expect(services.tileService.generate).toHaveBeenCalledWith(request)
   })
 })

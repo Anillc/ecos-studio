@@ -6,6 +6,7 @@ import { ApiServerService } from '../services/apiServerService'
 import { registerApplicationMenu } from '../services/menuService'
 import { ProjectScopeService } from '../services/projectScopeService'
 import { SettingsStore } from '../services/settingsStore'
+import { TileService } from '../services/tileService'
 import { bindWindowEvents } from '../services/windowService'
 import { WorkspaceService } from '../services/workspaceService'
 
@@ -15,6 +16,7 @@ let services:
   | {
       apiServerService: ApiServerService
       settingsStore: SettingsStore
+      tileService: TileService
       workspaceService: WorkspaceService
     }
   | null = null
@@ -33,10 +35,14 @@ function getDesktopServices() {
     apiPortProvider: apiServerService,
     projectScopeProvider: projectScopeService,
   })
+  const tileService = new TileService({
+    projectRootProvider: projectScopeService,
+  })
 
   services = {
     apiServerService,
     settingsStore,
+    tileService,
     workspaceService,
   }
 
@@ -49,6 +55,7 @@ async function launchMainWindow(): Promise<void> {
   if (!ipcRegistered) {
     registerIpc(undefined, {
       settingsStore: desktopServices.settingsStore,
+      tileService: desktopServices.tileService,
       workspaceService: desktopServices.workspaceService,
     })
     ipcRegistered = true

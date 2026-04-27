@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@ecos-studio/shared": "workspace:*"
+    "@ecos-studio/shared": "workspace:*",
+    "@ecos-studio/tile-helper": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",

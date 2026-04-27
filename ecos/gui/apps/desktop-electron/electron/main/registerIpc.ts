@@ -40,12 +40,8 @@ export interface DesktopBridgeServices {
     requestProjectPathAccess(path: string): Promise<string>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
   }
-}
-
-class DesktopApiNotImplementedError extends Error {
-  constructor(capabilityName: string) {
-    super(`${capabilityName} is not implemented in the Electron shell yet.`)
-    this.name = 'DesktopApiNotImplementedError'
+  tileService: {
+    generate(request: TileGenerationRequest): Promise<TileGenerationResult>
   }
 }
 
@@ -57,16 +53,6 @@ function getEventWindow(event: IpcMainInvokeEvent): BrowserWindow {
   }
 
   return targetWindow
-}
-
-function notImplemented(capabilityName: string): never {
-  throw new DesktopApiNotImplementedError(capabilityName)
-}
-
-function createNotImplementedHandler<TResult>(
-  capabilityName: string,
-): (_event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<TResult> {
-  return async () => notImplemented(capabilityName)
 }
 
 async function pickDirectory(
@@ -182,7 +168,9 @@ export function registerIpc(
 
   target.handle(
     desktopApiIpcChannels.tilesGenerate,
-    createNotImplementedHandler<TileGenerationResult>('tiles.generate'),
+    async (_event, request: TileGenerationRequest) => {
+      return await services.tileService.generate(request)
+    },
   )
 
   target.handle(desktopApiIpcChannels.systemOpenExternal, async (_event, url: string) => {

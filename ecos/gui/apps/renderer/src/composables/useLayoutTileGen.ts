@@ -1,13 +1,70 @@
-import { isAbsolute, join, normalize } from '@tauri-apps/api/path'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { isTauri } from '@/composables/useTauri'
-import { requestProjectPathAccess } from '@/utils/projectFs'
+import { getDesktopApi } from '@/platform/desktop'
 
-/**
- * 将 get_info(layout) 给出的路径解析为绝对路径。
- * 后端有时会返回少了前导 `/` 的 POSIX 绝对路径（如 `home/ekko/...`），若再与 projectPath 拼接会重复成
- * `/proj/home/ekko/...` 导致 ENOENT。
- */
+function isWindowsDrivePath(path: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(path)
+}
+
+function isAbsoluteLocalPath(path: string): boolean {
+  return path.startsWith('/') || path.startsWith('\\\\') || isWindowsDrivePath(path)
+}
+
+function normalizeLocalPath(path: string): string {
+  if (!path) {
+    return path
+  }
+
+  const isUnc = path.startsWith('\\\\')
+  const drivePrefix = path.match(/^[A-Za-z]:/)?.[0] ?? ''
+  const hasDrivePrefix = drivePrefix.length > 0
+  const normalizedSource = path.replace(/[\\/]+/g, '/')
+  let remainder = normalizedSource
+  let separator = '/'
+
+  if (isUnc) {
+    remainder = normalizedSource.replace(/^\/+/, '')
+    separator = '\\'
+  } else if (hasDrivePrefix) {
+    remainder = normalizedSource.slice(drivePrefix.length).replace(/^\/+/, '')
+    separator = '\\'
+  } else if (normalizedSource.startsWith('/')) {
+    remainder = normalizedSource.replace(/^\/+/, '')
+  }
+
+  const parts: string[] = []
+  for (const part of remainder.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') {
+      const last = parts[parts.length - 1]
+      if (last && last !== '..') {
+        parts.pop()
+      } else if (!isUnc && !hasDrivePrefix && !normalizedSource.startsWith('/')) {
+        parts.push(part)
+      }
+      continue
+    }
+    parts.push(part)
+  }
+
+  if (isUnc) {
+    return `\\\\${parts.join('\\')}`
+  }
+  if (hasDrivePrefix) {
+    return parts.length > 0 ? `${drivePrefix}\\${parts.join('\\')}` : `${drivePrefix}\\`
+  }
+  if (normalizedSource.startsWith('/')) {
+    return parts.length > 0 ? `/${parts.join('/')}` : '/'
+  }
+  return parts.join(separator)
+}
+
+function joinLocalPath(basePath: string, relativePath: string): string {
+  const separator = isWindowsDrivePath(basePath) || basePath.includes('\\') ? '\\' : '/'
+  return normalizeLocalPath(
+    `${basePath.replace(/[\\/]+$/, '')}${separator}${relativePath.replace(/^[\\/]+/, '')}`,
+  )
+}
+
 /** 与 `runLayoutTileGeneration` 使用同一解析规则，供 single-flight 键与调用方复用 */
 export async function resolveLayoutJsonAbsolutePath(
   projectPath: string,
@@ -17,14 +74,14 @@ export async function resolveLayoutJsonAbsolutePath(
   if (!trimmed) {
     throw new Error('布局 JSON 路径为空')
   }
-  if (await isAbsolute(trimmed)) {
-    return normalize(trimmed)
+  if (isAbsoluteLocalPath(trimmed)) {
+    return normalizeLocalPath(trimmed)
   }
   // Linux 下缺 `/`；macOS 下缺 `/` 的 `Users/...`
   if (trimmed.startsWith('home/') || trimmed.startsWith('Users/')) {
-    return normalize('/' + trimmed)
+    return normalizeLocalPath(`/${trimmed}`)
   }
-  return join(projectPath, trimmed)
+  return joinLocalPath(projectPath, trimmed)
 }
 
 /** 逻辑任务键：同键并发应合并为 single-flight（路径已解析为绝对路径） */
@@ -76,10 +133,7 @@ export function deriveDrcStepPathFromLayoutJsonRelative(layoutJsonRelative: stri
   return parent + 'drc.step.json'
 }
 
-/**
- * 从布局 JSON 生成瓦片包（Rust `generate_layout_tiles`），并返回可供 TileManager 使用的 baseUrl。
- * 缓存目录按 `stepKey` 分文件夹；若源 JSON 内容 SHA-256 未变则跳过生成（由 Rust `prepare_layout_tile_cache` 判定）。
- */
+/** 通过桌面桥接请求主进程生成/复用布局瓦片包，并返回 TileManager 需要的 bundle 根信息。 */
 export async function runLayoutTileGeneration(params: {
   projectPath: string
   layoutJsonRelative: string
@@ -90,50 +144,5 @@ export async function runLayoutTileGeneration(params: {
     throw new Error('瓦片生成仅可在 ECOS Studio 桌面应用中使用。')
   }
 
-  const { projectPath, layoutJsonRelative, stepKey } = params
-  const inputAbs = await resolveLayoutJsonAbsolutePath(projectPath, layoutJsonRelative)
-
-  if (!(await requestProjectPathAccess(inputAbs))) {
-    throw new Error(`No file-system access to ${inputAbs}`)
-  }
-
-  const prep = await invoke<{
-    outDir: string
-    fromCache: boolean
-    contentSha256: string
-  }>('prepare_layout_tile_cache', {
-    payload: {
-      projectPath,
-      stepKey,
-      layoutJsonPath: inputAbs,
-    },
-  })
-
-  const { outDir, fromCache, contentSha256 } = prep
-
-  if (fromCache) {
-    return {
-      baseUrl: convertFileSrc(outDir),
-      outDir,
-      fromCache: true,
-    }
-  }
-
-  await invoke('generate_layout_tiles', {
-    payload: {
-      layoutJsonPath: inputAbs,
-      outDir,
-    },
-  })
-
-  await invoke('finalize_layout_tile_cache_meta', {
-    payload: {
-      outDir,
-      layoutJsonPath: inputAbs,
-      contentSha256,
-    },
-  })
-
-  const baseUrl = convertFileSrc(outDir)
-  return { baseUrl, outDir, fromCache: false }
+  return await getDesktopApi().tiles.generate(params)
 }

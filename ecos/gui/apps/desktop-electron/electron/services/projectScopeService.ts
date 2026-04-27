@@ -81,6 +81,14 @@ function getPathLeafName(path: string): string | null {
 export class ProjectScopeService {
   private activeProjectRoot: string | null = null
 
+  async getProjectRoot(): Promise<string> {
+    if (!this.activeProjectRoot) {
+      throw new Error('Project root is not registered')
+    }
+
+    return this.activeProjectRoot
+  }
+
   async registerProjectRoot(path: string): Promise<string> {
     const canonicalPath = await canonicalizeExistingDirectory(path)
     this.activeProjectRoot = canonicalPath

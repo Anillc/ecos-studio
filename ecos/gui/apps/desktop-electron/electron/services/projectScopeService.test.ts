@@ -31,9 +31,11 @@ describe('ProjectScopeService', () => {
     const service = new ProjectScopeService()
 
     const registeredRoot = await service.registerProjectRoot(root)
+    const activeRoot = await service.getProjectRoot()
     const allowedFile = await service.requestProjectPathAccess(file)
 
     expect(registeredRoot).toBe(root)
+    expect(activeRoot).toBe(root)
     expect(allowedFile).toBe(file)
 
     await service.clearProjectRoot()
