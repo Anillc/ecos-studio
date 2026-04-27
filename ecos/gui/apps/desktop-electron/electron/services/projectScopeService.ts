@@ -1,5 +1,5 @@
 import { readdir, realpath, stat } from 'node:fs/promises'
-import { isAbsolute, relative } from 'node:path'
+import { isAbsolute, relative, win32 } from 'node:path'
 import type { PdkDetectedFiles, ScannedPdkDirectory } from '@ecos-studio/shared'
 
 const PROJECT_MARKER_FILES = ['home.json', 'flow.json', 'parameters.json']
@@ -71,6 +71,13 @@ async function isProjectDirectoryCandidate(path: string): Promise<boolean> {
   return markerChecks.some(Boolean)
 }
 
+function getPathLeafName(path: string): string | null {
+  const trimmedPath = path.replace(/[\\/]+$/, '')
+  const leafName = win32.basename(trimmedPath)
+
+  return leafName || null
+}
+
 export class ProjectScopeService {
   private activeProjectRoot: string | null = null
 
@@ -113,10 +120,7 @@ export class ProjectScopeService {
     const canonicalPath = await canonicalizeExistingDirectory(path)
     const detectedFiles = await scanTopLevelEntries(canonicalPath)
 
-    let name =
-      canonicalPath.split('/').filter(Boolean).pop() ||
-      canonicalPath.split('\\').filter(Boolean).pop() ||
-      'Unknown PDK'
+    let name = getPathLeafName(canonicalPath) || 'Unknown PDK'
     let description = ''
     let techNode = ''
     let pdkId = name.toLowerCase().replace(/[^a-z0-9]+/g, '_')
