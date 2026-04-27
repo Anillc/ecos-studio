@@ -6,9 +6,9 @@ import {
 } from '@ecos-studio/shared'
 import {
   finalizeLayoutTileCacheMeta,
-  generateLayoutTiles,
   prepareLayoutTileCache,
 } from '@ecos-studio/tile-helper'
+import { WorkerTileGenerationRunner, type TileGenerationRunner } from './tileGenerationRunner'
 
 export interface TileProjectRootProvider {
   getProjectRoot(): Promise<string>
@@ -16,6 +16,7 @@ export interface TileProjectRootProvider {
 
 export interface TileServiceOptions {
   projectRootProvider: TileProjectRootProvider
+  tileGenerationRunner?: TileGenerationRunner
 }
 
 export function resolveLayoutJsonAbsolutePath(
@@ -27,9 +28,11 @@ export function resolveLayoutJsonAbsolutePath(
 
 export class TileService {
   private readonly projectRootProvider: TileProjectRootProvider
+  private readonly tileGenerationRunner: TileGenerationRunner
 
   constructor(options: TileServiceOptions) {
     this.projectRootProvider = options.projectRootProvider
+    this.tileGenerationRunner = options.tileGenerationRunner ?? new WorkerTileGenerationRunner()
   }
 
   async generate(request: TileGenerationRequest): Promise<TileGenerationResult> {
@@ -46,7 +49,7 @@ export class TileService {
     })
 
     if (!prep.fromCache) {
-      await generateLayoutTiles(layoutJsonPath, prep.outDir)
+      await this.tileGenerationRunner.run(layoutJsonPath, prep.outDir)
       await finalizeLayoutTileCacheMeta({
         projectRoot,
         outDir: prep.outDir,

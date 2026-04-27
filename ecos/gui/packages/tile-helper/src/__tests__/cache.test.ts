@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -67,6 +67,36 @@ describe('prepareLayoutTileCache', () => {
     })
 
     await expect(readFile(join(staleDir, 'orphan.txt'), 'utf8')).rejects.toThrow()
+  })
+
+  it('rejects a symlinked cache-parent escape before removing or recreating the target directory', async () => {
+    const fixture = await createProjectFixture()
+    const escapedCacheRoot = await mkdtemp(join(tmpdir(), 'tile-helper-cache-escape-'))
+    tempRoots.push(escapedCacheRoot)
+
+    await mkdir(join(fixture.projectRoot, '.ecos'), { recursive: true })
+    await symlink(escapedCacheRoot, join(fixture.projectRoot, '.ecos', 'tile-cache'))
+
+    const escapedStepDir = join(escapedCacheRoot, 'layout', 'route')
+    const escapedMarkerPath = join(escapedStepDir, 'orphan.txt')
+    await mkdir(escapedStepDir, { recursive: true })
+    await writeFile(escapedMarkerPath, 'outside-root', 'utf8')
+
+    await expect(
+      prepareLayoutTileCache({
+        projectPath: fixture.projectPath,
+        projectRoot: fixture.projectRoot,
+        stepKey: 'route',
+        layoutJsonPath: fixture.layoutJsonPath,
+      }),
+    ).rejects.toThrow(`Refusing tile cache out_dir outside ${join(
+      fixture.projectRoot,
+      '.ecos',
+      'tile-cache',
+      'layout',
+    )}`)
+
+    await expect(readFile(escapedMarkerPath, 'utf8')).resolves.toBe('outside-root')
   })
 
   it('returns fromCache=true only after both manifest.json and tile-cache.meta.json match the current layout hash', async () => {

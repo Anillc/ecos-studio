@@ -3,17 +3,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const {
   finalizeLayoutTileCacheMeta,
-  generateLayoutTiles,
   prepareLayoutTileCache,
 } = vi.hoisted(() => ({
   finalizeLayoutTileCacheMeta: vi.fn(),
-  generateLayoutTiles: vi.fn(),
   prepareLayoutTileCache: vi.fn(),
 }))
 
 vi.mock('@ecos-studio/tile-helper', () => ({
   finalizeLayoutTileCacheMeta,
-  generateLayoutTiles,
   prepareLayoutTileCache,
 }))
 
@@ -63,10 +60,14 @@ describe('resolveLayoutJsonAbsolutePath', () => {
 })
 
 describe('TileService', () => {
+  const tileGenerationRunner = {
+    run: vi.fn(),
+  }
+
   beforeEach(() => {
     prepareLayoutTileCache.mockReset()
-    generateLayoutTiles.mockReset()
     finalizeLayoutTileCacheMeta.mockReset()
+    tileGenerationRunner.run.mockReset()
   })
 
   it('returns cached bundles without regenerating them', async () => {
@@ -80,6 +81,7 @@ describe('TileService', () => {
       projectRootProvider: {
         getProjectRoot: vi.fn().mockResolvedValue('/tmp/project'),
       },
+      tileGenerationRunner,
     })
 
     await expect(
@@ -100,7 +102,7 @@ describe('TileService', () => {
       stepKey: 'route',
       layoutJsonPath: '/tmp/project/steps/layout.json',
     })
-    expect(generateLayoutTiles).not.toHaveBeenCalled()
+    expect(tileGenerationRunner.run).not.toHaveBeenCalled()
     expect(finalizeLayoutTileCacheMeta).not.toHaveBeenCalled()
   })
 
@@ -115,6 +117,7 @@ describe('TileService', () => {
       projectRootProvider: {
         getProjectRoot: vi.fn().mockResolvedValue('/tmp/project'),
       },
+      tileGenerationRunner,
     })
 
     await service.generate({
@@ -123,7 +126,7 @@ describe('TileService', () => {
       stepKey: 'route',
     })
 
-    expect(generateLayoutTiles).toHaveBeenCalledWith(
+    expect(tileGenerationRunner.run).toHaveBeenCalledWith(
       '/tmp/project/steps/layout.json',
       '/tmp/project/.ecos/tile-cache/layout/route',
     )

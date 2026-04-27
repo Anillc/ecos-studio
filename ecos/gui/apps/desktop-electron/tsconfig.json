@@ -9,7 +9,7 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "noEmit": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "electron-vite/node", "vitest/globals"]
   },
   "include": ["electron/**/*.ts", "electron.vite.config.ts"]
 }

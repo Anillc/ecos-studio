@@ -70,7 +70,10 @@ export async function prepareLayoutTileCache(
   }
 
   const contentSha256 = await sha256HexFile(layoutJsonPath)
-  const outDir = getLayoutTileCacheDir(rootPath, options.stepKey)
+  const outDir = await validateTileCacheOutDir(
+    getLayoutTileCacheDir(rootPath, options.stepKey),
+    rootPath,
+  )
   const metaPath = `${outDir}/tile-cache.meta.json`
   const manifestPath = `${outDir}/manifest.json`
 

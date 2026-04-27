@@ -1,5 +1,5 @@
 import { realpath, stat } from 'node:fs/promises'
-import { isAbsolute, join, relative } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 
 export const TILE_CACHE_BASE_SEGMENTS = ['.ecos', 'tile-cache', 'layout'] as const
 
@@ -70,15 +70,64 @@ export async function validateTileCacheOutDir(
   outDir: string,
   rootPath: string,
 ): Promise<string> {
-  const canonicalPath = await validateProjectScopedPath(outDir, rootPath)
-  const basePath = getLayoutTileCacheBase(rootPath)
-  const canonicalBasePath = await realpath(basePath).catch(() => basePath)
+  const canonicalRootPath = await canonicalizeExistingDirectory(rootPath)
+  const basePath = getLayoutTileCacheBase(canonicalRootPath)
+  const candidatePath = resolve(outDir)
 
-  if (!isWithinRoot(canonicalPath, canonicalBasePath)) {
+  if (!isWithinRoot(candidatePath, basePath)) {
     throw new Error(
-      `Refusing tile cache out_dir outside ${canonicalBasePath}: ${canonicalPath}`,
+      `Refusing tile cache out_dir outside ${basePath}: ${candidatePath}`,
     )
   }
 
-  return canonicalPath
+  const writeTargetPath = await resolvePotentialPathWithinRoot(candidatePath, canonicalRootPath)
+
+  if (!isWithinRoot(writeTargetPath, basePath)) {
+    throw new Error(
+      `Refusing tile cache out_dir outside ${basePath}: ${writeTargetPath}`,
+    )
+  }
+
+  return candidatePath
+}
+
+async function resolvePotentialPathWithinRoot(
+  candidatePath: string,
+  rootPath: string,
+): Promise<string> {
+  if (!isWithinRoot(candidatePath, rootPath)) {
+    throw new Error(`Refusing to grant access outside current project root: ${candidatePath}`)
+  }
+
+  const relativePath = relative(rootPath, candidatePath)
+
+  if (!relativePath) {
+    return rootPath
+  }
+
+  const segments = relativePath.split(/[\\/]+/).filter(Boolean)
+  let resolvedPrefix = rootPath
+  let lexicalPrefix = rootPath
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+    lexicalPrefix = join(lexicalPrefix, segment)
+
+    try {
+      resolvedPrefix = await realpath(lexicalPrefix)
+    } catch (error) {
+      if (
+        typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && error.code === 'ENOENT'
+      ) {
+        return join(resolvedPrefix, ...segments.slice(index))
+      }
+
+      throw error
+    }
+  }
+
+  return resolvedPrefix
 }
