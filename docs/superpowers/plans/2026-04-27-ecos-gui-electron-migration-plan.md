@@ -97,6 +97,10 @@
 - Create: `ecos/gui/apps/renderer/tsconfig.node.json`
 - Modify: `ecos/gui/package.json`
 - Modify: `ecos/gui/README.md`
+- Modify: `ecos/BUILD.bazel`
+- Modify: `ecos/gui/default.nix`
+- Modify: `Makefile`
+- Modify: `.github/workflows/ci.yml`
 - Move: `ecos/gui/src/**`, `public/**`, `index.html`, `vite.config.ts`, `tsconfig*.json`
 - Test: `ecos/gui/apps/renderer/src/utils/sanitizeHtml.test.ts`
 
@@ -115,7 +119,7 @@ packages:
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @ecos/desktop-electron dev",
+    "dev": "pnpm --filter @ecos-studio/desktop-electron dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test"
   }
@@ -126,7 +130,7 @@ packages:
 
 ```json
 {
-  "name": "@ecos/gui-renderer",
+  "name": "@ecos-studio/renderer",
   "version": "0.1.0-alpha.3",
   "private": true,
   "type": "module",
@@ -177,13 +181,58 @@ resolve: {
 
 - [ ] **Step 5: Run the renderer tests and build**
 
-Run: `cd ecos/gui && pnpm install && pnpm --filter @ecos/gui-renderer test`
+Run: `cd ecos/gui && pnpm install && pnpm --filter @ecos-studio/renderer test`
 Expected: existing Vitest suite passes from the new location
 
-Run: `cd ecos/gui && pnpm --filter @ecos/gui-renderer build`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/renderer build`
 Expected: Vite build finishes and writes `apps/renderer/dist`
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Update repo entrypoints that still assume the old flat GUI layout**
+
+```python
+# ecos/BUILD.bazel
+glob([
+    "gui/apps/**",
+    "gui/packages/**",
+    "gui/pnpm-workspace.yaml",
+    "gui/package.json",
+    "gui/pnpm-lock.yaml",
+])
+```
+
+```nix
+# ecos/gui/default.nix
+fileset = lib.fileset.unions [
+  ./apps
+  ./packages
+  ./pnpm-workspace.yaml
+  ./package.json
+];
+```
+
+```make
+# Makefile
+cd ecos/gui && pnpm install
+cd ecos/gui && pnpm dev
+```
+
+```yaml
+# .github/workflows/ci.yml
+paths:
+  - ecos/gui/apps/**
+  - ecos/gui/packages/**
+  - ecos/gui/pnpm-workspace.yaml
+```
+
+- [ ] **Step 7: Re-run the root-facing smoke checks**
+
+Run: `bazel query //:ecos_studio_bundle`
+Expected: Bazel still resolves the GUI bundle target
+
+Run: `cd ecos/gui && pnpm install --frozen-lockfile`
+Expected: workspace install succeeds from the same directory developers already use
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add ecos/gui
@@ -268,7 +317,7 @@ export interface DesktopApi {
 
 ```ts
 // ecos/gui/apps/renderer/src/platform/desktop.ts
-import type { DesktopApi } from '@ecos/shared'
+import type { DesktopApi } from '@ecos-studio/shared'
 
 declare global {
   interface Window {
@@ -301,10 +350,10 @@ export function requireDesktopRuntime() {
 
 - [ ] **Step 5: Run one focused test and one typecheck**
 
-Run: `cd ecos/gui && pnpm --filter @ecos/gui-renderer test src/utils/sanitizeHtml.test.ts`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/renderer test src/utils/sanitizeHtml.test.ts`
 Expected: PASS
 
-Run: `cd ecos/gui && pnpm --filter @ecos/gui-renderer build`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/renderer build`
 Expected: PASS with the shared package linked in
 
 - [ ] **Step 6: Commit**
@@ -330,7 +379,7 @@ git commit -m "refactor(gui): add shared desktop contracts"
 
 ```json
 {
-  "name": "@ecos/desktop-electron",
+  "name": "@ecos-studio/desktop-electron",
   "private": true,
   "type": "module",
   "scripts": {
@@ -360,7 +409,7 @@ app.whenReady().then(() => {
 ```ts
 // ecos/gui/apps/desktop-electron/electron/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron'
-import { ipcChannels } from '@ecos/shared'
+import { ipcChannels } from '@ecos-studio/shared'
 
 contextBridge.exposeInMainWorld('ecosDesktop', {
   window: {
@@ -378,7 +427,7 @@ contextBridge.exposeInMainWorld('ecosDesktop', {
 ```ts
 // ecos/gui/apps/desktop-electron/electron/main/registerIpc.test.ts
 import { describe, expect, it } from 'vitest'
-import { ipcChannels } from '@ecos/shared'
+import { ipcChannels } from '@ecos-studio/shared'
 
 describe('ipcChannels', () => {
   it('keeps stable channel names for window controls', () => {
@@ -390,7 +439,7 @@ describe('ipcChannels', () => {
 
 - [ ] **Step 5: Run the Electron package tests and dev boot**
 
-Run: `cd ecos/gui && pnpm --filter @ecos/desktop-electron test`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/desktop-electron test`
 Expected: PASS
 
 Run: `cd ecos/gui && pnpm dev`
@@ -475,7 +524,7 @@ ipcMain.handle(ipcChannels.windowToggleMaximize, () => {
 
 - [ ] **Step 5: Run the renderer tests and manual smoke test**
 
-Run: `cd ecos/gui && pnpm --filter @ecos/gui-renderer test`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/renderer test`
 Expected: PASS
 
 Run: `cd ecos/gui && pnpm dev`
@@ -564,7 +613,7 @@ if (!isDesktopRuntime()) {
 
 - [ ] **Step 5: Run focused tests plus a manual open-project flow**
 
-Run: `cd ecos/gui && pnpm --filter @ecos/gui-renderer test`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/renderer test`
 Expected: PASS
 
 Run: `cd ecos/gui && pnpm dev`
@@ -622,7 +671,7 @@ export function buildTileCacheDir(projectRoot: string, stepKey: string) {
 
 ```ts
 // tileService.ts
-import { generateTiles } from '@ecos/tile-helper'
+import { generateTiles } from '@ecos-studio/tile-helper'
 
 export async function handleGenerateTiles(request: TileGenerationRequest) {
   return generateTiles(request)
@@ -647,10 +696,10 @@ return {
 
 - [ ] **Step 5: Run tile tests and a manual tile generation smoke test**
 
-Run: `cd ecos/gui && pnpm --filter @ecos/tile-helper test`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/tile-helper test`
 Expected: PASS
 
-Run: `cd ecos/gui && pnpm --filter @ecos/gui-renderer test src/composables/useLayoutTileGen.drcPath.test.ts`
+Run: `cd ecos/gui && pnpm --filter @ecos-studio/renderer test src/composables/useLayoutTileGen.drcPath.test.ts`
 Expected: PASS
 
 Run: `cd ecos/gui && pnpm dev`
@@ -693,7 +742,7 @@ git commit -m "refactor(gui): extract tile helper from tauri"
 ```json
 {
   "scripts": {
-    "dev": "pnpm --filter @ecos/desktop-electron dev",
+    "dev": "pnpm --filter @ecos-studio/desktop-electron dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test"
   }
@@ -707,7 +756,7 @@ git commit -m "refactor(gui): extract tile helper from tauri"
 cd "$GUI_DIR"
 pnpm install --frozen-lockfile
 pnpm build
-pnpm --filter @ecos/desktop-electron build
+pnpm --filter @ecos-studio/desktop-electron build
 ```
 
 - [ ] **Step 4: Update docs and Nix wiring**
