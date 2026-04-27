@@ -57,6 +57,7 @@ pnpm --filter @ecos-studio/renderer exec vitest run src/utils/sanitizeHtml.test.
 | `apps/renderer/src/composables/` | Composables (workspace, menus, Tauri wrappers, etc.) |
 | `apps/renderer/src/stores/` | Pinia state |
 | `apps/renderer/src/api/` | HTTP / SSE client wrappers |
+| `packages/` | Shared internal workspace packages (placeholder for phase 1) |
 | `src-tauri/` | Tauri backend (Rust), packaging and window config |
 
 ## Related docs

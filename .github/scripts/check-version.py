@@ -20,6 +20,10 @@ def read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+def read_json(path: str | Path) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
 def parse_regex(
     path: str,
     pattern: str,
@@ -32,6 +36,13 @@ def parse_regex(
     if not match:
         raise SystemExit(f"ERROR: failed to parse {label or path}")
     return match.group(1)
+
+
+def iter_workspace_package_manifests() -> list[Path]:
+    manifests: list[Path] = []
+    for pattern in ("ecos/gui/apps/*/package.json", "ecos/gui/packages/*/package.json"):
+        manifests.extend(sorted(Path().glob(pattern)))
+    return manifests
 
 
 versions: list[tuple[str, str]] = []
@@ -76,8 +87,15 @@ server_uv_lock = parse_regex(
 )
 versions.append(("ecos/server/uv.lock", server_uv_lock))
 
-gui_package = json.loads(read("ecos/gui/package.json"))["version"]
+gui_package = read_json("ecos/gui/package.json")["version"]
 versions.append(("ecos/gui/package.json", gui_package))
+
+for manifest in iter_workspace_package_manifests():
+    package_json = read_json(manifest)
+    version = package_json.get("version")
+    if version is None:
+        continue
+    versions.append((str(manifest), version))
 
 gui_default_nix = parse_regex(
     "ecos/gui/default.nix",
@@ -99,7 +117,7 @@ gui_cargo_lock = parse_regex(
 )
 versions.append(("ecos/gui/src-tauri/Cargo.lock", gui_cargo_lock))
 
-gui_tauri_conf = json.loads(read("ecos/gui/src-tauri/tauri.conf.json"))["version"]
+gui_tauri_conf = read_json("ecos/gui/src-tauri/tauri.conf.json")["version"]
 versions.append(("ecos/gui/src-tauri/tauri.conf.json", gui_tauri_conf))
 
 print("Detected versions:")
