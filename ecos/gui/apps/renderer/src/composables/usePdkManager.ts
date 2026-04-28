@@ -1,6 +1,6 @@
-import { ref } from 'vue'
-import type { DesktopSettingsValue, ScannedPdkDirectory } from '@ecos-studio/shared'
-import { getDesktopApi } from '@/platform/desktop'
+import { ref, toRaw } from 'vue'
+import type { DesktopApi, DesktopSettingsValue, ScannedPdkDirectory } from '@ecos-studio/shared'
+import { hasDesktopApi, waitForDesktopApi } from '@/platform/desktop'
 import { useWorkspace } from './useWorkspace'
 import type { ImportedPdk } from '../types'
 
@@ -14,13 +14,104 @@ function pathHasInvalidChars(path: string): boolean {
 // 全局共享状态
 const importedPdks = ref<ImportedPdk[]>([])
 const isLoaded = ref(false)
+const IMPORTED_PDKS_STORAGE_KEY = 'ecos.imported_pdks'
 
-async function getSetting<T>(key: string): Promise<T | null> {
-  return (await getDesktopApi().settings.get(key)) as T | null
+function toSerializableImportedPdk(pdk: ImportedPdk): ImportedPdk {
+  return {
+    id: pdk.id,
+    name: pdk.name,
+    path: pdk.path,
+    description: pdk.description,
+    techNode: pdk.techNode,
+    pdkId: pdk.pdkId,
+    importedAt: pdk.importedAt,
+    detectedFiles: pdk.detectedFiles
+      ? {
+          directories: [...pdk.detectedFiles.directories],
+          files: [...pdk.detectedFiles.files],
+        }
+      : undefined,
+  }
 }
 
-async function setSetting(key: string, value: unknown): Promise<void> {
-  await getDesktopApi().settings.set(key, value as DesktopSettingsValue)
+function serializeImportedPdks(pdks: ImportedPdk[]): ImportedPdk[] {
+  const serializable = toRaw(pdks).map((pdk) => toSerializableImportedPdk(pdk))
+  return JSON.parse(JSON.stringify(serializable)) as ImportedPdk[]
+}
+
+function buildImportedPdk(detected: ScannedPdkDirectory): ImportedPdk {
+  return {
+    id: Date.now().toString(),
+    name: detected.name,
+    path: detected.canonicalPath,
+    description: detected.description,
+    techNode: detected.techNode,
+    pdkId: detected.pdkId,
+    importedAt: new Date().toISOString(),
+    detectedFiles: detected.detectedFiles,
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return String(error)
+}
+
+function getLocalStorage(): Storage | null {
+  if (typeof globalThis === 'undefined' || !('localStorage' in globalThis)) {
+    return null
+  }
+
+  try {
+    return globalThis.localStorage ?? null
+  } catch {
+    return null
+  }
+}
+
+function loadPdksFromLocalStorage(): ImportedPdk[] | null {
+  const storage = getLocalStorage()
+
+  if (!storage) {
+    return null
+  }
+
+  const raw = storage.getItem(IMPORTED_PDKS_STORAGE_KEY)
+  if (!raw) {
+    return null
+  }
+
+  const parsed = JSON.parse(raw) as unknown
+  if (!Array.isArray(parsed)) {
+    return null
+  }
+
+  return parsed as ImportedPdk[]
+}
+
+function savePdksToLocalStorage(pdks: ImportedPdk[]): void {
+  const storage = getLocalStorage()
+
+  if (!storage) {
+    throw new Error('localStorage is not available.')
+  }
+
+  storage.setItem(IMPORTED_PDKS_STORAGE_KEY, JSON.stringify(pdks))
+}
+
+async function getSetting<T>(desktopApi: DesktopApi, key: string): Promise<T | null> {
+  return (await desktopApi.settings.get(key)) as T | null
+}
+
+async function setSetting(
+  desktopApi: DesktopApi,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  await desktopApi.settings.set(key, value as DesktopSettingsValue)
 }
 
 /**
@@ -36,7 +127,21 @@ export function usePdkManager() {
   const loadPdks = async () => {
     if (isLoaded.value) return // 避免重复加载
     try {
-      const saved = await getSetting<ImportedPdk[]>('imported_pdks')
+      let saved: ImportedPdk[] | null = null
+
+      if (hasDesktopApi()) {
+        try {
+          const desktopApi = await waitForDesktopApi()
+          saved = await getSetting<ImportedPdk[]>(desktopApi, 'imported_pdks')
+        } catch (error) {
+          console.warn('[usePdkManager] Desktop settings unavailable during load, falling back to localStorage:', error)
+        }
+      }
+
+      if (!saved || saved.length === 0) {
+        saved = loadPdksFromLocalStorage()
+      }
+
       if (saved && saved.length > 0) {
         importedPdks.value = saved
       }
@@ -47,11 +152,24 @@ export function usePdkManager() {
   }
 
   /** 将当前 PDK 列表持久化到磁盘 */
-  const savePdks = async () => {
+  const savePdks = async (desktopApi?: DesktopApi) => {
+    const serialized = serializeImportedPdks(importedPdks.value)
+    let desktopError: unknown = null
+
+    if (desktopApi) {
+      try {
+        await setSetting(desktopApi, 'imported_pdks', serialized)
+      } catch (error) {
+        desktopError = error
+        console.warn('[usePdkManager] Desktop settings unavailable during save, falling back to localStorage:', error)
+      }
+    }
+
     try {
-      await setSetting('imported_pdks', importedPdks.value)
-    } catch (error) {
-      console.error('[usePdkManager] Save PDKs error:', error)
+      savePdksToLocalStorage(serialized)
+    } catch (storageError) {
+      console.error('[usePdkManager] Save PDKs fallback error:', storageError)
+      throw desktopError ?? storageError
     }
   }
 
@@ -61,8 +179,11 @@ export function usePdkManager() {
    * 扫描 PDK 目录，尝试自动检测 PDK 类型和基本信息
    * 读取顶层目录结构，根据已知模式识别 PDK
    */
-  const scanPdkDirectory = async (path: string): Promise<ScannedPdkDirectory> => {
-    return await getDesktopApi().workspace.scanPdkDirectory(path)
+  const scanPdkDirectory = async (
+    desktopApi: DesktopApi,
+    path: string,
+  ): Promise<ScannedPdkDirectory> => {
+    return await desktopApi.workspace.scanPdkDirectory(path)
   }
 
   // ============ PDK 操作 ============
@@ -73,7 +194,8 @@ export function usePdkManager() {
    */
   const importPdk = async (): Promise<ImportedPdk | null> => {
     try {
-      const result = await getDesktopApi().dialog.pickDirectory({
+      const desktopApi = await waitForDesktopApi()
+      const result = await desktopApi.dialog.pickDirectory({
         title: 'Select PDK Root Directory'
       })
 
@@ -87,7 +209,19 @@ export function usePdkManager() {
         return null
       }
 
-      const detected = await scanPdkDirectory(path)
+      let detected: ScannedPdkDirectory
+      try {
+        detected = await scanPdkDirectory(desktopApi, path)
+      } catch (error) {
+        console.error('[usePdkManager] Scan PDK error:', error)
+        showToast({
+          severity: 'error',
+          summary: 'Failed to Import PDK',
+          detail: 'The selected PDK directory could not be scanned.',
+        })
+        return null
+      }
+
       const normalizedPath = detected.canonicalPath.replace(/\\/g, '/').replace(/\/$/, '')
       const existing = importedPdks.value.find(
         p => p.path.replace(/\\/g, '/').replace(/\/$/, '') === normalizedPath
@@ -97,19 +231,10 @@ export function usePdkManager() {
         return existing
       }
 
-      const pdk: ImportedPdk = {
-        id: Date.now().toString(),
-        name: detected.name,
-        path: detected.canonicalPath,
-        description: detected.description,
-        techNode: detected.techNode,
-        pdkId: detected.pdkId,
-        importedAt: new Date().toISOString(),
-        detectedFiles: detected.detectedFiles,
-      }
+      const pdk = buildImportedPdk(detected)
 
       importedPdks.value.push(pdk)
-      await savePdks()
+      await savePdks(desktopApi)
 
       return pdk
     } catch (error) {
@@ -117,7 +242,7 @@ export function usePdkManager() {
       showToast({
         severity: 'error',
         summary: 'Failed to Import PDK',
-        detail: 'The selected PDK directory could not be scanned.',
+        detail: `The selected PDK directory was detected, but saving it locally failed. ${getErrorMessage(error)}`,
       })
       return null
     }
@@ -129,31 +254,36 @@ export function usePdkManager() {
    */
   const importPdkByPath = async (path: string): Promise<ImportedPdk | null> => {
     try {
+      const desktopApi = await waitForDesktopApi()
+
       if (pathHasInvalidChars(path)) {
         console.warn('[usePdkManager] 无效的 PDK 路径：路径不能包含中文或空格，请选择仅含英文、数字及常见符号的目录。path:', path)
         return null
       }
 
-      const detected = await scanPdkDirectory(path)
+      let detected: ScannedPdkDirectory
+      try {
+        detected = await scanPdkDirectory(desktopApi, path)
+      } catch (error) {
+        console.error('[usePdkManager] Scan PDK by path error:', error)
+        showToast({
+          severity: 'error',
+          summary: 'Failed to Import PDK',
+          detail: 'The selected PDK directory could not be scanned.',
+        })
+        return null
+      }
+
       const normalizedPath = detected.canonicalPath.replace(/\\/g, '/').replace(/\/$/, '')
       const existing = importedPdks.value.find(
         p => p.path.replace(/\\/g, '/').replace(/\/$/, '') === normalizedPath
       )
       if (existing) return existing
 
-      const pdk: ImportedPdk = {
-        id: Date.now().toString(),
-        name: detected.name,
-        path: detected.canonicalPath,
-        description: detected.description,
-        techNode: detected.techNode,
-        pdkId: detected.pdkId,
-        importedAt: new Date().toISOString(),
-        detectedFiles: detected.detectedFiles,
-      }
+      const pdk = buildImportedPdk(detected)
 
       importedPdks.value.push(pdk)
-      await savePdks()
+      await savePdks(desktopApi)
 
       return pdk
     } catch (error) {
@@ -161,7 +291,7 @@ export function usePdkManager() {
       showToast({
         severity: 'error',
         summary: 'Failed to Import PDK',
-        detail: 'The selected PDK directory could not be scanned.',
+        detail: `The selected PDK directory was detected, but saving it locally failed. ${getErrorMessage(error)}`,
       })
       return null
     }
@@ -169,8 +299,9 @@ export function usePdkManager() {
 
   /** 删除已导入的 PDK */
   const removePdk = async (id: string) => {
+    const desktopApi = hasDesktopApi() ? await waitForDesktopApi() : undefined
     importedPdks.value = importedPdks.value.filter(p => p.id !== id)
-    await savePdks()
+    await savePdks(desktopApi)
   }
 
   /** 根据 ID 查找 PDK */
