@@ -22,7 +22,8 @@ describe('useAppMenuActions', () => {
           Record<
             | typeof appMenuActionIds.documentation
             | typeof appMenuActionIds.newProject
-            | typeof appMenuActionIds.openProject,
+            | typeof appMenuActionIds.openProject
+            | typeof appMenuActionIds.about,
             () => void
           >
         >
@@ -36,11 +37,13 @@ describe('useAppMenuActions', () => {
     const openProject = vi.fn().mockResolvedValue(true)
     const openDocumentation = vi.fn().mockResolvedValue(undefined)
     const navigateToWorkspace = vi.fn()
+    const showAboutDialog = vi.fn()
 
     const { handleMenuAction } = useAppMenuActions({
       navigateToWorkspace,
       openDocumentation,
       openProject,
+      showAboutDialog,
       showNewProjectWizard,
     })
 
@@ -63,6 +66,15 @@ describe('useAppMenuActions', () => {
 
     expect(openDocumentation).toHaveBeenCalledTimes(1)
 
+    registeredHandlers?.[appMenuActionIds.about]?.()
+    await Promise.resolve()
+
+    expect(showAboutDialog).toHaveBeenCalledTimes(1)
+
+    await handleMenuAction(appMenuActionIds.about)
+
+    expect(showAboutDialog).toHaveBeenCalledTimes(2)
+
     await handleMenuAction(appMenuActionIds.openProject)
 
     expect(openProject).toHaveBeenCalledTimes(2)
@@ -77,6 +89,7 @@ describe('useAppMenuActions', () => {
       navigateToWorkspace,
       openDocumentation: vi.fn().mockResolvedValue(undefined),
       openProject: vi.fn().mockResolvedValue(false),
+      showAboutDialog: vi.fn(),
       showNewProjectWizard: vi.fn(),
     })
 

@@ -63,7 +63,11 @@ export function registerApplicationMenu(): void {
     },
     {
       label: 'Help',
-      submenu: [createMenuAction('Documentation', appMenuActionIds.documentation)],
+      submenu: [
+        createMenuAction('Documentation', appMenuActionIds.documentation),
+        { type: 'separator' },
+        createMenuAction('About', appMenuActionIds.about),
+      ],
     },
   )
 

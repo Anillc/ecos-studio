@@ -5,6 +5,7 @@ interface AppMenuActionDependencies {
   navigateToWorkspace(): void
   openDocumentation(): Promise<void>
   openProject(): Promise<boolean | undefined>
+  showAboutDialog(): void
   showNewProjectWizard(): void
 }
 
@@ -12,6 +13,7 @@ export function useAppMenuActions({
   navigateToWorkspace,
   openDocumentation,
   openProject,
+  showAboutDialog,
   showNewProjectWizard,
 }: AppMenuActionDependencies) {
   const handleMenuAction = async (action: AppMenuAction) => {
@@ -27,6 +29,9 @@ export function useAppMenuActions({
       case appMenuActionIds.documentation:
         await openDocumentation()
         break
+      case appMenuActionIds.about:
+        showAboutDialog()
+        break
       default:
         break
     }
@@ -41,6 +46,9 @@ export function useAppMenuActions({
     },
     [appMenuActionIds.openProject]: () => {
       void handleMenuAction(appMenuActionIds.openProject)
+    },
+    [appMenuActionIds.about]: () => {
+      void handleMenuAction(appMenuActionIds.about)
     },
   })
 

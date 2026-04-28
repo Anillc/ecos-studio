@@ -61,13 +61,16 @@ describe('menuService', () => {
     const helpMenu = capturedTemplate.find((item) => item.label === 'Help')
     const newWorkspace = fileMenu?.submenu?.find((item) => item.label === 'New Workspace')
     const documentation = helpMenu?.submenu?.find((item) => item.label === 'Documentation')
+    const about = helpMenu?.submenu?.find((item) => item.label === 'About')
 
     expect(setApplicationMenu).toHaveBeenCalledTimes(1)
     expect(newWorkspace?.accelerator).toBe('CmdOrCtrl+N')
     expect(documentation).toBeDefined()
+    expect(about).toBeDefined()
 
     newWorkspace?.click?.()
     documentation?.click?.()
+    about?.click?.()
 
     expect(send).toHaveBeenNthCalledWith(
       1,
@@ -78,6 +81,11 @@ describe('menuService', () => {
       2,
       desktopApiEventChannels.menuAction,
       desktopMenuEventIds.documentation,
+    )
+    expect(send).toHaveBeenNthCalledWith(
+      3,
+      desktopApiEventChannels.menuAction,
+      desktopMenuEventIds.about,
     )
   })
 

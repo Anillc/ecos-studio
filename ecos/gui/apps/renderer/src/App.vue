@@ -108,6 +108,9 @@ const { handleMenuAction } = useAppMenuActions({
   },
   openDocumentation,
   openProject,
+  showAboutDialog: () => {
+    showAboutDialog.value = true
+  },
   showNewProjectWizard: () => {
     showNewProjectWizard.value = true
   },
