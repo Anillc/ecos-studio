@@ -20,7 +20,6 @@ defineEmits<{
       <button type="button" @click="$emit('back')">Back</button>
       <div>
         <h1>SoC Template Manager</h1>
-        <p>Fixed data source: ysyxSoCASIC.json</p>
       </div>
     </header>
 
@@ -29,6 +28,7 @@ defineEmits<{
       <p>{{ error }}</p>
       <button type="button" @click="$emit('retry')">Retry</button>
     </div>
+    <div v-else-if="items.length === 0">No SoC templates available.</div>
     <article
       v-else
       v-for="item in items"

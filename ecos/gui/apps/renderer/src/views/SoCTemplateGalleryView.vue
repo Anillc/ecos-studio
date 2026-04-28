@@ -31,12 +31,15 @@ onMounted(loadCatalog)
 </script>
 
 <template>
-  <SoCTemplateGallery
-    :items="items"
-    :loading="loading"
-    :error="error"
-    @back="router.push('/')"
-    @open="handleOpen"
-    @retry="loadCatalog"
-  />
+  <section>
+    <p>Fixed data source: ysyxSoCASIC.json</p>
+    <SoCTemplateGallery
+      :items="items"
+      :loading="loading"
+      :error="error"
+      @back="router.push('/')"
+      @open="handleOpen"
+      @retry="loadCatalog"
+    />
+  </section>
 </template>
