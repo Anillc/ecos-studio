@@ -11,14 +11,22 @@ export type SocPreviewRect = {
   orient: string
 }
 
+function toProjectedPercent(value: number, size: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(size) || size <= 0) {
+    return 0
+  }
+
+  return (value / size) * 100
+}
+
 export function buildSocPreviewRects(template: SocTemplateDetail): SocPreviewRect[] {
   return template.cores.map(core => ({
     coreId: core.id,
     label: core.name.split('/').pop() ?? core.name,
-    leftPct: ((core.boundingBox.llx - template.coreArea.llx) / template.coreArea.width) * 100,
-    topPct: ((template.coreArea.ury - core.boundingBox.ury) / template.coreArea.height) * 100,
-    widthPct: (core.boundingBox.width / template.coreArea.width) * 100,
-    heightPct: (core.boundingBox.height / template.coreArea.height) * 100,
+    leftPct: toProjectedPercent(core.boundingBox.llx - template.coreArea.llx, template.coreArea.width),
+    topPct: toProjectedPercent(template.coreArea.ury - core.boundingBox.ury, template.coreArea.height),
+    widthPct: toProjectedPercent(core.boundingBox.width, template.coreArea.width),
+    heightPct: toProjectedPercent(core.boundingBox.height, template.coreArea.height),
     align: core.align,
     orient: core.orient,
   }))

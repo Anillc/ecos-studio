@@ -1,7 +1,7 @@
 import type { SocTemplateCore, SocTemplateDetail } from './socTemplateMapper'
 
 export function getDefaultSocCoreId(template: SocTemplateDetail): number | null {
-  return template.cores[0]?.id ?? null
+  return template.cores.find(core => Number.isFinite(core.id) && core.id >= 0)?.id ?? null
 }
 
 export function getSelectedSocCore(
