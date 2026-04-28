@@ -378,8 +378,12 @@ async function flush(vue: VueRuntime) {
   await vue.nextTick()
 }
 
-function findButton(container: FakeElement, label: string): FakeElement | undefined {
-  return container.querySelectorAll('button').find((button) => button.textContent === label)
+type ButtonQueryContainer = {
+  querySelectorAll(selector: string): ArrayLike<FakeElement>
+}
+
+function findButton(container: ButtonQueryContainer, label: string): FakeElement | undefined {
+  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent === label)
 }
 
 describe('SoCTemplateGalleryView', () => {

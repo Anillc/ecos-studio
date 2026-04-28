@@ -344,8 +344,12 @@ async function mountGallery(props: Record<string, unknown>) {
   }
 }
 
-function findButton(container: FakeElement, label: string): FakeElement | undefined {
-  return container.querySelectorAll('button').find((button) => button.textContent === label)
+type ButtonQueryContainer = {
+  querySelectorAll(selector: string): ArrayLike<FakeElement>
+}
+
+function findButton(container: ButtonQueryContainer, label: string): FakeElement | undefined {
+  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent === label)
 }
 
 describe('SoCTemplateGallery', () => {
