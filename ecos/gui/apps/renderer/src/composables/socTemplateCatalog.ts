@@ -20,7 +20,12 @@ export async function loadSocTemplateDetail(templateId: string, fetchImpl: Fetch
     throw new Error(`Unable to load SoC template data: ${templateId}`)
   }
 
-  return normalizeSocTemplateDetail(await response.json(), 'Fixed JSON')
+  const detail = normalizeSocTemplateDetail(await response.json(), 'Fixed JSON')
+
+  return {
+    ...detail,
+    id: FIXED_SOC_TEMPLATE_ID,
+  }
 }
 
 export async function loadSocTemplateCatalog(fetchImpl: FetchLike = fetch as FetchLike): Promise<SocTemplateSummary[]> {

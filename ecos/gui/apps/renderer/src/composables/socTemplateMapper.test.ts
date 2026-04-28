@@ -34,4 +34,33 @@ describe('socTemplateMapper', () => {
       sourceLabel: 'Fixed JSON',
     })
   })
+
+  it('normalizes rectangle fields into numeric shapes with safe fallbacks', () => {
+    const detail = normalizeSocTemplateDetail(
+      {
+        design_name: 'drifted-template',
+        die: { llx: '1', lly: undefined, urx: '50.5', ury: null, width: '100', height: 'bad', area: '2500' },
+        core: { llx: '10', lly: '20', urx: {}, ury: 40, width: '30', height: undefined },
+        io_pins: { number: '7' },
+        cores: {
+          number: 1,
+          list: [
+            {
+              core_id: '3',
+              name: 'coreA',
+              info: 'ok',
+              io_align: 'left',
+              orient: 'N',
+              bounding_box: { llx: '5', lly: '6', urx: '15', ury: '16', width: '10', height: null, area: '100' },
+            },
+          ],
+        },
+      },
+      'Fixed JSON',
+    )
+
+    expect(detail.die).toEqual({ llx: 1, lly: 0, urx: 50.5, ury: 0, width: 100, height: 0, area: 2500 })
+    expect(detail.coreArea).toEqual({ llx: 10, lly: 20, urx: 0, ury: 40, width: 30, height: 0, area: 0 })
+    expect(detail.cores[0]?.boundingBox).toEqual({ llx: 5, lly: 6, urx: 15, ury: 16, width: 10, height: 0, area: 100 })
+  })
 })
