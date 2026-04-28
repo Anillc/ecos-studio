@@ -33,6 +33,8 @@ describe('router SoC welcome routes', () => {
     const routerDir = dirname(new URL(import.meta.url).pathname)
     const galleryImportPath = '../views/SoCTemplateGalleryView.vue'
     const detailImportPath = '../views/SoCTemplateDetailView.vue'
+    const galleryResolvedPath = '/src/views/SoCTemplateGalleryView.vue'
+    const detailResolvedPath = '/src/views/SoCTemplateDetailView.vue'
 
     expect(routerSource).toContain(
       `{ path: 'soc', name: 'SoCGallery', component: () => import('${galleryImportPath}') }`,
@@ -40,8 +42,8 @@ describe('router SoC welcome routes', () => {
     expect(routerSource).toContain(
       `{ path: 'soc/:templateId', name: 'SoCTemplateDetail', component: () => import('${detailImportPath}'), props: true }`,
     )
-    expect(String(galleryRecord?.components?.default)).toContain(galleryImportPath)
-    expect(String(detailRecord?.components?.default)).toContain(detailImportPath)
+    expect(String(galleryRecord?.components?.default)).toContain(galleryResolvedPath)
+    expect(String(detailRecord?.components?.default)).toContain(detailResolvedPath)
     expect(existsSync(resolve(routerDir, galleryImportPath))).toBe(true)
     expect(existsSync(resolve(routerDir, detailImportPath))).toBe(true)
   })
