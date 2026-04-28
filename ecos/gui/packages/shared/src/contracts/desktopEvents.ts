@@ -11,6 +11,7 @@ export const desktopMenuEventIds = {
   documentation: 'documentation',
   releaseNotes: 'release_notes',
   reportIssue: 'report_issue',
+  about: 'about',
 } as const
 
 export type DesktopMenuEventId =
@@ -18,6 +19,7 @@ export type DesktopMenuEventId =
 
 export const appMenuActionIds = {
   documentation: desktopMenuEventIds.documentation,
+  about: desktopMenuEventIds.about,
   newProject: desktopMenuEventIds.newProject,
   openProject: desktopMenuEventIds.openProject,
 } as const
