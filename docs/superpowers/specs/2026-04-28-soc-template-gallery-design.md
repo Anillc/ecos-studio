@@ -2,12 +2,13 @@
 
 ## Summary
 
-Add a first-pass SoC template flow inside `ecos/gui/apps/renderer/src/views/ECOSView.vue`:
+Add a first-pass SoC template flow starting from `ecos/gui/apps/renderer/src/views/ECOSView.vue`:
 
 1. The Home page `SoC / RetroSoC` card becomes clickable.
-2. Clicking it opens a **SoC Template Manager** gallery view.
-3. Selecting the fixed `ysyxSoCASIC` template opens a **template detail** view.
-4. The detail view renders the SoC structure inside `DrawingArea.vue` and shows template metadata plus selected-core properties.
+2. Clicking it navigates to a dedicated **SoC Template Manager** route.
+3. Selecting the fixed `ysyxSoCASIC` template opens a dedicated **template detail** route.
+4. The detail view uses `DrawingArea.vue` as the host surface, while the actual SoC preview rendering logic is extracted into separate SoC-specific modules and components.
+5. The detail view shows template metadata plus selected-core properties.
 
 The chosen UI direction is **Option 2: Gallery / Product Style** from the temporary preview:
 
@@ -31,34 +32,37 @@ At the same time, the request is explicitly design-first. The first deliverable 
 ## Goals
 
 - Turn the `SoC / RetroSoC` card on the Home page into a working entry.
-- Keep the first implementation fully inside `ECOSView.vue`'s SoC module flow rather than introducing new top-level router pages.
+- Add dedicated routes for the SoC gallery and SoC detail screens.
+- Keep `ECOSView.vue` as the Home entry point, but move SoC gallery/detail UI into dedicated route views.
 - Use `ysyxSoCASIC.json` as the single source for the first template.
 - Present a gallery-style template manager that looks intentional even with one template.
 - Provide a template detail screen with:
-  - a `DrawingArea.vue`-based SoC visualization
+  - a `DrawingArea.vue`-hosted SoC visualization
   - template-level info
   - `io_pins` count
   - selected-core info: `id`, `info`, `align`, `bounding box`
 - Keep the detail page read-only in the first pass.
 - Preserve room for future expansion to multiple templates and module-path import loading.
+- Keep SoC rendering logic out of `DrawingArea.vue` itself.
 
 ## Non-Goals
 
 - Do not implement module-path scanning or dynamic template discovery in the first pass.
-- Do not add a new standalone route such as `/soc` or `/soc/:id` yet.
 - Do not turn the SoC detail view into a full editing workspace.
 - Do not integrate placement, routing, tile generation, or DRC flows into this screen.
 - Do not redesign the rest of `ECOSView` beyond what is needed to support the SoC flow.
+- Do not hardcode SoC drawing behavior directly into `DrawingArea.vue`.
 
 ## Chosen Direction
 
 Use the **Gallery / Product Style** direction:
 
 - The Home `SoC` card becomes an entry point.
-- After clicking, the user sees a gallery-like template manager.
+- After clicking, the router enters a gallery-like template manager page.
 - The manager highlights the available template with a large preview card and compact metadata badges.
-- The detail page uses a top summary ribbon, a central `DrawingArea.vue` visualization, and a right-side inspector.
+- The detail page uses a top summary ribbon, a central `DrawingArea.vue` host area, and a right-side inspector.
 - Core selection is supported both from the drawing canvas and from a compact core selection rail.
+- The SoC preview scene is implemented outside `DrawingArea.vue` and mounted into or alongside it through an extracted component boundary.
 
 This direction was chosen because it balances clarity and polish:
 
@@ -68,15 +72,35 @@ This direction was chosen because it balances clarity and polish:
 
 ## Information Architecture
 
-### View Model
+### Route Model
 
-Keep the flow inside `ECOSView.vue` using local view state:
+Use dedicated welcome-scope routes instead of local `ECOSView.vue` view state:
 
-- `home`
-- `soc-gallery`
-- `soc-detail`
+- `/`
+- `/soc`
+- `/soc/:templateId`
 
-This avoids router churn for the first pass and matches the request to implement the SoC workflow inside the existing component.
+These routes should live under the existing `WelcomeView.vue` route tree so the SoC experience keeps the same top-level shell and TopBar behavior as the rest of the welcome-area pages.
+
+Recommended router additions:
+
+```ts
+{
+  path: '/',
+  component: () => import('../views/WelcomeView.vue'),
+  children: [
+    { path: '', name: 'ECOS', component: () => import('../views/ECOSView.vue') },
+    { path: 'soc', name: 'SoCGallery', component: () => import('../views/SoCTemplateGalleryView.vue'), meta: { title: 'SoC Template Manager' } },
+    { path: 'soc/:templateId', name: 'SoCTemplateDetail', component: () => import('../views/SoCTemplateDetailView.vue'), props: true, meta: { title: 'SoC Template Detail' } },
+  ],
+}
+```
+
+This gives the SoC flow:
+
+- direct deep-linkability
+- cleaner back/forward navigation
+- clearer separation between Home, template list, and template detail
 
 ### Home Level
 
@@ -86,7 +110,7 @@ The existing Home page remains the root surface:
 - `SoC`
 - `Backend Design`
 
-Only the `SoC / RetroSoC` card changes from disabled to active.
+Only the `SoC / RetroSoC` card changes from disabled to active, and its primary action becomes `router.push('/soc')`.
 
 ### SoC Gallery Level
 
@@ -112,13 +136,13 @@ The detail level represents one selected template:
 
 1. User lands on `ECOSView`.
 2. User clicks the `SoC / RetroSoC` card.
-3. The view switches to `soc-gallery`.
+3. The router navigates to `/soc`.
 
 ### Template Selection
 
-1. The gallery loads the fixed `ysyxSoCASIC` summary.
+1. The gallery route loads the fixed `ysyxSoCASIC` summary.
 2. User clicks `Open Details` or the template card primary action.
-3. The view switches to `soc-detail`.
+3. The router navigates to `/soc/ysyxSoCASIC`.
 
 ### Core Inspection
 
@@ -129,8 +153,8 @@ The detail level represents one selected template:
 
 ### Navigation Back
 
-- From `soc-gallery`, user can go back to `home`.
-- From `soc-detail`, user can go back to `soc-gallery`.
+- From `/soc`, user can go back to `/`.
+- From `/soc/:templateId`, user can go back to `/soc`.
 
 ## Data Model
 
@@ -215,6 +239,7 @@ The `SoC / RetroSoC` card in `ECOSView.vue` should:
 - use the same hover language as other active cards
 - keep the existing visual family of the Home screen
 - optionally show a small `Preview` or `Fixed JSON` badge
+- navigate with `router.push('/soc')`
 
 ### Gallery Screen
 
@@ -243,7 +268,7 @@ The chosen detail layout should include:
    - template info
    - optional source badge
 3. Main content split:
-   - left / center: `DrawingArea.vue`
+   - left / center: `DrawingArea.vue` host surface + extracted SoC preview component
    - right: inspector
 4. Secondary core-selection surface:
    - compact bottom chip rail
@@ -254,28 +279,56 @@ The drawing surface should remain the visual priority.
 
 ### Requirement
 
-The detail page must render the SoC JSON data inside `DrawingArea.vue`.
+The detail page must present the SoC preview inside the visual area associated with `DrawingArea.vue`, but the SoC rendering logic itself must not be implemented directly inside `DrawingArea.vue`.
 
 ### Design Direction
 
-`DrawingArea.vue` is currently workspace-oriented, so the first pass should add an optional **SoC preview mode** rather than forcing the SoC detail screen through workspace assumptions.
+`DrawingArea.vue` is currently workspace-oriented, so the SoC preview should be **extracted** rather than fused into its internal logic.
 
 Recommended shape:
 
-- add a prop or dedicated input for SoC template preview data
-- add a read-only preview path that renders:
+- keep `DrawingArea.vue` responsible only for shared container concerns if it is reused:
+  - frame
+  - sizing
+  - shared shell styling
+  - optional generic slot/host behavior
+- if the current `DrawingArea.vue` is too coupled to workspace/editor assumptions, extract those reusable host concerns into a new `DrawingAreaShell.vue` instead of extending `DrawingArea.vue` with SoC-specific behavior
+- create SoC-specific modules outside `DrawingArea.vue`, for example:
+  - `SoCTemplatePreviewCanvas.vue`
+  - `socTemplatePreviewRenderer.ts`
+  - `socTemplatePreviewSelection.ts`
+- let the extracted SoC preview layer render:
   - die boundary
   - core area boundary
   - core rectangles
   - selected-core highlight
-- emit selected-core changes back to `ECOSView.vue`
+- emit selected-core changes from the SoC preview layer to the route view component
 
 In this mode:
 
-- no workspace dependency is required
+- `DrawingArea.vue` does not become responsible for SoC JSON parsing or SoC scene rendering
+- no workspace dependency is required for the SoC preview layer
 - no toolbars are shown
 - no editing interactions are enabled
 - only selection and fit-to-view style read-only behavior is needed
+
+### Preferred Composition Boundary
+
+Preferred structure for the detail route:
+
+```vue
+<SoCTemplateDetailView>
+  <DrawingAreaShell>
+    <SoCTemplatePreviewCanvas
+      :template="template"
+      :selected-core-id="selectedCoreId"
+      @select-core="handleSelectCore"
+    />
+  </DrawingAreaShell>
+</SoCTemplateDetailView>
+```
+
+If a lean shell can be provided directly by `DrawingArea.vue`, it may be reused. If not, `DrawingAreaShell.vue` should be extracted first. The important rule is that SoC rendering behavior lives in `SoCTemplatePreviewCanvas` and its helper modules, not in `DrawingArea.vue`.
 
 ### Selection Behavior
 
@@ -357,21 +410,41 @@ Both sources must update one shared `selectedCoreId`.
 
 The first implementation should prefer small focused units rather than making `ECOSView.vue` absorb all details inline.
 
-Recommended additions:
+Recommended route-facing view components:
+
+- `SoCTemplateGalleryView.vue`
+- `SoCTemplateDetailView.vue`
+
+Recommended supporting pieces:
 
 - `SoCTemplateGallery.vue`
 - `SoCTemplateDetail.vue`
 - `SoCTemplateInspector.vue`
+- `SoCTemplatePreviewCanvas.vue`
 - `socTemplateMapper.ts`
+- `socTemplatePreviewRenderer.ts`
+- `socTemplatePreviewSelection.ts`
 
-`ECOSView.vue` remains the orchestration layer for:
+Responsibilities:
 
-- current SoC view state
-- template loading lifecycle
-- selected template id
-- selected core id
-
-If the first implementation keeps everything inside `ECOSView.vue` for speed, the state shape should still be organized as if these child components could be extracted cleanly afterward.
+- `ECOSView.vue`
+  - Home entry only
+  - navigate to `/soc`
+- `SoCTemplateGalleryView.vue`
+  - load summary data
+  - render gallery page
+  - navigate to `/soc/:templateId`
+- `SoCTemplateDetailView.vue`
+  - read `templateId` from route params
+  - load detail data
+  - own `selectedCoreId`
+  - connect preview canvas and inspector
+- `DrawingArea.vue`
+  - generic drawing host concerns only if reused
+- `DrawingAreaShell.vue`
+  - preferred extracted generic host if current `DrawingArea.vue` is too coupled
+- `SoCTemplatePreviewCanvas.vue`
+  - actual SoC scene rendering and hit testing
 
 ## Error Handling
 
@@ -387,12 +460,14 @@ The UI should fail soft and remain inspectable whenever possible.
 Implementation should verify:
 
 - `ECOSView.vue` no longer renders the SoC card as a disabled placeholder
-- clicking the SoC card enters the gallery state
+- clicking the SoC card navigates to `/soc`
+- router includes `/soc` and `/soc/:templateId`
 - fixed JSON data is mapped into summary and detail view models
-- selecting the template enters the detail state
+- selecting the template navigates to `/soc/:templateId`
 - selected-core state updates from canvas and rail interactions
 - inspector shows `id`, `info`, `align`, and `bounding box`
 - missing `info` falls back to the expected placeholder
+- `DrawingArea.vue` does not own SoC-specific JSON parsing/rendering logic
 - existing `ECOSView` actions like `Backend Design` and `Project Management` still behave normally
 
 ## Rollout Notes
