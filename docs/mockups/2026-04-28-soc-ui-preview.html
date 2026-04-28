@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ECOS Studio - SoC UI Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --bg: #07131a;
+      --bg-soft: #0e1f28;
+      --panel: rgba(10, 27, 37, 0.9);
+      --panel-strong: #0b2430;
+      --panel-muted: rgba(15, 37, 49, 0.72);
+      --border: rgba(110, 167, 184, 0.22);
+      --border-strong: rgba(110, 167, 184, 0.42);
+      --text: #eff8fb;
+      --text-muted: #9ab2bc;
+      --accent: #00bfa5;
+      --accent-strong: #14d9c0;
+      --accent-soft: rgba(0, 191, 165, 0.14);
+      --amber: #f7b955;
+      --chip-core: #7ee7dc;
+      --chip-selected: #f7b955;
+      --danger: #ff7f7f;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.25);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(0, 191, 165, 0.14), transparent 30%),
+        radial-gradient(circle at top right, rgba(72, 131, 255, 0.14), transparent 28%),
+        linear-gradient(180deg, #091720 0%, #050d12 100%);
+      color: var(--text);
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), transparent);
+      pointer-events: none;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      width: min(1560px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 36px 0 56px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.8fr);
+      gap: 24px;
+      align-items: stretch;
+      margin-bottom: 22px;
+    }
+
+    .hero-card,
+    .hero-side {
+      background: linear-gradient(180deg, rgba(11, 36, 48, 0.96), rgba(8, 24, 31, 0.96));
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-card::after,
+    .hero-side::after,
+    .candidate::after,
+    .screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .hero-card {
+      padding: 32px 34px;
+    }
+
+    .hero-side {
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 14px rgba(0, 191, 165, 0.8);
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    p {
+      margin: 0;
+    }
+
+    .hero h1 {
+      font-size: clamp(34px, 4vw, 52px);
+      line-height: 1.02;
+      margin-top: 20px;
+      margin-bottom: 14px;
+      max-width: 12ch;
+    }
+
+    .hero-copy {
+      max-width: 74ch;
+    }
+
+    .hero-copy p {
+      color: var(--text-muted);
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .mono {
+      font-family: "IBM Plex Mono", monospace;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--panel-muted);
+    }
+
+    .metric-label {
+      display: block;
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .metric-sub {
+      margin-top: 8px;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .selector-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      margin-bottom: 22px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: rgba(7, 22, 29, 0.72);
+      backdrop-filter: blur(14px);
+    }
+
+    .selectors {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .selector-button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 10px 16px;
+      font: inherit;
+      cursor: pointer;
+      transition: 180ms ease;
+    }
+
+    .selector-button:hover,
+    .selector-button:focus-visible {
+      color: var(--text);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .selector-button.is-active {
+      color: #032820;
+      background: linear-gradient(135deg, var(--accent-strong), #7af0df);
+      border-color: transparent;
+      box-shadow: 0 10px 24px rgba(0, 191, 165, 0.24);
+    }
+
+    .selector-note {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .candidate-stack {
+      display: grid;
+      gap: 28px;
+    }
+
+    .candidate {
+      position: relative;
+      padding: 26px;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(10, 27, 37, 0.96), rgba(6, 18, 24, 0.96));
+      box-shadow: var(--shadow);
+      scroll-margin-top: 24px;
+    }
+
+    .candidate-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+
+    .candidate-head p {
+      color: var(--text-muted);
+      line-height: 1.65;
+      margin-top: 8px;
+      max-width: 78ch;
+    }
+
+    .candidate-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--amber);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .candidate-kicker::before {
+      content: "";
+      width: 26px;
+      height: 1px;
+      background: currentColor;
+    }
+
+    .candidate-b .candidate-kicker {
+      color: #7cd4ff;
+    }
+
+    .candidate-c .candidate-kicker {
+      color: #b2ef94;
+    }
+
+    .recommendation {
+      width: min(360px, 100%);
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .screen-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .screen {
+      position: relative;
+      min-height: 660px;
+      border-radius: 24px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%),
+        linear-gradient(180deg, rgba(8, 22, 29, 0.98), rgba(7, 16, 21, 0.98));
+      border: 1px solid var(--border);
+    }
+
+    .screen-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid rgba(110, 167, 184, 0.15);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .screen-topbar strong {
+      font-size: 14px;
+    }
+
+    .screen-topbar span {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .screen-body {
+      padding: 18px;
+      height: calc(100% - 61px);
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 18px;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .panel-title h4 {
+      font-size: 15px;
+    }
+
+    .panel-title span {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .subtle {
+      color: var(--text-muted);
+    }
+
+    .template-card-large {
+      display: grid;
+      grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+      gap: 16px;
+      align-items: stretch;
+      min-height: 260px;
+    }
+
+    .template-preview-box {
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      border-radius: 16px;
+      background:
+        linear-gradient(180deg, rgba(0, 191, 165, 0.06), transparent),
+        rgba(3, 15, 21, 0.82);
+      border: 1px solid rgba(0, 191, 165, 0.2);
+    }
+
+    .template-summary {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .template-summary h3 {
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+
+    .template-summary p {
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .badge-row,
+    .summary-row,
+    .core-chip-row,
+    .future-grid,
+    .summary-strip,
+    .metric-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+    }
+
+    .badge strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: 180ms ease;
+    }
+
+    .cta.primary {
+      color: #05231d;
+      background: linear-gradient(135deg, var(--accent), #72efe0);
+      box-shadow: 0 12px 28px rgba(0, 191, 165, 0.22);
+    }
+
+    .cta.ghost {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--border);
+    }
+
+    .cta:hover,
+    .cta:focus-visible {
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .support-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .support-card {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      min-height: 110px;
+    }
+
+    .support-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .support-card span {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .detail-workbench {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.76fr);
+      gap: 16px;
+      min-height: 570px;
+    }
+
+    .detail-gallery {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      min-height: 570px;
+    }
+
+    .detail-gallery-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.28fr) minmax(290px, 0.72fr);
+      gap: 16px;
+    }
+
+    .detail-dense {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.52fr) minmax(0, 1.08fr) minmax(280px, 0.66fr);
+      gap: 16px;
+      min-height: 570px;
+    }
+
+    .canvas-panel {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .summary-strip,
+    .metric-strip {
+      margin-bottom: 12px;
+    }
+
+    .summary-pill {
+      flex: 1 1 150px;
+      padding: 13px 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .summary-pill span,
+    .mini-label {
+      color: var(--text-muted);
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 7px;
+    }
+
+    .summary-pill strong {
+      display: block;
+      font-size: 19px;
+    }
+
+    .info-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .info-card p {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .properties {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .property-group {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.025);
+      overflow: hidden;
+    }
+
+    .property-group h4 {
+      padding: 14px 16px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      border-bottom: 1px solid rgba(110, 167, 184, 0.14);
+    }
+
+    .property-list {
+      padding: 8px 0;
+    }
+
+    .property-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 7px 16px;
+      font-size: 13px;
+    }
+
+    .property-row .label {
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .property-row .value {
+      text-align: right;
+      font-family: "IBM Plex Mono", monospace;
+      word-break: break-word;
+    }
+
+    .core-chip-row {
+      margin-top: 4px;
+    }
+
+    .core-chip {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 8px 11px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: 160ms ease;
+    }
+
+    .core-chip:hover,
+    .core-chip:focus-visible {
+      border-color: var(--border-strong);
+      color: var(--text);
+      outline: none;
+    }
+
+    .core-chip.is-active {
+      background: rgba(247, 185, 85, 0.16);
+      color: #ffe7bb;
+      border-color: rgba(247, 185, 85, 0.35);
+    }
+
+    .core-list {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      max-height: 100%;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .core-list-item {
+      appearance: none;
+      width: 100%;
+      text-align: left;
+      padding: 13px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      transition: 160ms ease;
+    }
+
+    .core-list-item strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
+    .core-list-item span {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .core-list-item:hover,
+    .core-list-item:focus-visible {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .core-list-item.is-active {
+      background: rgba(0, 191, 165, 0.12);
+      border-color: rgba(0, 191, 165, 0.3);
+    }
+
+    .table {
+      display: grid;
+      gap: 8px;
+    }
+
+    .table-header,
+    .table-row {
+      display: grid;
+      grid-template-columns: 1.8fr 0.85fr 0.85fr 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 14px;
+    }
+
+    .table-header {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(110, 167, 184, 0.12);
+    }
+
+    .table-row {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+    }
+
+    .table-row strong {
+      font-size: 14px;
+    }
+
+    .table-row span {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .future-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .future-card {
+      min-height: 160px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px dashed rgba(110, 167, 184, 0.3);
+      background: rgba(255, 255, 255, 0.015);
+      color: var(--text-muted);
+    }
+
+    .future-card strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .chip-stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 220px;
+      border-radius: 16px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%),
+        linear-gradient(180deg, rgba(3, 12, 16, 0.92), rgba(7, 20, 26, 0.92));
+      border: 1px solid rgba(110, 167, 184, 0.16);
+      overflow: hidden;
+    }
+
+    .chip-stage.compact {
+      min-height: 220px;
+      aspect-ratio: 1 / 1;
+    }
+
+    .chip-stage.full {
+      min-height: 420px;
+    }
+
+    .chip-die,
+    .chip-core-area,
+    .chip-core,
+    .chip-label {
+      position: absolute;
+    }
+
+    .chip-die {
+      inset: 7%;
+      border-radius: 18px;
+      border: 1px solid rgba(110, 167, 184, 0.22);
+      background: rgba(255, 255, 255, 0.015);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.015);
+    }
+
+    .chip-core-area {
+      border-radius: 16px;
+      border: 1px solid rgba(0, 191, 165, 0.42);
+      background:
+        linear-gradient(180deg, rgba(0, 191, 165, 0.08), transparent 42%),
+        rgba(0, 191, 165, 0.04);
+      box-shadow:
+        0 0 0 1px rgba(0, 191, 165, 0.12),
+        inset 0 0 42px rgba(0, 191, 165, 0.07);
+    }
+
+    .chip-core {
+      border-radius: 8px;
+      background: rgba(126, 231, 220, 0.18);
+      border: 1px solid rgba(126, 231, 220, 0.35);
+      transition: 160ms ease;
+      cursor: pointer;
+    }
+
+    .chip-core::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    .chip-core:hover,
+    .chip-core:focus-visible {
+      transform: scale(1.02);
+      border-color: rgba(126, 231, 220, 0.65);
+      outline: none;
+    }
+
+    .chip-core.selected {
+      background: rgba(247, 185, 85, 0.22);
+      border-color: rgba(247, 185, 85, 0.66);
+      box-shadow: 0 0 0 1px rgba(247, 185, 85, 0.18), 0 0 22px rgba(247, 185, 85, 0.12);
+    }
+
+    .chip-core-label {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      font-family: "IBM Plex Mono", monospace;
+      color: rgba(239, 248, 251, 0.86);
+      pointer-events: none;
+    }
+
+    .chip-label {
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: rgba(6, 18, 24, 0.92);
+      border: 1px solid rgba(110, 167, 184, 0.18);
+      color: var(--text-muted);
+      font-family: "IBM Plex Mono", monospace;
+      letter-spacing: 0.02em;
+    }
+
+    .chip-label.die-label {
+      top: 10px;
+      left: 10px;
+    }
+
+    .chip-label.core-label {
+      right: 10px;
+      bottom: 10px;
+    }
+
+    .footer-note {
+      margin-top: 24px;
+      padding: 18px 20px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    .footer-note strong {
+      color: var(--text);
+    }
+
+    @media (max-width: 1280px) {
+      .hero,
+      .screen-grid,
+      .detail-workbench,
+      .detail-gallery-main,
+      .detail-dense {
+        grid-template-columns: 1fr;
+      }
+
+      .candidate-head {
+        align-items: start;
+        flex-direction: column;
+      }
+
+      .recommendation {
+        width: 100%;
+      }
+
+      .screen {
+        min-height: 580px;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .page {
+        width: min(100vw - 24px, 1560px);
+        padding-top: 18px;
+      }
+
+      .hero-grid,
+      .support-grid,
+      .template-card-large,
+      .future-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-card,
+      .hero-side,
+      .candidate {
+        padding-inline: 18px;
+      }
+
+      .screen-body {
+        padding: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <section class="hero-card">
+        <span class="eyebrow">ECOS Studio / Temporary HTML Preview</span>
+        <div class="hero-copy">
+          <h1>SoC Template Manager + Template Detail</h1>
+          <p>
+            这份临时 HTML 只用于给你看 UI 方向，不改正式逻辑。数据先固定为
+            <span class="mono">public/ysyxSoCASIC.json</span>，并且在详情页里用真实的 core
+            边界框做一版简化 SoC 画布示意，方便你判断列表页和详情页的布局关系。
+          </p>
+        </div>
+        <div class="hero-tags">
+          <span class="pill">入口: Home / SoC / RetroSoC</span>
+          <span class="pill">固定模板: <span class="mono">ysyxSoCASIC</span></span>
+          <span class="pill">可交互: 点击 core 观察属性面板变化</span>
+        </div>
+      </section>
+
+      <aside class="hero-side">
+        <div class="hero-grid">
+          <article class="metric">
+            <span class="metric-label">Template</span>
+            <div class="metric-value mono">ysyxSoCASIC</div>
+            <div class="metric-sub">当前预览只使用这个固定 JSON，不再依赖模块路径导入。</div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">I/O Pins</span>
+            <div class="metric-value">58</div>
+            <div class="metric-sub">详情页需要显式展示数量，并和模板摘要放在同一信息层级。</div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Cores</span>
+            <div class="metric-value">16</div>
+            <div class="metric-sub">点击任意 core 后，右侧面板显示 id、info、align、bounding box。</div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Template Info</span>
+            <div class="metric-value">Pending</div>
+            <div class="metric-sub">JSON 顶层暂时没有真实 info 字段，预览稿里会显示占位说明。</div>
+          </article>
+        </div>
+      </aside>
+    </header>
+
+    <section class="selector-bar">
+      <div class="selectors">
+        <button class="selector-button is-active" data-target="candidate-a">方案 1 / Workbench</button>
+        <button class="selector-button" data-target="candidate-b">方案 2 / Gallery</button>
+        <button class="selector-button" data-target="candidate-c">方案 3 / Dense</button>
+      </div>
+      <div class="selector-note">3 套方案共用同一组 core 选择状态，方便横向比较属性区的体验。</div>
+    </section>
+
+    <main class="candidate-stack">
+      <section class="candidate candidate-a" id="candidate-a">
+        <div class="candidate-head">
+          <div>
+            <div class="candidate-kicker">Recommended / Best Fit</div>
+            <h2>方案 1: Workbench 分栏式</h2>
+            <p>
+              主画布优先，右侧属性面板次之，最适合后面直接接入
+              <span class="mono">DrawingArea.vue</span>。从首页 SoC 卡片进入模板列表，再进入详情页时，用户的认知路径最短。
+            </p>
+          </div>
+          <div class="recommendation">
+            推荐原因: 和现有 ECOS 桌面工具风格最接近，信息层级清晰，后续如果需要扩展多模板，也只需要把列表页横向扩一下，不会推翻详情页结构。
+          </div>
+        </div>
+
+        <div class="screen-grid">
+          <article class="screen">
+            <div class="screen-topbar">
+              <strong>Template List</strong>
+              <span>ECOS Home / SoC / RetroSoC</span>
+            </div>
+            <div class="screen-body">
+              <section class="panel template-card-large">
+                <div class="template-preview-box">
+                  <div class="chip-stage compact" data-chip-map="workbench-list"></div>
+                </div>
+                <div class="template-summary">
+                  <div>
+                    <div class="badge-row">
+                      <span class="badge"><strong>Fixed Source</strong> ysyxSoCASIC.json</span>
+                      <span class="badge"><strong>Status</strong> Preview Ready</span>
+                    </div>
+                    <h3>ysyxSoCASIC</h3>
+                    <p>
+                      单模板入口先做得直接一些。点击卡片主按钮后进入 “SoC 模板管理列表”，
+                      这里暂时只展示固定数据源，后面再替换成模块路径扫描。
+                    </p>
+                  </div>
+                  <div class="summary-row">
+                    <span class="badge"><strong>IO Pins</strong> 58</span>
+                    <span class="badge"><strong>Cores</strong> 16</span>
+                    <span class="badge"><strong>Core Area</strong> 1.68M x 1.68M</span>
+                  </div>
+                  <div class="summary-row">
+                    <a class="cta primary" href="#candidate-a-detail">Enter Template</a>
+                    <a class="cta ghost" href="#candidate-b">Compare Other Layouts</a>
+                  </div>
+                </div>
+              </section>
+
+              <section class="support-grid">
+                <article class="support-card">
+                  <strong>Template Summary</strong>
+                  <span>右侧摘要保留关键指标，减少列表页里长表格的压迫感。</span>
+                </article>
+                <article class="support-card">
+                  <strong>Source Strategy</strong>
+                  <span>当前顶部直接标明 Fixed JSON，避免用户误以为已经接入动态导入。</span>
+                </article>
+                <article class="support-card">
+                  <strong>Expand Later</strong>
+                  <span>以后如果模板变多，可以继续沿用同一张大卡 + 下方二级列表的方式。</span>
+                </article>
+              </section>
+            </div>
+          </article>
+
+          <article class="screen" id="candidate-a-detail">
+            <div class="screen-topbar">
+              <strong>Template Detail</strong>
+              <span>Back to Templates</span>
+            </div>
+            <div class="screen-body detail-workbench">
+              <section class="canvas-panel">
+                <div class="summary-strip">
+                  <div class="summary-pill">
+                    <span>Template</span>
+                    <strong class="mono">ysyxSoCASIC</strong>
+                  </div>
+                  <div class="summary-pill">
+                    <span>I/O Pins</span>
+                    <strong>58</strong>
+                  </div>
+                  <div class="summary-pill">
+                    <span>Template Info</span>
+                    <strong>No info provided</strong>
+                  </div>
+                </div>
+                <div class="panel">
+                  <div class="panel-title">
+                    <h4>DrawingArea Preview</h4>
+                    <span>真实 core 布局示意</span>
+                  </div>
+                  <div class="chip-stage full" data-chip-map="workbench-detail"></div>
+                </div>
+              </section>
+
+              <aside class="properties">
+                <section class="info-card">
+                  <span class="mini-label">Selected Core</span>
+                  <h3 class="mono" data-core-name>core5</h3>
+                  <p>这里模拟未来在详情页中的属性面板。点击中央 SoC 里的任意 core，字段会同步刷新。</p>
+                </section>
+
+                <section class="property-group">
+                  <h4>Core Inspector</h4>
+                  <div class="property-list" data-core-inspector="compact"></div>
+                </section>
+
+                <section class="property-group">
+                  <h4>Quick Pick</h4>
+                  <div class="property-list">
+                    <div class="core-chip-row" data-core-chip-row="compact"></div>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="candidate candidate-b" id="candidate-b">
+        <div class="candidate-head">
+          <div>
+            <div class="candidate-kicker">Gallery / Product Style</div>
+            <h2>方案 2: Gallery 展示式</h2>
+            <p>
+              更强调 “模板库” 的产品感，首页点击 SoC 后进入的是一个带大预览卡的模板画廊。
+              适合你后面逐步增加更多 SoC 模板，并把每个模板做得更像一个独立资产。
+            </p>
+          </div>
+          <div class="recommendation">
+            这版的优点是第一眼好看、适合展示；缺点是当前只有一个模板时，信息利用率不如方案 1 高。
+          </div>
+        </div>
+
+        <div class="screen-grid">
+          <article class="screen">
+            <div class="screen-topbar">
+              <strong>Template Gallery</strong>
+              <span>ECOS Home / SoC / Template Manager</span>
+            </div>
+            <div class="screen-body">
+              <section class="panel">
+                <div class="panel-title">
+                  <h4>Featured Template</h4>
+                  <span>Current fixed data source</span>
+                </div>
+                <div class="template-card-large">
+                  <div class="template-preview-box">
+                    <div class="chip-stage compact" data-chip-map="gallery-list"></div>
+                  </div>
+                  <div class="template-summary">
+                    <div class="badge-row">
+                      <span class="badge"><strong>ASIC</strong> RetroSoC</span>
+                      <span class="badge"><strong>Source</strong> Fixed JSON</span>
+                    </div>
+                    <h3>ysyxSoCASIC</h3>
+                    <p>
+                      当前模板被突出成画廊主卡。后续如果导入源恢复为模块路径，主卡区仍然可以保留，只需要把其它模板继续平铺在下方。
+                    </p>
+                    <div class="metric-strip">
+                      <span class="badge"><strong>16</strong> cores</span>
+                      <span class="badge"><strong>58</strong> io pins</span>
+                      <span class="badge"><strong>Info</strong> pending</span>
+                    </div>
+                    <div class="summary-row">
+                      <a class="cta primary" href="#candidate-b-detail">Open Details</a>
+                      <a class="cta ghost" href="#candidate-c">See Dense View</a>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="future-grid">
+                <article class="future-card">
+                  <strong>Future Template Slot</strong>
+                  <span>给后续模块路径扫描留下视觉位置，例如 RISCV SoC / MCU SoC / Chiplet 方案。</span>
+                </article>
+                <article class="future-card">
+                  <strong>Import Panel Placeholder</strong>
+                  <span>未来这里可以放 “Import by module path” 或 “Rescan source root”。</span>
+                </article>
+              </section>
+            </div>
+          </article>
+
+          <article class="screen" id="candidate-b-detail">
+            <div class="screen-topbar">
+              <strong>Template Detail</strong>
+              <span>Gallery Mode / Summary Ribbon</span>
+            </div>
+            <div class="screen-body detail-gallery">
+              <section class="summary-strip">
+                <div class="summary-pill">
+                  <span>Template</span>
+                  <strong class="mono">ysyxSoCASIC</strong>
+                </div>
+                <div class="summary-pill">
+                  <span>I/O Pins</span>
+                  <strong>58</strong>
+                </div>
+                <div class="summary-pill">
+                  <span>Selected</span>
+                  <strong data-core-name>core5</strong>
+                </div>
+                <div class="summary-pill">
+                  <span>Template Info</span>
+                  <strong>No info provided</strong>
+                </div>
+              </section>
+
+              <div class="detail-gallery-main">
+                <section class="panel canvas-panel">
+                  <div class="panel-title">
+                    <h4>DrawingArea Focus</h4>
+                    <span>中央画布最大化</span>
+                  </div>
+                  <div class="chip-stage full" data-chip-map="gallery-detail"></div>
+                </section>
+
+                <aside class="properties">
+                  <section class="property-group">
+                    <h4>Template Snapshot</h4>
+                    <div class="property-list">
+                      <div class="property-row"><span class="label">Design</span><span class="value mono">ysyxSoCASIC</span></div>
+                      <div class="property-row"><span class="label">Info</span><span class="value">No info provided</span></div>
+                      <div class="property-row"><span class="label">I/O Pins</span><span class="value">58</span></div>
+                      <div class="property-row"><span class="label">Core Count</span><span class="value">16</span></div>
+                    </div>
+                  </section>
+
+                  <section class="property-group">
+                    <h4>Selected Core</h4>
+                    <div class="property-list" data-core-inspector="gallery"></div>
+                  </section>
+                </aside>
+              </div>
+
+              <section class="panel">
+                <div class="panel-title">
+                  <h4>Core Selection Rail</h4>
+                  <span>更偏产品感的底部切换条</span>
+                </div>
+                <div class="core-chip-row" data-core-chip-row="gallery"></div>
+              </section>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="candidate candidate-c" id="candidate-c">
+        <div class="candidate-head">
+          <div>
+            <div class="candidate-kicker">Engineering / Dense Tool</div>
+            <h2>方案 3: Data-Dense 工程师视图</h2>
+            <p>
+              更像 EDA 或管理台，信息密度最高。适合你后面真的把模板、core、元数据、导入状态都做成工程化工具链的一部分。
+            </p>
+          </div>
+          <div class="recommendation">
+            如果你更偏专业工具气质，这版会很顺手；但如果近期的首要目标是让首页入口先跑通，方案 1 会更柔和。
+          </div>
+        </div>
+
+        <div class="screen-grid">
+          <article class="screen">
+            <div class="screen-topbar">
+              <strong>Template Registry</strong>
+              <span>ECOS Home / SoC / Table View</span>
+            </div>
+            <div class="screen-body">
+              <section class="panel">
+                <div class="panel-title">
+                  <h4>Template Registry Table</h4>
+                  <span>更专业、可扩展</span>
+                </div>
+                <div class="table">
+                  <div class="table-header">
+                    <span>Name</span>
+                    <span>IO Pins</span>
+                    <span>Cores</span>
+                    <span>Source</span>
+                  </div>
+                  <div class="table-row">
+                    <strong class="mono">ysyxSoCASIC</strong>
+                    <span>58</span>
+                    <span>16</span>
+                    <span>fixed json</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-title">
+                  <h4>Row Preview</h4>
+                  <span>选中后右侧展开</span>
+                </div>
+                <div class="template-card-large">
+                  <div class="template-preview-box">
+                    <div class="chip-stage compact" data-chip-map="dense-list"></div>
+                  </div>
+                  <div class="template-summary">
+                    <h3>ysyxSoCASIC</h3>
+                    <p>表格适合今后模板数量增加后的管理动作，比如导入状态、更新时间、来源路径、标签筛选等。</p>
+                    <div class="summary-row">
+                      <a class="cta primary" href="#candidate-c-detail">Inspect Template</a>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <article class="screen" id="candidate-c-detail">
+            <div class="screen-topbar">
+              <strong>Template Detail</strong>
+              <span>Dense Tool / Core-first</span>
+            </div>
+            <div class="screen-body detail-dense">
+              <section class="panel">
+                <div class="panel-title">
+                  <h4>Core List</h4>
+                  <span>按 core 直接选择</span>
+                </div>
+                <div class="core-list" data-core-list></div>
+              </section>
+
+              <section class="panel canvas-panel">
+                <div class="panel-title">
+                  <h4>DrawingArea</h4>
+                  <span>核心画布仍然保留在中间</span>
+                </div>
+                <div class="chip-stage full" data-chip-map="dense-detail"></div>
+              </section>
+
+              <aside class="properties">
+                <section class="property-group">
+                  <h4>Template Overview</h4>
+                  <div class="property-list">
+                    <div class="property-row"><span class="label">Design</span><span class="value mono">ysyxSoCASIC</span></div>
+                    <div class="property-row"><span class="label">Info</span><span class="value">No info provided</span></div>
+                    <div class="property-row"><span class="label">I/O Pins</span><span class="value">58</span></div>
+                    <div class="property-row"><span class="label">Core Area</span><span class="value mono">1680000 x 1680000</span></div>
+                  </div>
+                </section>
+
+                <section class="property-group">
+                  <h4>Core Inspector</h4>
+                  <div class="property-list" data-core-inspector="dense"></div>
+                </section>
+              </aside>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <section class="footer-note">
+      <strong>说明:</strong>
+      这份预览文件只用于选 UI 方向，所以中央画布是用真实 JSON 位置渲染出来的简化示意，不是正式的
+      <span class="mono">DrawingArea.vue</span>。你选定方案后，我会再把它真正落到
+      <span class="mono">ECOSView.vue</span> 里的 SoC 模块，并接上下一层页面结构。
+    </section>
+  </div>
+
+  <script>
+    const socData = {
+      designName: "ysyxSoCASIC",
+      info: "No info provided",
+      ioPins: 58,
+      coreBox: {
+        llx: 160000,
+        lly: 160000,
+        urx: 1840000,
+        ury: 1840000,
+        width: 1680000,
+        height: 1680000,
+      },
+      cores: [
+        { core_id: 0, name: "u_GEN/u_GEN_1/core0", io_align: "right", orient: "N", bounding_box: { llx: 260000, lly: 1540000, urx: 460000, ury: 1740000, width: 200000, height: 200000 } },
+        { core_id: 1, name: "u_GEN/u_GEN_1/core15", io_align: "right", orient: "N", bounding_box: { llx: 260000, lly: 1240000, urx: 460000, ury: 1440000, width: 200000, height: 200000 } },
+        { core_id: 2, name: "u_GEN/u_GEN_1/core14", io_align: "right", orient: "N", bounding_box: { llx: 260000, lly: 940000, urx: 460000, ury: 1140000, width: 200000, height: 200000 } },
+        { core_id: 3, name: "u_GEN/u_GEN_1/core13", io_align: "right", orient: "N", bounding_box: { llx: 260000, lly: 640000, urx: 460000, ury: 840000, width: 200000, height: 200000 } },
+        { core_id: 4, name: "u_GEN/u_GEN_1/core12", io_align: "right", orient: "N", bounding_box: { llx: 260000, lly: 340000, urx: 460000, ury: 540000, width: 200000, height: 200000 } },
+        { core_id: 5, name: "u_GEN/u_GEN_1/core1", io_align: "right", orient: "N", bounding_box: { llx: 560000, lly: 1540000, urx: 760000, ury: 1740000, width: 200000, height: 200000 } },
+        { core_id: 6, name: "u_GEN/u_GEN_1/core11", io_align: "right", orient: "N", bounding_box: { llx: 560000, lly: 340000, urx: 760000, ury: 540000, width: 200000, height: 200000 } },
+        { core_id: 7, name: "u_GEN/u_GEN_1/core2", io_align: "right", orient: "N", bounding_box: { llx: 860000, lly: 1540000, urx: 1060000, ury: 1740000, width: 200000, height: 200000 } },
+        { core_id: 8, name: "u_GEN/u_GEN_1/core10", io_align: "right", orient: "N", bounding_box: { llx: 860000, lly: 340000, urx: 1060000, ury: 540000, width: 200000, height: 200000 } },
+        { core_id: 9, name: "u_GEN/u_GEN_1/core3", io_align: "left", orient: "FN", bounding_box: { llx: 1160000, lly: 1540000, urx: 1360000, ury: 1740000, width: 200000, height: 200000 } },
+        { core_id: 10, name: "u_GEN/u_GEN_1/core9", io_align: "left", orient: "FN", bounding_box: { llx: 1160000, lly: 340000, urx: 1360000, ury: 540000, width: 200000, height: 200000 } },
+        { core_id: 11, name: "u_GEN/u_GEN_1/core4", io_align: "left", orient: "FN", bounding_box: { llx: 1460000, lly: 1540000, urx: 1660000, ury: 1740000, width: 200000, height: 200000 } },
+        { core_id: 12, name: "u_GEN/u_GEN_1/core5", io_align: "left", orient: "FN", bounding_box: { llx: 1460000, lly: 1240000, urx: 1660000, ury: 1440000, width: 200000, height: 200000 } },
+        { core_id: 13, name: "u_GEN/u_GEN_1/core6", io_align: "left", orient: "FN", bounding_box: { llx: 1460000, lly: 940000, urx: 1660000, ury: 1140000, width: 200000, height: 200000 } },
+        { core_id: 14, name: "u_GEN/u_GEN_1/core7", io_align: "left", orient: "FN", bounding_box: { llx: 1460000, lly: 640000, urx: 1660000, ury: 840000, width: 200000, height: 200000 } },
+        { core_id: 15, name: "u_GEN/u_GEN_1/core8", io_align: "left", orient: "FN", bounding_box: { llx: 1460000, lly: 340000, urx: 1660000, ury: 540000, width: 200000, height: 200000 } },
+      ],
+    };
+
+    let selectedCoreId = 12;
+
+    function shortCoreName(name) {
+      return name.split("/").pop();
+    }
+
+    function formatBox(box) {
+      return `${box.llx}, ${box.lly}, ${box.urx}, ${box.ury}`;
+    }
+
+    function getSelectedCore() {
+      return socData.cores.find((core) => core.core_id === selectedCoreId) || socData.cores[0];
+    }
+
+    function createChipMap(container) {
+      const compact = container.classList.contains("compact");
+      const stage = document.createElement("div");
+      stage.style.position = "relative";
+      stage.style.width = "100%";
+      stage.style.height = "100%";
+
+      const die = document.createElement("div");
+      die.className = "chip-die";
+
+      const coreArea = document.createElement("div");
+      coreArea.className = "chip-core-area";
+      coreArea.style.left = "16%";
+      coreArea.style.top = "16%";
+      coreArea.style.width = "68%";
+      coreArea.style.height = "68%";
+
+      const dieLabel = document.createElement("div");
+      dieLabel.className = "chip-label die-label";
+      dieLabel.textContent = "die";
+
+      const coreLabel = document.createElement("div");
+      coreLabel.className = "chip-label core-label";
+      coreLabel.textContent = "core area";
+
+      stage.appendChild(die);
+      stage.appendChild(coreArea);
+      stage.appendChild(dieLabel);
+      stage.appendChild(coreLabel);
+
+      socData.cores.forEach((core) => {
+        const node = document.createElement("button");
+        node.type = "button";
+        node.className = "chip-core";
+        if (core.core_id === selectedCoreId) {
+          node.classList.add("selected");
+        }
+
+        const left = ((core.bounding_box.llx - socData.coreBox.llx) / socData.coreBox.width) * 100;
+        const top = ((socData.coreBox.ury - core.bounding_box.ury) / socData.coreBox.height) * 100;
+        const width = (core.bounding_box.width / socData.coreBox.width) * 100;
+        const height = (core.bounding_box.height / socData.coreBox.height) * 100;
+
+        node.style.left = `${left}%`;
+        node.style.top = `${top}%`;
+        node.style.width = `${width}%`;
+        node.style.height = `${height}%`;
+        node.title = `${shortCoreName(core.name)} | align: ${core.io_align} | orient: ${core.orient}`;
+        node.setAttribute("aria-label", `Select ${shortCoreName(core.name)}`);
+        node.addEventListener("click", () => {
+          selectedCoreId = core.core_id;
+          rerender();
+        });
+
+        const label = document.createElement("span");
+        label.className = "chip-core-label";
+        label.textContent = compact ? `${core.core_id}` : shortCoreName(core.name);
+        node.appendChild(label);
+        coreArea.appendChild(node);
+      });
+
+      container.innerHTML = "";
+      container.appendChild(stage);
+    }
+
+    function renderInspectors() {
+      const selected = getSelectedCore();
+      const rows = [
+        ["id", String(selected.core_id)],
+        ["name", shortCoreName(selected.name)],
+        ["info", "No info provided"],
+        ["align", selected.io_align],
+        ["orient", selected.orient],
+        ["bounding box", formatBox(selected.bounding_box)],
+      ];
+
+      document.querySelectorAll("[data-core-inspector]").forEach((container) => {
+        container.innerHTML = rows
+          .map(
+            ([label, value]) => `
+              <div class="property-row">
+                <span class="label">${label}</span>
+                <span class="value">${value}</span>
+              </div>
+            `
+          )
+          .join("");
+      });
+
+      document.querySelectorAll("[data-core-name]").forEach((node) => {
+        node.textContent = shortCoreName(selected.name);
+      });
+    }
+
+    function renderCoreChips() {
+      document.querySelectorAll("[data-core-chip-row]").forEach((container) => {
+        container.innerHTML = "";
+        socData.cores.forEach((core) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "core-chip";
+          if (core.core_id === selectedCoreId) {
+            button.classList.add("is-active");
+          }
+          button.textContent = shortCoreName(core.name);
+          button.addEventListener("click", () => {
+            selectedCoreId = core.core_id;
+            rerender();
+          });
+          container.appendChild(button);
+        });
+      });
+    }
+
+    function renderCoreList() {
+      const list = document.querySelector("[data-core-list]");
+      if (!list) return;
+
+      list.innerHTML = "";
+      socData.cores.forEach((core) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "core-list-item";
+        if (core.core_id === selectedCoreId) {
+          button.classList.add("is-active");
+        }
+        button.innerHTML = `
+          <strong>${shortCoreName(core.name)}</strong>
+          <span>ID ${core.core_id} · align ${core.io_align} · orient ${core.orient}</span>
+        `;
+        button.addEventListener("click", () => {
+          selectedCoreId = core.core_id;
+          rerender();
+        });
+        list.appendChild(button);
+      });
+    }
+
+    function rerender() {
+      document.querySelectorAll("[data-chip-map]").forEach(createChipMap);
+      renderInspectors();
+      renderCoreChips();
+      renderCoreList();
+      renderSelectorButtons();
+    }
+
+    function renderSelectorButtons() {
+      const selected = getSelectedCore();
+      document.querySelectorAll(".selector-button").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.target === window.location.hash.slice(1) || (!window.location.hash && button.dataset.target === "candidate-a"));
+        button.title = `Current selected core: ${shortCoreName(selected.name)}`;
+      });
+    }
+
+    document.querySelectorAll(".selector-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const id = button.dataset.target;
+        if (!id) return;
+        document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        history.replaceState(null, "", `#${id}`);
+        renderSelectorButtons();
+      });
+    });
+
+    window.addEventListener("hashchange", renderSelectorButtons);
+
+    rerender();
+  </script>
+</body>
+</html>
