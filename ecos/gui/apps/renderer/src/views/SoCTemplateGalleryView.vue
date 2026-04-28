@@ -1,8 +1,42 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import SoCTemplateGallery from '@/components/SoCTemplateGallery.vue'
+import { loadSocTemplateCatalog } from '@/composables/socTemplateCatalog'
+import type { SocTemplateSummary } from '@/composables/socTemplateMapper'
+
+const router = useRouter()
+const items = ref<SocTemplateSummary[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+async function loadCatalog(): Promise<void> {
+  loading.value = true
+  error.value = null
+
+  try {
+    items.value = await loadSocTemplateCatalog()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Unable to load SoC template data'
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleOpen(templateId: string): void {
+  router.push({ name: 'SoCTemplateDetail', params: { templateId } })
+}
+
+onMounted(loadCatalog)
+</script>
+
 <template>
-  <section class="w-full max-w-2xl mx-auto px-8 py-10 text-(--text-primary)">
-    <h1 class="text-2xl font-semibold mb-2">SoC Templates</h1>
-    <p class="text-sm text-(--text-secondary)">
-      SoC template gallery is not ready yet, but this route is active.
-    </p>
-  </section>
+  <SoCTemplateGallery
+    :items="items"
+    :loading="loading"
+    :error="error"
+    @back="router.push('/')"
+    @open="handleOpen"
+    @retry="loadCatalog"
+  />
 </template>
