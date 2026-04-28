@@ -1,4 +1,5 @@
 export const desktopApiIpcChannels = {
+  appGetVersions: 'app:get-versions',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',

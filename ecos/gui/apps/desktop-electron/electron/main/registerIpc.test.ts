@@ -48,6 +48,9 @@ function registerHandlers() {
     tileService: {
       generate: vi.fn(),
     },
+    appInfoService: {
+      getVersions: vi.fn(),
+    },
   }
 
   registerIpc({
@@ -106,7 +109,25 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceScanPdkDirectory,
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.systemOpenExternal,
+      desktopApiIpcChannels.appGetVersions,
     ].sort())
+  })
+
+  it('returns version information from the app info service', async () => {
+    const { handlers, services } = registerHandlers()
+    const versions = {
+      gui: '0.1.0-alpha.4',
+      server: '0.1.0-alpha.4',
+      ecc: '0.1.0a4',
+      dreamplace: '0.1.0a2',
+    }
+    services.appInfoService.getVersions.mockResolvedValue(versions)
+
+    const handler = handlers.get(desktopApiIpcChannels.appGetVersions)
+
+    expect(handler).toBeDefined()
+    await expect(handler?.({ sender: { id: 'web-contents' } })).resolves.toEqual(versions)
+    expect(services.appInfoService.getVersions).toHaveBeenCalledTimes(1)
   })
 
   it('looks up the event window and uses it for window controls', async () => {

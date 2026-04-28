@@ -23,6 +23,9 @@ function subscribeToDesktopEvent(
 }
 
 const desktopApi: DesktopApi = {
+  app: {
+    getVersions: () => ipcRenderer.invoke(desktopApiIpcChannels.appGetVersions),
+  },
   window: {
     minimize: () => ipcRenderer.invoke(desktopApiIpcChannels.windowMinimize),
     toggleMaximize: () => ipcRenderer.invoke(desktopApiIpcChannels.windowToggleMaximize),

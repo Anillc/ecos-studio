@@ -41,6 +41,14 @@ function restoreAlert() {
 }
 
 const desktopBridge = {
+  app: {
+    getVersions: async () => ({
+      gui: '0.1.0-alpha.4',
+      server: 'unknown',
+      ecc: 'unknown',
+      dreamplace: 'unknown',
+    }),
+  },
   window: {
     minimize: async () => undefined,
     toggleMaximize: async () => undefined,

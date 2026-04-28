@@ -14,6 +14,7 @@ import {
   type ScannedPdkDirectory,
   type TileGenerationRequest,
   type TileGenerationResult,
+  type VersionInfo,
 } from '@ecos-studio/shared'
 import {
   closeWindow,
@@ -27,6 +28,9 @@ import {
 export type IpcMainLike = Pick<IpcMain, 'handle'>
 
 export interface DesktopBridgeServices {
+  appInfoService: {
+    getVersions(): Promise<VersionInfo>
+  }
   settingsStore: {
     delete(key: string): Promise<void>
     get<T extends DesktopSettingsValue = DesktopSettingsValue>(key: string): Promise<T | null>
@@ -93,6 +97,10 @@ export function registerIpc(
   target: IpcMainLike = ipcMain,
   services: DesktopBridgeServices,
 ): void {
+  target.handle(desktopApiIpcChannels.appGetVersions, async () => {
+    return await services.appInfoService.getVersions()
+  })
+
   target.handle(desktopApiIpcChannels.windowMinimize, (event) => {
     minimizeWindow(getEventWindow(event))
   })

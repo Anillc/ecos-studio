@@ -41,6 +41,7 @@ const {
   const spawn = vi.fn()
   const electronApp = {
     isPackaged: false,
+    getVersion: vi.fn(() => '0.1.0-alpha.4'),
   }
   const createHash = vi.fn(() => {
     const hash = {
@@ -166,6 +167,7 @@ describe('ApiServerService', () => {
     portAvailabilityQueue.splice(0)
     socketConnectQueue.splice(0)
     electronApp.isPackaged = false
+    electronApp.getVersion.mockReturnValue('0.1.0-alpha.4')
     process.env.ECOS_REUSE_API_SERVER = ''
     delete process.env.ECOS_SERVER_DIRECTORY
     delete process.env.ECOS_ELECTRON_BINARIES_DIR
@@ -270,6 +272,48 @@ describe('ApiServerService', () => {
     await stopPromise
 
     expect(processKillSpy).toHaveBeenCalledWith(-4321, 'SIGTERM')
+  })
+
+  it('returns GUI and backend runtime versions', async () => {
+    portAvailabilityQueue.push(true, true)
+    access.mockRejectedValue(new Error('missing venv'))
+    socketConnectQueue.push(true)
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        json: async () => ({
+          instance_token: 'deterministic-token',
+          status: 'ok',
+        }),
+        ok: true,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          server: '0.1.0-alpha.4',
+          ecc: '0.1.0a4',
+          dreamplace: '0.1.0a2',
+        }),
+        ok: true,
+      })
+
+    const ownedChild = new FakeChildProcess(4321)
+    spawn.mockReturnValue(ownedChild)
+
+    const service = new ApiServerService()
+    await service.start()
+
+    await expect(service.getVersions()).resolves.toEqual({
+      gui: '0.1.0-alpha.4',
+      server: '0.1.0-alpha.4',
+      ecc: '0.1.0a4',
+      dreamplace: '0.1.0a2',
+    })
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:8765/api/about',
+      expect.objectContaining({
+        method: 'GET',
+        signal: expect.any(AbortSignal),
+      }),
+    )
   })
 
   it('prefers configured binary and resource directories for packaged launches', async () => {

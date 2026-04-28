@@ -5,12 +5,14 @@ import { createServer, Socket } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app } from 'electron'
+import type { VersionInfo } from '@ecos-studio/shared'
 
 const API_HOST = '127.0.0.1'
 const DEFAULT_API_PORT = 8765
 const MAX_API_PORT = 8865
 const API_READY_TIMEOUT_MS = 15_000
 const API_HEALTH_TIMEOUT_MS = 2_000
+const UNKNOWN_VERSION = 'unknown'
 
 type ServerOwnership = 'none' | 'owned' | 'external'
 
@@ -32,10 +34,36 @@ interface HealthResponse {
   status?: string
 }
 
+type BackendVersionInfo = Pick<VersionInfo, 'server' | 'ecc' | 'dreamplace'>
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+function createGuiOnlyVersionInfo(): VersionInfo {
+  return {
+    gui: app.getVersion(),
+    server: UNKNOWN_VERSION,
+    ecc: UNKNOWN_VERSION,
+    dreamplace: UNKNOWN_VERSION,
+  }
+}
+
+function readVersionField(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value : UNKNOWN_VERSION
+}
+
+function normalizeBackendVersionInfo(value: unknown): BackendVersionInfo {
+  const record =
+    value && typeof value === 'object' ? value as Record<string, unknown> : {}
+
+  return {
+    server: readVersionField(record.server),
+    ecc: readVersionField(record.ecc),
+    dreamplace: readVersionField(record.dreamplace),
+  }
 }
 
 function generateInstanceToken(port: number): string {
@@ -113,6 +141,28 @@ async function fetchHealthResponse(port: number, timeoutMs: number): Promise<Hea
     return (await response.json()) as HealthResponse
   } catch {
     return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function fetchBackendVersions(port: number): Promise<BackendVersionInfo> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => {
+    controller.abort()
+  }, API_HEALTH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`http://${API_HOST}:${port}/api/about`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`version endpoint returned HTTP ${response.status}`)
+    }
+
+    return normalizeBackendVersionInfo(await response.json())
   } finally {
     clearTimeout(timeout)
   }
@@ -402,6 +452,21 @@ export class ApiServerService {
     }
 
     return this.currentPort
+  }
+
+  async getVersions(): Promise<VersionInfo> {
+    const versions = createGuiOnlyVersionInfo()
+
+    try {
+      const backendVersions = await fetchBackendVersions(await this.getPort())
+      return {
+        ...versions,
+        ...backendVersions,
+      }
+    } catch (error) {
+      console.warn('[desktop-electron] Failed to get backend versions:', error)
+      return versions
+    }
   }
 
   async stop(): Promise<void> {

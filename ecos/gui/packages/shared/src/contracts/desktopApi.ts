@@ -40,7 +40,17 @@ export interface ScannedPdkDirectory {
   detectedFiles: PdkDetectedFiles
 }
 
+export interface VersionInfo {
+  gui: string
+  server: string
+  ecc: string
+  dreamplace: string
+}
+
 export interface DesktopApi {
+  app: {
+    getVersions(): Promise<VersionInfo>
+  }
   window: {
     minimize(): Promise<void>
     toggleMaximize(): Promise<void>

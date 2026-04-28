@@ -14,6 +14,7 @@ export type {
   DesktopSettingsValue,
   PdkDetectedFiles,
   ScannedPdkDirectory,
+  VersionInfo,
 } from './contracts/desktopApi.ts';
 export {
   appMenuActionIds,

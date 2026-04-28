@@ -78,6 +78,7 @@ async function launchMainWindow(): Promise<void> {
 
   if (!ipcRegistered) {
     registerIpc(undefined, {
+      appInfoService: desktopServices.apiServerService,
       settingsStore: desktopServices.settingsStore,
       tileService: desktopServices.tileService,
       workspaceService: desktopServices.workspaceService,
