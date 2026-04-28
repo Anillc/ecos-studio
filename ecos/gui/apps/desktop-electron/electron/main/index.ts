@@ -21,6 +21,22 @@ let services:
     }
   | null = null
 
+function isEnabledEnv(name: string): boolean {
+  const value = process.env[name]?.trim().toLowerCase()
+  return value === '1' || value === 'true'
+}
+
+if (isEnabledEnv('ECOS_ELECTRON_DISABLE_GPU')) {
+  app.commandLine.appendSwitch('disable-gpu')
+  app.commandLine.appendSwitch('disable-gpu-compositing')
+  app.commandLine.appendSwitch('disable-gpu-process-crash-limit')
+  app.commandLine.appendSwitch('in-process-gpu')
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader')
+  app.commandLine.appendSwitch('use-angle', 'swiftshader')
+  app.commandLine.appendSwitch('use-gl', 'swiftshader')
+  app.disableHardwareAcceleration()
+}
+
 function getDesktopServices() {
   if (services) {
     return services

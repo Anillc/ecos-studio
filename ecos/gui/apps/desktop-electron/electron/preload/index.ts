@@ -2,11 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   desktopApiEventChannels,
   desktopApiIpcChannels,
-  type DesktopApi,
-  type DesktopDirectoryDialogOptions,
-  type DesktopFileDialogOptions,
-  type DesktopMenuEventId,
-  type DesktopSettingsValue,
+} from '../../../../packages/shared/src/constants/ipcChannels.ts'
+import type {
+  DesktopApi,
+  DesktopDirectoryDialogOptions,
+  DesktopFileDialogOptions,
+  DesktopMenuEventId,
+  DesktopSettingsValue,
 } from '@ecos-studio/shared'
 
 function subscribeToDesktopEvent(

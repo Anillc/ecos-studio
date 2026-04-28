@@ -32,7 +32,7 @@ export default defineConfig(({ command, mode }) => {
         emptyOutDir: false,
         lib: {
           entry: resolve(packageRoot, 'electron/preload/index.ts'),
-          formats: ['es'],
+          formats: ['cjs'],
         },
         rollupOptions: {
           external: ['electron', /^node:.*/],
