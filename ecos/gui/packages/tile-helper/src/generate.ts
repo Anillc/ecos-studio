@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
-import type { TileManifest } from './manifest'
+import type { TileManifest } from './manifest.ts'
 
 const TILE_PIXEL_SIZE = 256
 const VECTOR_THRESHOLD = 3000

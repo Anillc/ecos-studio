@@ -5,7 +5,7 @@ export {
   type DesktopApiEventChannel,
   type DesktopApiIpcChannel,
   type IpcChannel,
-} from './constants/ipcChannels'
+} from './constants/ipcChannels.ts';
 export type {
   DesktopApi,
   DesktopDirectoryDialogOptions,
@@ -14,18 +14,18 @@ export type {
   DesktopSettingsValue,
   PdkDetectedFiles,
   ScannedPdkDirectory,
-} from './contracts/desktopApi'
+} from './contracts/desktopApi.ts';
 export {
   appMenuActionIds,
   desktopMenuEventIds,
   type AppMenuAction,
   type DesktopEventUnsubscribe,
   type DesktopMenuEventId,
-} from './contracts/desktopEvents'
-export type { DesktopErrorCode, DesktopErrorShape } from './contracts/errors'
-export type { DesktopFailure, DesktopResult, DesktopSuccess, VoidDesktopResult } from './types/desktop'
-export type { WorkspaceConfig, WorkspaceParameters, WorkspaceStatus, WorkspaceSummary } from './types/workspace'
-export type { TileGenerationRequest, TileGenerationResult } from './types/tile'
+} from './contracts/desktopEvents.ts';
+export type { DesktopErrorCode, DesktopErrorShape } from './contracts/errors.ts';
+export type { DesktopFailure, DesktopResult, DesktopSuccess, VoidDesktopResult } from './types/desktop.ts';
+export type { WorkspaceConfig, WorkspaceParameters, WorkspaceStatus, WorkspaceSummary } from './types/workspace.ts';
+export type { TileGenerationRequest, TileGenerationResult } from './types/tile.ts';
 export {
   isAbsoluteLocalPath,
   isWindowsDrivePath,
@@ -34,4 +34,4 @@ export {
   normalizeLocalPath,
   resolveContainedLocalPath,
   resolveProjectFileAbsolutePath,
-} from './utils/localPath'
+} from './utils/localPath.ts';

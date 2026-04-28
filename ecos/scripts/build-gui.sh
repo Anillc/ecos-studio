@@ -7,6 +7,31 @@ Usage: $0 --gui-src-dir <dir> --api-server-bin <path> --out-tar <path> [--oss-ca
 EOF
 }
 
+read_repo_node_version() {
+    local search_dir="$1"
+
+    while [[ "$search_dir" != "/" ]]; do
+        local nvmrc="$search_dir/.nvmrc"
+        if [[ -f "$nvmrc" ]]; then
+            tr -d '[:space:]' < "$nvmrc"
+            return 0
+        fi
+        search_dir="$(dirname "$search_dir")"
+    done
+
+    echo "ERROR: .nvmrc not found while searching upward from $1" >&2
+    exit 1
+}
+
+pnpm_with_repo_node() {
+    local gui_dir="$1"
+    shift
+
+    local node_version
+    node_version="$(read_repo_node_version "$gui_dir")"
+    npx -y "node@${node_version}" /usr/local/bin/pnpm --dir "$gui_dir" "$@"
+}
+
 normalize_csv() {
     echo "$1" | tr -d '[:space:]' | tr -s ',' | sed 's/^,//; s/,$//'
 }
@@ -175,10 +200,10 @@ fi
 # the proper symlink layout from a clean tree.
 find "$GUI_DIR" -type d -name node_modules -prune -exec rm -rf '{}' +
 
-(cd "$GUI_DIR" && pnpm install --frozen-lockfile)
-(cd "$GUI_DIR" && pnpm run desktop:build)
+pnpm_with_repo_node "$GUI_DIR" install --frozen-lockfile
+pnpm_with_repo_node "$GUI_DIR" run desktop:build
 rm -rf "$RELEASE_DIR"
-(cd "$ELECTRON_APP_DIR" && pnpm exec electron-builder --config electron-builder.yml --linux "${ELECTRON_TARGET_ARGS[@]}")
+pnpm_with_repo_node "$ELECTRON_APP_DIR" exec electron-builder --config electron-builder.yml --linux "${ELECTRON_TARGET_ARGS[@]}"
 
 if [[ ! -d "$RELEASE_DIR" ]]; then
     echo "ERROR: Electron release directory not found: $RELEASE_DIR" >&2

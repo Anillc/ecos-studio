@@ -1,4 +1,4 @@
-import type { DesktopErrorShape } from '../contracts/errors'
+import type { DesktopErrorShape } from '../contracts/errors.ts'
 
 export interface DesktopSuccess<T> {
   ok: true

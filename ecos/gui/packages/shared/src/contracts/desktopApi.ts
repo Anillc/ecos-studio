@@ -1,5 +1,5 @@
-import type { TileGenerationRequest, TileGenerationResult } from '../types/tile'
-import type { DesktopEventUnsubscribe, DesktopMenuEventId } from './desktopEvents'
+import type { TileGenerationRequest, TileGenerationResult } from '../types/tile.ts'
+import type { DesktopEventUnsubscribe, DesktopMenuEventId } from './desktopEvents.ts'
 
 export type DesktopSettingsValue =
   | string

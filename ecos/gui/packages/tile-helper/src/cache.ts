@@ -5,7 +5,7 @@ import {
   getLayoutTileCacheDir,
   validateProjectScopedPath,
   validateTileCacheOutDir,
-} from './pathing'
+} from './pathing.ts'
 
 export interface PrepareLayoutTileCacheOptions {
   projectPath: string

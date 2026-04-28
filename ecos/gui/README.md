@@ -29,6 +29,11 @@ pnpm run dev
 pnpm run dev:reuse-api-server
 ```
 
+```bash
+# Linux VM / sandbox-restricted environment
+pnpm run dev:vm
+```
+
 ### Build and preview
 
 ```bash
