@@ -8,12 +8,29 @@ const props = defineProps<{
   selectedCoreId: number | null
 }>()
 
-// select-core: [coreId: number]
 const emit = defineEmits<{
   'select-core': [coreId: number]
 }>()
 
-const rects = computed(() => buildSocPreviewRects(props.template))
+function isSelectableCoreId(coreId: number): boolean {
+  return Number.isFinite(coreId) && coreId >= 0
+}
+
+const renderedRects = computed(() =>
+  buildSocPreviewRects(props.template).flatMap((rect, index) =>
+    isSelectableCoreId(rect.coreId)
+      ? [{ ...rect, renderKey: `${rect.coreId}-${index}` }]
+      : [],
+  ),
+)
+
+function selectCore(coreId: number): void {
+  if (!isSelectableCoreId(coreId)) {
+    return
+  }
+
+  emit('select-core', coreId)
+}
 </script>
 
 <template>
@@ -21,8 +38,8 @@ const rects = computed(() => buildSocPreviewRects(props.template))
     <div class="soc-template-preview-canvas__die">
       <div class="soc-template-preview-canvas__core-area">
         <button
-          v-for="rect in rects"
-          :key="rect.coreId"
+          v-for="rect in renderedRects"
+          :key="rect.renderKey"
           type="button"
           class="soc-template-preview-canvas__core"
           :class="{ 'is-selected': rect.coreId === selectedCoreId }"
@@ -33,7 +50,7 @@ const rects = computed(() => buildSocPreviewRects(props.template))
             width: `${rect.widthPct}%`,
             height: `${rect.heightPct}%`,
           }"
-          @click="emit('select-core', rect.coreId)"
+          @click="selectCore(rect.coreId)"
         >
           <span>{{ rect.label }}</span>
         </button>
@@ -82,6 +99,7 @@ const rects = computed(() => buildSocPreviewRects(props.template))
   background: rgba(96, 165, 250, 0.16);
   color: var(--text-primary);
   cursor: pointer;
+  overflow: hidden;
 }
 
 .soc-template-preview-canvas__core.is-selected {
@@ -90,9 +108,14 @@ const rects = computed(() => buildSocPreviewRects(props.template))
 }
 
 .soc-template-preview-canvas__core span {
+  display: block;
+  width: 100%;
   font-size: 12px;
   line-height: 1.1;
   text-align: center;
   pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
