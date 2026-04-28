@@ -1,19 +1,20 @@
+import { existsSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import galleryViewSource from '../views/SoCTemplateGalleryView.vue?raw'
-import detailViewSource from '../views/SoCTemplateDetailView.vue?raw'
+import routerSource from './index.ts?raw'
 
 vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
   return {
     ...actual,
-    createWebHashHistory: actual.createMemoryHistory
+    createWebHashHistory: actual.createMemoryHistory,
   }
 })
 
-import router from './index'
+const { default: router } = await import('./index')
 
 describe('router SoC welcome routes', () => {
-  it('registers the SoC gallery and detail routes under the welcome shell', async () => {
+  it('resolves SoC routes under the welcome shell and lazy-loads their components', async () => {
     const galleryRoute = router.resolve('/soc')
     expect(galleryRoute.name).toBe('SoCGallery')
     expect(galleryRoute.matched.map((record) => record.path)).toEqual(['/', '/soc'])
@@ -29,7 +30,19 @@ describe('router SoC welcome routes', () => {
     expect(galleryRecord?.components?.default).toBeTypeOf('function')
     expect(detailRecord?.components?.default).toBeTypeOf('function')
     expect(detailRecord?.props).toEqual({ default: true })
-    expect(galleryViewSource).toContain('SoC Templates')
-    expect(detailViewSource).toContain('defineProps')
+    const routerDir = dirname(new URL(import.meta.url).pathname)
+    const galleryImportPath = '../views/SoCTemplateGalleryView.vue'
+    const detailImportPath = '../views/SoCTemplateDetailView.vue'
+
+    expect(routerSource).toContain(
+      `{ path: 'soc', name: 'SoCGallery', component: () => import('${galleryImportPath}') }`,
+    )
+    expect(routerSource).toContain(
+      `{ path: 'soc/:templateId', name: 'SoCTemplateDetail', component: () => import('${detailImportPath}'), props: true }`,
+    )
+    expect(String(galleryRecord?.components?.default)).toContain(galleryImportPath)
+    expect(String(detailRecord?.components?.default)).toContain(detailImportPath)
+    expect(existsSync(resolve(routerDir, galleryImportPath))).toBe(true)
+    expect(existsSync(resolve(routerDir, detailImportPath))).toBe(true)
   })
 })
