@@ -1,5 +1,6 @@
 appId: org.openecos.ecos-studio
 productName: ECOS Studio
+afterPack: ./scripts/after-pack-linux-sandbox.mjs
 directories:
   output: release
 files:

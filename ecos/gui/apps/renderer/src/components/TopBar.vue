@@ -31,7 +31,9 @@
       </div>
     </div>
  
-    <div class="topbar-center" data-window-drag-region>
+    <div class="topbar-drag-spacer" data-window-drag-region aria-hidden="true"></div>
+
+    <div class="topbar-center">
       <span class="project-name">{{ props.projectName }}</span>
     </div>
 
@@ -239,7 +241,6 @@ const handleClose = async () => {
   -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   user-select: none;
   -webkit-user-select: none;
   background: var(--topbar-bg);
@@ -416,16 +417,26 @@ const handleClose = async () => {
   transform: translateY(-2px);
 }
 
-/* 中间拖拽区域 - 始终居中 */
+/*
+ * 只让中间空白区域承担窗口拖拽。
+ * 如果把 drag region 挂在覆盖全宽的标题层上，桌面端会优先命中拖拽层，
+ * 左侧菜单即使视觉上在上面，也可能被判定为“不可点击”。
+ */
+.topbar-drag-spacer {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* 中间标题层 - 始终居中，但不接管点击 */
 .topbar-center {
   position: absolute;
   inset: 0;
-  top: 0;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: auto;
+  pointer-events: none;
   z-index: 0;
 }
 

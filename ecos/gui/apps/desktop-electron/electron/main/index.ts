@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from 'electron'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createMainWindow } from './createMainWindow'
+import { configureGpuMode } from './gpuMode'
 import { registerIpc } from './registerIpc'
 import { ApiServerService } from '../services/apiServerService'
 import { registerApplicationMenu } from '../services/menuService'
@@ -26,16 +28,22 @@ function isEnabledEnv(name: string): boolean {
   return value === '1' || value === 'true'
 }
 
-if (isEnabledEnv('ECOS_ELECTRON_DISABLE_GPU')) {
-  app.commandLine.appendSwitch('disable-gpu')
-  app.commandLine.appendSwitch('disable-gpu-compositing')
-  app.commandLine.appendSwitch('disable-gpu-process-crash-limit')
-  app.commandLine.appendSwitch('in-process-gpu')
-  app.commandLine.appendSwitch('enable-unsafe-swiftshader')
-  app.commandLine.appendSwitch('use-angle', 'swiftshader')
-  app.commandLine.appendSwitch('use-gl', 'swiftshader')
-  app.disableHardwareAcceleration()
+function readHostInfo(path: string): string {
+  try {
+    return readFileSync(path, 'utf8').trim()
+  } catch {
+    return ''
+  }
 }
+
+configureGpuMode({
+  app,
+  env: process.env,
+  hostProductName: readHostInfo('/sys/class/dmi/id/product_name'),
+  hostVendor: readHostInfo('/sys/class/dmi/id/sys_vendor'),
+  isPackaged: app.isPackaged,
+  platform: process.platform,
+})
 
 function getDesktopServices() {
   if (services) {

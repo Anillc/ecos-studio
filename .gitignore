@@ -13,3 +13,4 @@ result
 # Claude Code
 .claude/
 .humanize*
+.superpowers/

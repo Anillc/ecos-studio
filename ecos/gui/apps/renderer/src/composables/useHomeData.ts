@@ -1,5 +1,4 @@
 import { ref, watch, onUnmounted } from 'vue'
-import type { Ref } from 'vue'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
 import { flowExecutionActive } from './useFlowRunner'
@@ -8,6 +7,7 @@ import { ResponseEnum } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
 import { readProjectBlobUrl, readProjectTextFile } from '@/utils/projectFiles'
 import { requestProjectPathAccess, resolveProjectPathAccess } from '@/utils/projectFs'
+import { mergePlannedFlowLogSegments } from './flowLogSegmentPlan'
 
 // ============ 类型定义 ============
 
@@ -180,8 +180,6 @@ function logCacheSet(key: string, entry: LogFileCacheEntry): void {
 /** resolveProjectPathAccess 结果缓存，key = local path, value = resolved/canonical path */
 const resolvedPathCache = new Map<string, string>()
 
-/** 跑 IO 时的并发上限（桌面桥接 IPC 不适合全量并发） */
-const LOG_READ_CONCURRENCY = 6
 /**
  * 单个 log 文件默认展示上限（**JS 字符串 `.length`**，即 UTF-16 code unit 数；
  * ASCII 下与字节数等价，多字节字符下会偏小——这是有意的，我们要的是 UI
@@ -356,35 +354,6 @@ function markHomeAssetSignaturesStale(): void {
   _loadedChecklistPath = ''
   _loadedLayoutPath = ''
   _loadedMetricsSignature = ''
-}
-
-/**
- * 控制并发的简单 worker 池：把一堆 `() => Promise<void>` 任务限制在 `limit` 个同时进行。
- * 不抛错：单个任务失败由 runner 内部自行处理。
- */
-async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  handler: (item: T, index: number) => Promise<void>,
-): Promise<void> {
-  if (items.length === 0) return
-  const total = items.length
-  let cursor = 0
-  const pool = Math.min(limit, total)
-  const workers: Promise<void>[] = []
-  const runOne = async (): Promise<void> => {
-    for (;;) {
-      const i = cursor++
-      if (i >= total) return
-      try {
-        await handler(items[i]!, i)
-      } catch (err) {
-        console.warn('runWithConcurrency task failed:', err)
-      }
-    }
-  }
-  for (let i = 0; i < pool; i++) workers.push(runOne())
-  await Promise.all(workers)
 }
 
 /**
@@ -698,10 +667,6 @@ export function useHomeData() {
     return `${rootNorm}/${name}_${tool}/log/${name}.log`
   }
 
-  function flowLogSegKey(stepName: string, tool: string): string {
-    return `${stepName}\u001f${tool}`
-  }
-
   /**
    * 读取 flow.json，构建出“步骤 -> 日志路径”的任务清单。
    * 不负责读日志文件本身，便于调用方选择是否先展示占位再并发填充。
@@ -752,82 +717,9 @@ export function useHomeData() {
   }
 
   /**
-   * 并发 + 缓存的日志读取；把结果就地写回 `segments[i]` 并同步到目标 ref，
-   * UI 可以看到首批文件读完就显示。
-   *
-   * 命中的模块级缓存会先同步到 UI，再由后台桥接读取结果覆盖，避免重新挂载闪烁。
-   */
-  async function hydrateSegmentsWithLogs(
-    target: Ref<FlowLogSegment[]>,
-    segments: FlowLogSegment[],
-    logPaths: string[],
-    opts: { missingTextPrefix: string; isStale: () => boolean; emitEveryN: number },
-  ): Promise<void> {
-    // 1) 先同步看命中的模块级缓存：缓存里已经有内容的先展示（后面重读再覆盖）
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      if (seg.content) continue
-      const cached = logCacheGet(logPaths[i])
-      if (cached) {
-        segments[i] = {
-          ...seg,
-          content: cached.content,
-          missing: false,
-          truncated: cached.truncated,
-          totalSize: cached.totalSize,
-          logPath: logPaths[i],
-        }
-      } else {
-        segments[i] = { ...seg, logPath: logPaths[i] }
-      }
-    }
-    target.value = segments.slice()
-
-    // 2) 并发按需读取；每累计 emitEveryN 个完成就 flush 一次 target.value
-    let completedSinceEmit = 0
-    await runWithConcurrency(
-      segments.map((_, i) => i),
-      LOG_READ_CONCURRENCY,
-      async (idx) => {
-        if (opts.isStale()) return
-        const logPath = logPaths[idx]
-        const result = await readLogFileSmart(logPath)
-        if (opts.isStale()) return
-
-        const cur = segments[idx]
-        const nextContent = result.missing
-          ? `${opts.missingTextPrefix}\n${logPath}`
-          : result.content
-        const contentUnchanged =
-          cur.content === nextContent &&
-          cur.missing === result.missing &&
-          cur.truncated === result.truncated
-        if (contentUnchanged) return
-
-        segments[idx] = {
-          ...cur,
-          content: nextContent,
-          missing: result.missing,
-          truncated: result.truncated,
-          totalSize: result.totalSize,
-          logPath,
-        }
-        completedSinceEmit++
-        if (completedSinceEmit >= opts.emitEveryN) {
-          completedSinceEmit = 0
-          target.value = segments.slice()
-        }
-      },
-    )
-
-    if (!opts.isStale()) {
-      target.value = segments.slice()
-    }
-  }
-
-  /**
    * 从已解析的 flow.json 本地路径构建步骤日志列表。
-   * 主要用于 live-mode 的单次批量构建（外部不关心 stream 过程）。
+   * 仅构建 metadata，并复用已缓存 / 已加载过的 content，不在这里批量读正文。
+   * 当前查看器只会显示一个 step，所以 bulk hydrate 的收益很低，代价却很高。
    * @param includeOngoingLive 为 true 时包含 Ongoing 步，并标记 live
    */
   async function buildFlowLogSegmentsFromFlowLocal(
@@ -837,48 +729,10 @@ export function useHomeData() {
     const plan = await planFlowLogSegments(flowLocal, includeOngoingLive)
     if (!plan) return []
 
-    const segments = plan.tasks.map((t) => t.seg)
     const logPaths = plan.tasks.map((t) => t.logPath)
+    pruneLogCacheKeepOnly(logPaths)
 
-    // 模块级命中先用上，再并发补齐
-    for (let i = 0; i < segments.length; i++) {
-      const cached = logCacheGet(logPaths[i])
-      if (cached) {
-        segments[i] = {
-          ...segments[i],
-          content: cached.content,
-          truncated: cached.truncated,
-          totalSize: cached.totalSize,
-          logPath: logPaths[i],
-        }
-      } else {
-        segments[i] = { ...segments[i], logPath: logPaths[i] }
-      }
-    }
-
-    const missingPrefix = includeOngoingLive
-      ? '(Log file not yet available or unreadable; waiting…)'
-      : '(Log file not found or unreadable)'
-
-    await runWithConcurrency(
-      segments.map((_, i) => i),
-      LOG_READ_CONCURRENCY,
-      async (idx) => {
-        const logPath = logPaths[idx]
-        const result = await readLogFileSmart(logPath)
-        const cur = segments[idx]
-        const nextContent = result.missing ? `${missingPrefix}\n${logPath}` : result.content
-        segments[idx] = {
-          ...cur,
-          content: nextContent,
-          missing: result.missing,
-          truncated: result.truncated,
-          totalSize: result.totalSize,
-          logPath,
-        }
-      },
-    )
-    return segments
+    return mergePlannedFlowLogSegments(plan.tasks, flowLogSegments.value)
   }
 
   function cleanupLogWatchOnly(): void {
@@ -958,6 +812,40 @@ export function useHomeData() {
     }
   }
 
+  async function ensureFlowLogSegmentContentLoaded(segment: FlowLogSegment): Promise<boolean> {
+    if (!isInTauri) return false
+    if (segment.content || segment.missing) return !segment.missing
+
+    const logPath = segment.logPath
+    if (!logPath) return false
+
+    const findIndex = (): number =>
+      flowLogSegments.value.findIndex(
+        (s) => s.stepName === segment.stepName && s.tool === segment.tool,
+      )
+
+    const idx = findIndex()
+    if (idx < 0) return false
+
+    const result = await readLogFileSmart(logPath)
+    const current = flowLogSegments.value[idx]
+    if (!current) return false
+
+    const nextContent = result.missing
+      ? `(Log file not found or unreadable)\n${logPath}`
+      : result.content
+
+    flowLogSegments.value[idx] = {
+      ...current,
+      content: nextContent,
+      missing: result.missing,
+      truncated: result.truncated,
+      totalSize: result.totalSize,
+      logPath,
+    }
+    return !result.missing
+  }
+
   /**
    * 用 flow.json 定义的步骤列表刷新 `flowLogSegments`。
    *
@@ -1008,35 +896,15 @@ export function useHomeData() {
         return
       }
 
-      // 用旧 segments 的 content 预填入新 plan，保证展示不闪烁
-      const existingByKey = new Map<string, FlowLogSegment>()
-      for (const s of flowLogSegments.value) {
-        existingByKey.set(flowLogSegKey(s.stepName, s.tool), s)
-      }
-      const segments = plan.tasks.map(({ seg }) => {
-        const prior = existingByKey.get(flowLogSegKey(seg.stepName, seg.tool))
-        if (!prior) return seg
-        // 保留旧 content + missing，state/failed 跟 flow.json 走
-        return {
-          ...seg,
-          content: prior.content,
-          missing: prior.missing,
-        }
-      })
       const logPaths = plan.tasks.map((t) => t.logPath)
 
       // 本次 plan 里不再出现的 log 文件缓存直接清掉，防止同一项目内反复 run
       // 后 logFileCache 单调增长
       pruneLogCacheKeepOnly(logPaths)
 
-      // 立即把新 segments 推到 UI（此时 content 来自旧缓存或为空）
-      flowLogSegments.value = segments.slice()
-
-      await hydrateSegmentsWithLogs(flowLogSegments, segments, logPaths, {
-        missingTextPrefix: '(Log file not found or unreadable)',
-        isStale,
-        emitEveryN: 3,
-      })
+      // 当前页面只展示一个选中 step 的正文，因此这里仅同步 metadata + 已缓存内容；
+      // 真正的正文读取改为选中时按需触发，避免 mount 时为所有 step 做 IPC 读盘。
+      flowLogSegments.value = mergePlannedFlowLogSegments(plan.tasks, flowLogSegments.value)
 
       if (!isStale()) {
         console.log('Flow step logs loaded:', flowLogSegments.value.length, 'segments')
@@ -1390,6 +1258,7 @@ export function useHomeData() {
     convertToLocalPath,
     loadAllFlowStepLogsFromFlowPath,
     ensureFlowLogsLoaded,
+    ensureFlowLogSegmentContentLoaded,
     expandFlowLogSegment,
   }
 }

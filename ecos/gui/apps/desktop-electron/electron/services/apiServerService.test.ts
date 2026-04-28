@@ -315,4 +315,51 @@ describe('ApiServerService', () => {
       }),
     )
   })
+
+  it('launches a packaged onedir server bundle when binaries path points to a directory', async () => {
+    electronApp.isPackaged = true
+    portAvailabilityQueue.push(true, true)
+    socketConnectQueue.push(true)
+    process.env.ECOS_ELECTRON_BINARIES_DIR = '/opt/ecos/resources/binaries'
+    process.env.ECOS_ELECTRON_OSS_CAD_DIR = '/opt/ecos/resources/oss-cad-suite'
+
+    access.mockImplementation(async (path: string) => {
+      if (path === '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu') {
+        return
+      }
+      if (path === '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu/ecos-server') {
+        return
+      }
+      if (path === '/opt/ecos/resources/oss-cad-suite') {
+        return
+      }
+      throw new Error(`missing: ${path}`)
+    })
+
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: async () => ({
+        instance_token: 'deterministic-token',
+        status: 'ok',
+      }),
+      ok: true,
+    })
+
+    const ownedChild = new FakeChildProcess(4321)
+    spawn.mockReturnValue(ownedChild)
+
+    const service = new ApiServerService()
+    await service.start()
+
+    expect(spawn).toHaveBeenCalledWith(
+      '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu/ecos-server',
+      ['--host', '127.0.0.1', '--port', '8765', '--disable-stdio-redirect'],
+      expect.objectContaining({
+        cwd: '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu',
+        env: expect.objectContaining({
+          CHIPCOMPILER_OSS_CAD_DIR: '/opt/ecos/resources/oss-cad-suite',
+          ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
+        }),
+      }),
+    )
+  })
 })

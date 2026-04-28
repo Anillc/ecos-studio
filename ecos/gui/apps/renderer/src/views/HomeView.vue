@@ -99,7 +99,7 @@
         >
           <SplitterPanel :size="45" :minSize="15" class="dashboard-cell">
       <!-- ========== Row 2 Left+Center: Layout Preview ========== -->
-      <section ref="layoutSectionRef" :class="['section-card layout-area', { 'is-fullscreen': isLayoutFullscreen }]">
+      <section class="section-card layout-area">
         <div class="section-header">
           <div class="header-icon layout"><i class="ri-layout-masonry-line"></i></div>
           <h2>Layout</h2>
@@ -111,19 +111,14 @@
             </button>
           </div>
         </div>
-        <div ref="layoutContentRef" class="layout-content" @wheel.prevent="onLayoutWheel" @mousedown="onLayoutMouseDown"
-          @mousemove="onLayoutMouseMove" @mouseup="onLayoutMouseUp" @mouseleave="onLayoutMouseUp">
-          <img v-if="layoutBlobUrl" :src="layoutBlobUrl" alt="Layout Preview" class="layout-image"
-            :style="layoutImageTransform" draggable="false" />
+        <div class="layout-content">
+          <img v-if="layoutBlobUrl" :src="layoutBlobUrl" alt="Layout Preview" class="layout-image" draggable="false" />
           <!-- 科技感扫描线 -->
           <!-- <div v-if="layoutBlobUrl && !isLayoutFullscreen" class="scanner-line"></div> -->
           <div v-else-if="!layoutBlobUrl" class="layout-placeholder">
             <i class="ri-image-2-line"></i>
             <p>Layout Preview</p>
             <span>Waiting for layout data...</span>
-          </div>
-          <div v-if="isLayoutFullscreen && layoutBlobUrl" class="zoom-indicator">
-            {{ Math.round(layoutScale * 100) }}%
           </div>
         </div>
       </section>
@@ -182,49 +177,95 @@
         </div>
         <div class="flow-log-content">
           <div v-if="flowLogError" class="flow-log-error">{{ flowLogError }}</div>
-          <div v-else-if="flowLogSegments.length" ref="flowLogScrollRef" class="flow-log-scroll">
-            <div
-              v-for="seg in flowLogSegments"
-              :key="flowLogStepKey(seg)"
-              class="flow-log-step"
-              :class="{
-                failed: seg.failed,
-                missing: seg.missing && !seg.failed,
-                'is-live': seg.live,
-              }"
-            >
-              <div class="flow-log-step-header">
-                <span class="flow-log-step-title">{{ seg.stepName }}</span>
-                <span class="flow-log-step-meta">{{ seg.tool }}</span>
-                <span class="flow-log-step-state" :class="{ 'is-failed': seg.failed }">{{ seg.state }}</span>
-                <button
-                  v-if="seg.truncated"
-                  type="button"
-                  class="flow-log-expand-btn"
-                  :disabled="expandingFlowLogKeys[flowLogStepKey(seg)]"
-                  :title="`Load full log (${formatKb(seg.totalSize)})`"
-                  @click="onExpandFullLog(seg)"
-                >
-                  <i
-                    :class="[
-                      expandingFlowLogKeys[flowLogStepKey(seg)]
-                        ? 'ri-loader-4-line flow-log-expand-btn-spinner'
-                        : 'ri-expand-up-down-line',
-                    ]"
-                  ></i>
-                  <span v-if="expandingFlowLogKeys[flowLogStepKey(seg)]">Loading full log…</span>
-                  <span v-else>Show full log ({{ formatKb(seg.totalSize) }})</span>
-                </button>
+          <div v-else-if="flowLogListItems.length" class="flow-log-layout">
+            <div class="flow-log-viewer-panel">
+              <div class="flow-log-viewer-header">
+                <div class="flow-log-viewer-header-main">
+                  <div v-if="selectedFlowLogSegment" class="flow-log-viewer-summary-row">
+                    <span class="flow-log-viewer-title">{{ selectedFlowLogSegment.stepName }}</span>
+                    <span class="flow-log-viewer-tool">{{ selectedFlowLogSegment.tool }}</span>
+                    <span
+                      class="flow-log-viewer-state"
+                      :class="{ failed: selectedFlowLogSegment.failed, live: selectedFlowLogSegment.live }"
+                    >
+                      {{ selectedFlowLogSegment.state }}
+                    </span>
+                    <span v-if="selectedFlowLogSegment.totalSize" class="flow-log-viewer-size">
+                      {{ formatKb(selectedFlowLogSegment.totalSize) }}
+                    </span>
+                    <span
+                      v-if="flowLogLoading || loadingSelectedFlowLogKey === selectedFlowLogKey"
+                      class="flow-log-viewer-loading"
+                    >
+                      <i class="ri-loader-4-line spin"></i>
+                      {{ flowLogLoading ? 'Updating…' : 'Loading log…' }}
+                    </span>
+                  </div>
+                  <div v-else class="flow-log-viewer-summary-row empty">
+                    <span class="flow-log-viewer-title">Current step</span>
+                    <span class="flow-log-viewer-tool">Select a step to inspect its output.</span>
+                  </div>
+                </div>
+
+                <div class="flow-log-viewer-actions">
+                  <button
+                    ref="flowLogStepChooserTriggerRef"
+                    type="button"
+                    class="flow-log-steps-trigger"
+                    aria-controls="flow-log-step-chooser-dialog"
+                    :aria-expanded="isFlowLogStepChooserOpen ? 'true' : 'false'"
+                    aria-haspopup="dialog"
+                    :aria-label="isFlowLogStepChooserOpen ? 'Hide flow step chooser' : 'Show flow step chooser'"
+                    @click="toggleFlowLogStepChooser"
+                  >
+                    <i class="ri-list-check"></i>
+                    <span>Steps</span>
+                  </button>
+                  <button
+                    v-if="liveFlowLogKey && liveFlowLogKey !== selectedFlowLogKey"
+                    type="button"
+                    class="flow-log-jump-live-btn"
+                    @click="jumpToLiveStep"
+                  >
+                    <i class="ri-skip-right-line"></i>
+                    <span>Jump to live</span>
+                  </button>
+                  <button
+                    v-if="selectedFlowLogSegment?.truncated"
+                    type="button"
+                    class="flow-log-expand-btn"
+                    :disabled="expandingFlowLogKeys[selectedFlowLogKey || '']"
+                    :title="`Load full log (${formatKb(selectedFlowLogSegment.totalSize)})`"
+                    @click="onExpandFullLog(selectedFlowLogSegment)"
+                  >
+                    <i
+                      :class="[
+                        expandingFlowLogKeys[selectedFlowLogKey || '']
+                          ? 'ri-loader-4-line flow-log-expand-btn-spinner'
+                          : 'ri-expand-up-down-line',
+                      ]"
+                    ></i>
+                    <span v-if="expandingFlowLogKeys[selectedFlowLogKey || '']">Loading full log…</span>
+                    <span v-else>Show full log</span>
+                  </button>
+                </div>
               </div>
-              <pre
-                class="flow-log-pre"
-                :data-flow-log-key="flowLogStepKey(seg)"
-                @scroll.passive="onFlowLogPreScroll"
-              >{{ seg.content }}</pre>
-            </div>
-            <div v-if="flowLogLoading" class="flow-log-loading-more">
-              <i class="ri-loader-4-line flow-log-loading-more-icon"></i>
-              <span>Loading remaining step logs…</span>
+
+              <div class="flow-log-viewer-shell">
+                <FlowLogCodeViewer
+                  v-if="selectedFlowLogSegment"
+                  :key="selectedFlowLogKey ?? 'no-selection'"
+                  :content="selectedFlowLogSegment.content"
+                  :live="Boolean(selectedFlowLogSegment.live)"
+                  :missing="selectedFlowLogSegment.missing"
+                  :loading="loadingSelectedFlowLogKey === selectedFlowLogKey"
+                />
+                <div v-else class="flow-log-placeholder">
+                  <i class="ri-terminal-line"></i>
+                  <p>No step selected</p>
+                  <span>Open Steps to inspect a log once a flow step is available.</span>
+                </div>
+              </div>
             </div>
           </div>
           <div v-else-if="flowLogLoading" class="flow-log-loading">
@@ -295,6 +336,84 @@
       </SplitterPanel>
     </Splitter>
 
+    <Teleport to="body">
+      <Transition name="flow-log-chooser">
+        <div
+          v-if="isFlowLogStepChooserOpen"
+          class="flow-log-chooser-overlay"
+          @click="closeFlowLogStepChooser"
+        >
+          <div
+            id="flow-log-step-chooser-dialog"
+            ref="flowLogChooserDialogRef"
+            class="flow-log-chooser-anchor"
+            :style="flowLogChooserAnchorStyle"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Flow step chooser"
+            tabindex="-1"
+            @click.stop
+            @keydown="onFlowLogChooserKeydown"
+          >
+            <FlowLogStepChooser
+              :items="flowLogListItems"
+              :selected-key="selectedFlowLogKey"
+              :live-key="liveFlowLogKey"
+              @close="closeFlowLogStepChooser"
+              @jump-live="jumpToLiveStep"
+              @select="onSelectFlowLogStep"
+            />
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ===== Layout Fullscreen Overlay ===== -->
+    <Teleport to="body">
+      <Transition name="lightbox">
+        <div v-if="isLayoutFullscreen" class="layout-fullscreen-overlay" @click="closeLayoutFullscreen">
+          <section class="section-card layout-fullscreen-card" @click.stop>
+            <div class="section-header">
+              <div class="header-icon layout"><i class="ri-layout-masonry-line"></i></div>
+              <h2>Layout</h2>
+              <span class="header-hint">Displays the final step of the layout after the run is completed.</span>
+              <div class="header-actions">
+                <button class="action-btn" @click="closeLayoutFullscreen" title="Exit full screen">
+                  <i class="ri-fullscreen-exit-line"></i>
+                </button>
+              </div>
+            </div>
+            <div
+              ref="layoutContentRef"
+              class="layout-content layout-fullscreen-content"
+              @wheel.prevent="onLayoutWheel"
+              @mousedown="onLayoutMouseDown"
+              @mousemove="onLayoutMouseMove"
+              @mouseup="onLayoutMouseUp"
+              @mouseleave="onLayoutMouseUp"
+            >
+              <img
+                v-if="layoutBlobUrl"
+                :src="layoutBlobUrl"
+                alt="Layout Preview"
+                class="layout-image layout-fullscreen-image"
+                :style="layoutImageTransform"
+                draggable="false"
+              />
+              <div v-else class="layout-placeholder">
+                <i class="ri-image-2-line"></i>
+                <p>Layout Preview</p>
+                <span>Waiting for layout data...</span>
+              </div>
+              <div v-if="layoutBlobUrl" class="zoom-indicator">
+                {{ Math.round(layoutScale * 100) }}%
+              </div>
+            </div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- ===== 图表预览 Lightbox ===== -->
     <Teleport to="body">
       <Transition name="lightbox">
@@ -316,8 +435,113 @@
   </div>
 </template>
 
+<script lang="ts">
+export interface FlowLogChooserEscapeEvent {
+  key: string
+  preventDefault?: () => void
+}
+
+export interface FlowLogChooserController {
+  selectedFlowLogKey: string | null
+  isFlowLogStepChooserOpen: boolean
+  toggleFlowLogStepChooser: () => void
+  closeFlowLogStepChooser: () => void
+  onSelectFlowLogStep: (key: string) => void
+  jumpToLiveStep: (liveKey: string | null) => void
+  onFlowLogChooserEscape: (event: FlowLogChooserEscapeEvent) => void
+}
+
+export function createFlowLogChooserController(initialSelectedKey: string | null = null): FlowLogChooserController {
+  const controller: FlowLogChooserController = {
+    selectedFlowLogKey: initialSelectedKey,
+    isFlowLogStepChooserOpen: false,
+    toggleFlowLogStepChooser(this: FlowLogChooserController) {
+      this.isFlowLogStepChooserOpen = !this.isFlowLogStepChooserOpen
+    },
+    closeFlowLogStepChooser(this: FlowLogChooserController) {
+      this.isFlowLogStepChooserOpen = false
+    },
+    onSelectFlowLogStep(this: FlowLogChooserController, key: string) {
+      this.selectedFlowLogKey = key
+      this.closeFlowLogStepChooser()
+    },
+    jumpToLiveStep(this: FlowLogChooserController, liveKey: string | null) {
+      if (!liveKey) return
+      this.selectedFlowLogKey = liveKey
+      this.closeFlowLogStepChooser()
+    },
+    onFlowLogChooserEscape(this: FlowLogChooserController, event: FlowLogChooserEscapeEvent) {
+      if (event.key !== 'Escape' || !this.isFlowLogStepChooserOpen) return
+      if (typeof event.preventDefault === 'function') {
+        event.preventDefault()
+      }
+      this.closeFlowLogStepChooser()
+    },
+  }
+
+  return controller
+}
+
+export interface FlowLogChooserRect {
+  top: number
+  left: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+
+export interface FlowLogChooserViewport {
+  width: number
+  height: number
+}
+
+export interface FlowLogChooserSize {
+  width: number
+  height: number
+}
+
+export interface FlowLogChooserAnchorStyle {
+  left: string
+  top: string
+  transformOrigin: string
+}
+
+const FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX = 20
+const FLOW_LOG_CHOOSER_GAP_PX = 8
+const FLOW_LOG_CHOOSER_FALLBACK_WIDTH_PX = 320
+const FLOW_LOG_CHOOSER_FALLBACK_HEIGHT_PX = 320
+
+export function computeFlowLogChooserAnchorStyle(
+  triggerRect: FlowLogChooserRect,
+  viewport: FlowLogChooserViewport,
+  chooserSize: FlowLogChooserSize,
+): FlowLogChooserAnchorStyle {
+  const width = chooserSize.width || FLOW_LOG_CHOOSER_FALLBACK_WIDTH_PX
+  const height = chooserSize.height || FLOW_LOG_CHOOSER_FALLBACK_HEIGHT_PX
+  const maxLeft = Math.max(FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX, viewport.width - width - FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX)
+  const preferredLeft = triggerRect.right - width
+  const left = Math.min(Math.max(FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX, preferredLeft), maxLeft)
+
+  const spaceBelow = viewport.height - triggerRect.bottom - FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX
+  const spaceAbove = triggerRect.top - FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX
+  const placeBelow = spaceBelow >= height || spaceBelow >= spaceAbove
+  const preferredTop = placeBelow
+    ? triggerRect.bottom + FLOW_LOG_CHOOSER_GAP_PX
+    : triggerRect.top - height - FLOW_LOG_CHOOSER_GAP_PX
+  const maxTop = Math.max(FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX, viewport.height - height - FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX)
+  const top = Math.min(Math.max(FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX, preferredTop), maxTop)
+
+  return {
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
+    transformOrigin: placeBelow ? 'top right' : 'bottom right',
+  }
+}
+</script>
+
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, toRef } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -325,9 +549,17 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
+import FlowLogCodeViewer from '@/components/FlowLogCodeViewer.vue'
+import FlowLogStepChooser from '@/components/FlowLogStepChooser.vue'
 import { useParameters } from '@/composables/useParameters'
 import { useHomeData, type AnalysisChartItem, type FlowLogSegment } from '@/composables/useHomeData'
 import { isWindowResizing } from '@/composables/useWindowResizeState'
+import {
+  flowLogStepKey,
+  getDefaultSelectedFlowLogKey,
+  reconcileSelectedFlowLogKey,
+  toFlowLogListItems,
+} from './homeViewFlowLogSelection'
 
 // 注册 ECharts 组件（按需引入）
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -342,6 +574,7 @@ const {
   flowLogStepName,
   flowLogError,
   flowLogLoading,
+  ensureFlowLogSegmentContentLoaded,
   expandFlowLogSegment,
 } = useHomeData()
 
@@ -367,67 +600,126 @@ async function onExpandFullLog(seg: FlowLogSegment): Promise<void> {
   }
 }
 
-const flowLogScrollRef = ref<HTMLElement | null>(null)
+const flowLogListItems = computed(() => toFlowLogListItems(flowLogSegments.value))
+const flowLogChooser = reactive(createFlowLogChooserController(getDefaultSelectedFlowLogKey(flowLogSegments.value)))
+const selectedFlowLogKey = toRef(flowLogChooser, 'selectedFlowLogKey')
+const isFlowLogStepChooserOpen = toRef(flowLogChooser, 'isFlowLogStepChooserOpen')
+const flowLogChooserDialogRef = ref<HTMLElement | null>(null)
+const flowLogStepChooserTriggerRef = ref<HTMLButtonElement | null>(null)
+const flowLogChooserAnchorStyle = ref<FlowLogChooserAnchorStyle>({
+  left: `${FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX}px`,
+  top: `${FLOW_LOG_CHOOSER_VIEWPORT_PADDING_PX}px`,
+  transformOrigin: 'top right',
+})
+const loadingSelectedFlowLogKey = ref<string | null>(null)
+const liveFlowLogKey = computed(() => {
+  const liveSegment = flowLogSegments.value.find((segment) => segment.live)
+  return liveSegment ? flowLogStepKey(liveSegment) : null
+})
+const selectedFlowLogSegment = computed(() => {
+  if (!selectedFlowLogKey.value) return null
+  return flowLogSegments.value.find((segment) => flowLogStepKey(segment) === selectedFlowLogKey.value) ?? null
+})
 
-/** 距底部在此像素内视为「贴在底部」，新内容到达时自动跟到底 */
-const FLOW_LOG_TAIL_NEAR_BOTTOM_PX = 12
-
-/** 各步骤日志块是否应跟随尾部滚动；仅在为 false 时保留用户上翻位置 */
-const pinFlowLogTail = reactive<Record<string, boolean>>({})
-
-function flowLogStepKey(seg: FlowLogSegment): string {
-  return `${seg.stepName}\u001f${seg.tool}`
+function toggleFlowLogStepChooser(): void {
+  flowLogChooser.toggleFlowLogStepChooser()
 }
 
-function onFlowLogPreScroll(ev: Event): void {
-  const pre = ev.target as HTMLElement
-  const key = pre.dataset.flowLogKey
-  if (!key) return
-  const gap = pre.scrollHeight - pre.scrollTop - pre.clientHeight
-  pinFlowLogTail[key] = gap <= FLOW_LOG_TAIL_NEAR_BOTTOM_PX
+function closeFlowLogStepChooser(): void {
+  flowLogChooser.closeFlowLogStepChooser()
 }
 
-function scrollFlowLogPanelsToEnd(): void {
-  const root = flowLogScrollRef.value
-  if (!root) return
-  root.scrollTop = root.scrollHeight
-  root.querySelectorAll<HTMLElement>('.flow-log-pre').forEach((pre) => {
-    const key = pre.dataset.flowLogKey
-    if (!key) return
-    if (pinFlowLogTail[key] === false) return
-    pre.scrollTop = pre.scrollHeight
-  })
+function onFlowLogChooserKeydown(event: KeyboardEvent): void {
+  flowLogChooser.onFlowLogChooserEscape(event)
 }
 
-// 多次日志更新可能在一帧内触发（初始化 + 渐进写入），合并成一次 DOM 操作
-let pendingFlowLogScroll: number | null = null
-function scheduleFlowLogScroll(): void {
-  if (pendingFlowLogScroll !== null) return
-  pendingFlowLogScroll = requestAnimationFrame(() => {
-    pendingFlowLogScroll = null
-    scrollFlowLogPanelsToEnd()
-  })
+function onSelectFlowLogStep(key: string): void {
+  flowLogChooser.onSelectFlowLogStep(key)
 }
 
-// 仍然需要 deep: true：live 段会原地替换数组元素（content 递增），
-// 仅浅比较会漏掉这类增量；但把原先的双层 rAF 合并为单 rAF，
-// 高频追加场景下主线程开销从"每段日志两帧"降到"每段日志一帧"。
+function jumpToLiveStep(): void {
+  flowLogChooser.jumpToLiveStep(liveFlowLogKey.value)
+}
+
+function updateFlowLogChooserAnchorPosition(): void {
+  const trigger = flowLogStepChooserTriggerRef.value
+  const dialog = flowLogChooserDialogRef.value
+  if (!trigger || !dialog || typeof window === 'undefined') return
+
+  const triggerRect = trigger.getBoundingClientRect()
+  const dialogRect = dialog.getBoundingClientRect()
+  flowLogChooserAnchorStyle.value = computeFlowLogChooserAnchorStyle(
+    triggerRect,
+    {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    },
+    {
+      width: dialogRect.width,
+      height: dialogRect.height,
+    },
+  )
+}
+
 watch(
   flowLogSegments,
-  async (segs) => {
-    const alive = new Set(segs.map((s) => flowLogStepKey(s)))
-    // 清理"已不在当前 plan 中的 step"对应的各类本地 state，
-    // 防止跨 flow 累积无用条目（费用低但数量会一直涨）。
-    for (const k of Object.keys(pinFlowLogTail)) {
-      if (!alive.has(k)) delete pinFlowLogTail[k]
-    }
-    for (const k of Object.keys(expandingFlowLogKeys)) {
-      if (!alive.has(k)) delete expandingFlowLogKeys[k]
-    }
-    await nextTick()
-    scheduleFlowLogScroll()
+  (segments) => {
+    selectedFlowLogKey.value = reconcileSelectedFlowLogKey(segments, selectedFlowLogKey.value)
   },
-  { deep: true }
+  {
+    immediate: true,
+    deep: true,
+  },
+)
+
+watch(
+  isFlowLogStepChooserOpen,
+  async (isOpen, wasOpen) => {
+    await nextTick()
+    if (isOpen) {
+      requestAnimationFrame(() => {
+        updateFlowLogChooserAnchorPosition()
+        flowLogChooserDialogRef.value?.focus()
+      })
+      if (typeof window !== 'undefined') {
+        window.addEventListener('resize', updateFlowLogChooserAnchorPosition)
+      }
+      return
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', updateFlowLogChooserAnchorPosition)
+    }
+    if (wasOpen) {
+      flowLogStepChooserTriggerRef.value?.focus()
+    }
+  },
+)
+
+watch(
+  selectedFlowLogSegment,
+  async (segment) => {
+    if (!segment) {
+      loadingSelectedFlowLogKey.value = null
+      return
+    }
+    if (segment.content || segment.missing) {
+      if (loadingSelectedFlowLogKey.value === flowLogStepKey(segment)) {
+        loadingSelectedFlowLogKey.value = null
+      }
+      return
+    }
+
+    const key = flowLogStepKey(segment)
+    loadingSelectedFlowLogKey.value = key
+    try {
+      await ensureFlowLogSegmentContentLoaded(segment)
+    } finally {
+      if (loadingSelectedFlowLogKey.value === key) {
+        loadingSelectedFlowLogKey.value = null
+      }
+    }
+  },
+  { immediate: true },
 )
 
 // checklist 完成计数
@@ -436,7 +728,6 @@ const checklistCompletedCount = computed(() =>
 )
 
 // ============ Layout 全屏 & 缩放平移 ============
-const layoutSectionRef = ref<HTMLElement>()
 const layoutContentRef = ref<HTMLElement>()
 const isLayoutFullscreen = ref(false)
 
@@ -472,23 +763,29 @@ function resetLayoutTransform() {
 }
 
 function toggleLayoutFullscreen() {
-  if (!layoutSectionRef.value) return
   isLayoutFullscreen.value = !isLayoutFullscreen.value
   if (!isLayoutFullscreen.value) {
     resetLayoutTransform()
   }
 }
 
+function closeLayoutFullscreen() {
+  if (!isLayoutFullscreen.value) return
+  isLayoutFullscreen.value = false
+  resetLayoutTransform()
+}
+
 function onFullscreenKeydown(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
+  flowLogChooser.onFlowLogChooserEscape(e)
+  if (e.defaultPrevented) return
   if (chartPreview.value.visible) {
     closeChartPreview()
     e.preventDefault()
     return
   }
   if (isLayoutFullscreen.value) {
-    isLayoutFullscreen.value = false
-    resetLayoutTransform()
+    closeLayoutFullscreen()
   }
 }
 
@@ -915,10 +1212,6 @@ onUnmounted(() => {
     cancelAnimationFrame(pendingResizeRaf)
     pendingResizeRaf = null
   }
-  if (pendingFlowLogScroll !== null) {
-    cancelAnimationFrame(pendingFlowLogScroll)
-    pendingFlowLogScroll = null
-  }
   document.removeEventListener('keydown', onFullscreenKeydown)
 })
 
@@ -1107,27 +1400,37 @@ function stateClass(state: string): string {
   display: none;
 }
 
-.layout-area.is-fullscreen {
+.layout-fullscreen-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 9999;
+  inset: 0;
+  z-index: 19990;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+  box-sizing: border-box;
+}
+
+.layout-fullscreen-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   border-radius: 0;
   background: var(--bg-primary);
 }
 
-.layout-area.is-fullscreen .layout-content {
+.layout-fullscreen-content {
   margin: 0;
-  border-radius: 0;
   border: none;
+  border-radius: 0;
   overflow: hidden;
   position: relative;
   background-image: none;
 }
 
-.layout-area.is-fullscreen .layout-image {
+.layout-fullscreen-image {
   object-fit: contain;
   /*
    * 仅在滚轮缩放时给 50ms 缓动，拖动时由 inline style 设为 'none'，
@@ -1782,71 +2085,123 @@ html.dark .chart-card:hover {
   overflow: hidden;
 }
 
-.flow-log-scroll {
+.flow-log-layout {
   flex: 1;
   min-height: 0;
-  overflow: auto;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-right: 2px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
 }
 
-.flow-log-step {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.flow-log-viewer-panel {
+  flex: 1;
   min-width: 0;
-  /*
-   * 让滚动视口外的日志块进入"虚拟化"：
-   * - content-visibility: auto 告诉浏览器：此元素滚出视口时跳过布局/绘制
-   * - contain-intrinsic-size 给出占位尺寸，避免滚动条抖动
-   *
-   * 日志段通常上百个、每段内部 pre 又可能上千行，没有这项时 resize
-   * 期间每一帧都要对所有可见 + 不可见段做 pre-wrap 重排，是本页最大
-   * 的单点开销。该属性在不支持的 WebKit 上会被忽略，不影响回退行为。
-   */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 360px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.flow-log-step-header {
+.flow-log-viewer-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.flow-log-viewer-header-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.flow-log-viewer-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   flex-wrap: wrap;
-  gap: 6px 10px;
-  font-size: 10px;
+}
+
+.flow-log-viewer-title {
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.flow-log-step-title {
   color: var(--text-primary);
-  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.flow-log-step-meta {
+.flow-log-viewer-tool {
+  font-size: 9px;
+  color: var(--text-secondary);
   font-family: 'JetBrains Mono', monospace;
-  opacity: 0.85;
+  white-space: nowrap;
 }
 
-.flow-log-step-state {
-  margin-left: auto;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--bg-primary);
+.flow-log-viewer-state {
+  padding: 2px 7px;
+  border-radius: 999px;
   border: 1px solid var(--border-color);
   font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.flow-log-step-state.is-failed {
+.flow-log-viewer-state.failed {
   color: #f87171;
   border-color: rgba(248, 113, 113, 0.45);
   background: rgba(248, 113, 113, 0.08);
 }
 
+.flow-log-viewer-state.live {
+  color: var(--accent-color);
+  border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.35);
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+}
+
+.flow-log-viewer-size,
+.flow-log-viewer-loading {
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.flow-log-viewer-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.flow-log-viewer-summary-row.empty .flow-log-viewer-title {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.flow-log-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.flow-log-viewer-shell {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.flow-log-steps-trigger,
+.flow-log-jump-live-btn,
 .flow-log-expand-btn {
   display: inline-flex;
   align-items: center;
@@ -1864,6 +2219,8 @@ html.dark .chart-card:hover {
   line-height: 1.3;
 }
 
+.flow-log-steps-trigger:hover:not(:disabled),
+.flow-log-jump-live-btn:hover:not(:disabled),
 .flow-log-expand-btn:hover:not(:disabled) {
   color: var(--text-primary);
   border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.45);
@@ -1875,6 +2232,8 @@ html.dark .chart-card:hover {
   cursor: progress;
 }
 
+.flow-log-steps-trigger i,
+.flow-log-jump-live-btn i,
 .flow-log-expand-btn i {
   font-size: 12px;
   line-height: 1;
@@ -1887,71 +2246,6 @@ html.dark .chart-card:hover {
 @keyframes flow-log-expand-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-.flow-log-step.is-live .flow-log-pre {
-  border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.4);
-  box-shadow: inset 3px 0 0 0 var(--accent-color), 0 0 10px rgba(var(--accent-rgb, 59, 130, 246), 0.1);
-}
-
-.flow-log-step.is-live .flow-log-pre::after {
-  content: '█';
-  animation: terminal-blink 1s step-end infinite;
-  color: var(--accent-color);
-  margin-left: 4px;
-}
-
-@keyframes terminal-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-html.dark .flow-log-step.is-live .flow-log-pre {
-  border-color: rgba(6, 182, 212, 0.6);
-  box-shadow: inset 3px 0 0 0 #06b6d4, 0 0 12px rgba(6, 182, 212, 0.3);
-}
-
-html.dark .flow-log-step.is-live .flow-log-pre::after {
-  color: #06b6d4;
-}
-
-.flow-log-pre {
-  margin: 0;
-  padding: 10px 12px;
-  overflow: auto;
-  max-height: 320px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  color: #334155;
-  opacity: 1;
-  white-space: pre-wrap;
-  word-break: break-word;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
-  /* 把每个 pre 自己的布局/绘制都关在盒子里，上级宽度变化不会反向触发
-     pre 外部的重排，同时也减少浏览器的重排传播开销 */
-  contain: content;
-}
-
-html.dark .flow-log-pre {
-  background: #0a0e17;
-  border: 1px solid rgba(6, 182, 212, 0.2);
-  color: #06b6d4;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
-}
-
-.flow-log-step.failed .flow-log-pre {
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.35);
-}
-
-.flow-log-step.missing .flow-log-pre {
-  color: var(--text-secondary);
-  opacity: 0.95;
-  font-style: italic;
 }
 
 .flow-log-error {
@@ -2039,24 +2333,38 @@ html.dark .flow-log-pre {
   line-height: 1.45;
 }
 
-.flow-log-loading-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin-top: 2px;
-  border-radius: 6px;
-  border: 1px dashed var(--border-color);
-  background: var(--bg-primary);
-  font-size: 10px;
-  color: var(--text-secondary);
-  flex-shrink: 0;
+.flow-log-chooser-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 18000;
+  background: rgba(17, 24, 39, 0.12);
 }
 
-.flow-log-loading-more-icon {
-  font-size: 14px;
-  animation: flow-log-spin 0.85s linear infinite;
+.flow-log-chooser-anchor {
+  position: absolute;
+  width: min(calc(100vw - 40px), 20rem);
+  max-width: 20rem;
+}
+
+.flow-log-chooser-enter-active,
+.flow-log-chooser-leave-active {
+  transition: opacity 140ms ease;
+}
+
+.flow-log-chooser-enter-active .flow-log-chooser-anchor,
+.flow-log-chooser-leave-active .flow-log-chooser-anchor {
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+
+.flow-log-chooser-enter-from,
+.flow-log-chooser-leave-to {
+  opacity: 0;
+}
+
+.flow-log-chooser-enter-from .flow-log-chooser-anchor,
+.flow-log-chooser-leave-to .flow-log-chooser-anchor {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 @keyframes flow-log-spin {
@@ -2246,25 +2554,7 @@ html.dark .flow-log-pre {
   animation: spin 1s linear infinite;
 }
 
-/*
- * ==================== 窗口 resize 期间的局部降级 ====================
- * App.vue 会在 body 上挂 `.window-resizing` class。这里针对本页最重
- * 的两处重排做额外冻结，停歇 180ms 后自动恢复：
- *
- * 1) 日志 pre：`pre-wrap` + 长文本意味着每次宽度变化都要对成千上万行
- *    重新计算断行位置。切到 `pre` 让文本暂时不换行（由 pre 内部的横向
- *    滚动承接），彻底跳过文本断行的重排成本。
- * 2) 指标分析 / layout 预览的图片：image-rendering 降级已由 App.vue
- *    全局处理；这里只处理本页特有的文本重排热点。
- */
-.window-resizing .flow-log-pre {
-  white-space: pre !important;
-  word-break: normal !important;
-  overflow-wrap: normal !important;
-}
-
-/*
- * Checklist 单元格内容在 resize 期间也切回 normal（非 anywhere）——
+/* Checklist 单元格内容在 resize 期间切回 normal（非 anywhere）——
  * anywhere 允许的 "任意位置断词" 需要测量每一个字符，缩放帧上代价偏高。
  */
 .window-resizing .checklist-table td {

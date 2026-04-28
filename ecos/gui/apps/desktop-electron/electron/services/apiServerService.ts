@@ -178,6 +178,10 @@ function getBundledBinaryCandidates(): string[] {
   return [...archSpecificCandidates, `api-server${extension}`]
 }
 
+function getBundledServerExecutableName(): string {
+  return process.platform === 'win32' ? 'ecos-server.exe' : 'ecos-server'
+}
+
 function getConfiguredBinariesDirectory(): string | null {
   const configuredDirectory = process.env.ECOS_ELECTRON_BINARIES_DIR?.trim()
   return configuredDirectory ? configuredDirectory : null
@@ -246,6 +250,14 @@ async function resolveLaunchSpec(port: number, token: string): Promise<LaunchSpe
         continue
       }
 
+      const bundledDirectoryExecutable = join(binaryPath, getBundledServerExecutableName())
+      const command = (await pathExists(bundledDirectoryExecutable))
+        ? bundledDirectoryExecutable
+        : binaryPath
+      const cwd = (await pathExists(bundledDirectoryExecutable))
+        ? binaryPath
+        : dirname(binaryPath)
+
       const resourcesDirectory =
         getConfiguredOssCadDirectory()
         ?? (processResourcesPath
@@ -261,9 +273,9 @@ async function resolveLaunchSpec(port: number, token: string): Promise<LaunchSpe
       }
 
       return {
-        command: binaryPath,
+        command,
         args: ['--host', API_HOST, '--port', String(port), '--disable-stdio-redirect'],
-        cwd: dirname(binaryPath),
+        cwd,
         env,
       }
     }

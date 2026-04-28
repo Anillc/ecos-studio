@@ -23,6 +23,10 @@ const preloadPath = resolvePreloadPath()
 const rendererIndexPath = fileURLToPath(new URL('../renderer/index.html', import.meta.url))
 const FORWARD_RENDERER_CONSOLE = process.env.ECOS_FORWARD_RENDERER_CONSOLE === '1'
 
+function shouldOpenDevTools(): boolean {
+  return process.env.ECOS_ELECTRON_OPEN_DEVTOOLS === '1'
+}
+
 function logRendererConsoleMessage(message: string): void {
   try {
     console.log(message)
@@ -68,9 +72,15 @@ export async function createMainWindow(): Promise<BrowserWindow> {
 
   if (rendererUrl) {
     await mainWindow.loadURL(rendererUrl)
+    if (shouldOpenDevTools()) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    }
     return mainWindow
   }
 
   await mainWindow.loadFile(rendererIndexPath)
+  if (shouldOpenDevTools()) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
+  }
   return mainWindow
 }

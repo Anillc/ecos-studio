@@ -15,15 +15,13 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package:prepare-resources": "./scripts/prepare-package-resources.sh",
-    "package": "pnpm run package:prepare-resources && electron-builder --config electron-builder.yml",
+    "package": "rm -rf release && pnpm run package:prepare-resources && electron-builder --config electron-builder.yml",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": {
-    "@ecos-studio/shared": "workspace:*",
-    "@ecos-studio/tile-helper": "workspace:*"
-  },
   "devDependencies": {
+    "@ecos-studio/shared": "workspace:*",
+    "@ecos-studio/tile-helper": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^25.0.6",
     "@vitejs/plugin-vue": "^6.0.3",
