@@ -31,7 +31,7 @@
             </div>
           </div>
           <!-- SOC -->
-          <button @click="navigateToSoC"
+          <button type="button" @click="navigateToSoC"
             class="group flex flex-col items-center justify-center py-8 bg-(--bg-secondary) rounded-xl border border-(--border-color) hover:border-(--accent-color) transition-all duration-200 hover:scale-[1.02] cursor-pointer hover:shadow-lg hover:shadow-(--accent-color)/5">
             <div class="w-12 h-12 rounded-xl bg-(--bg-primary) flex items-center justify-center group-hover:bg-(--accent-color)/10 transition-colors mb-3">
               <i class="ri-cpu-line text-2xl text-(--text-secondary) group-hover:text-(--accent-color) transition-colors"></i>
