@@ -3,11 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   mountedCallbacks,
   unmountedCallbacks,
-  hasDesktopApi,
-  getDesktopApi,
+  waitForDesktopApi,
 } = vi.hoisted(() => ({
-  getDesktopApi: vi.fn(),
-  hasDesktopApi: vi.fn(),
+  waitForDesktopApi: vi.fn(),
   mountedCallbacks: [] as Array<() => void | Promise<void>>,
   unmountedCallbacks: [] as Array<() => void>,
 }))
@@ -22,8 +20,7 @@ vi.mock('vue', () => ({
 }))
 
 vi.mock('@/platform/desktop', () => ({
-  getDesktopApi,
-  hasDesktopApi,
+  waitForDesktopApi,
 }))
 
 import { useMenuEvents } from './useMenuEvents'
@@ -32,8 +29,7 @@ describe('useMenuEvents', () => {
   beforeEach(() => {
     mountedCallbacks.length = 0
     unmountedCallbacks.length = 0
-    hasDesktopApi.mockReset()
-    getDesktopApi.mockReset()
+    waitForDesktopApi.mockReset()
   })
 
   afterEach(() => {
@@ -44,8 +40,7 @@ describe('useMenuEvents', () => {
     const unsubscribe = vi.fn()
     let onAction: ((eventId: string) => void) | undefined
 
-    hasDesktopApi.mockReturnValue(true)
-    getDesktopApi.mockReturnValue({
+    waitForDesktopApi.mockResolvedValue({
       menu: {
         onAction: vi.fn((listener: (eventId: string) => void) => {
           onAction = listener
@@ -63,12 +58,13 @@ describe('useMenuEvents', () => {
     })
 
     await mountedCallbacks[0]?.()
+    await Promise.resolve()
 
     onAction?.('new_project')
     onAction?.('documentation')
     onAction?.('open_project')
 
-    expect(getDesktopApi).toHaveBeenCalledTimes(1)
+    expect(waitForDesktopApi).toHaveBeenCalledTimes(1)
     expect(newProject).toHaveBeenCalledTimes(1)
     expect(documentation).toHaveBeenCalledTimes(1)
 
@@ -78,15 +74,16 @@ describe('useMenuEvents', () => {
   })
 
   it('stays inert when the desktop bridge is unavailable', async () => {
-    hasDesktopApi.mockReturnValue(false)
+    waitForDesktopApi.mockRejectedValue(new Error('ECOS desktop bridge is not available.'))
 
     useMenuEvents({
       new_project: vi.fn(),
     })
 
     await mountedCallbacks[0]?.()
+    await Promise.resolve()
 
-    expect(getDesktopApi).not.toHaveBeenCalled()
+    expect(waitForDesktopApi).toHaveBeenCalledTimes(1)
 
     unmountedCallbacks[0]?.()
   })

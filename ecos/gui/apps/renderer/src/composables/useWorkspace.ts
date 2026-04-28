@@ -3,7 +3,7 @@ import type { DesktopSettingsValue } from '@ecos-studio/shared'
 import type { Project, ProjectStatus, WorkspaceConfig } from '../types'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import { getDesktopApi } from '@/platform/desktop'
+import { waitForDesktopApi } from '@/platform/desktop'
 import { loadWorkspaceApi, createWorkspaceApi, waitForApiReady } from '../api'
 import { createSSEClient, type SSEClient, type ECCResponse } from '../api/sse'
 import { setDesktopWindowTitle } from './windowTitle'
@@ -46,23 +46,28 @@ let _toast: ReturnType<typeof useToast> | null = null
 const APP_NAME = 'ECOS Studio'
 
 async function getSetting<T>(key: string): Promise<T | null> {
-  return (await getDesktopApi().settings.get(key)) as T | null
+  const desktopApi = await waitForDesktopApi()
+  return (await desktopApi.settings.get(key)) as T | null
 }
 
 async function setSetting(key: string, value: unknown): Promise<void> {
-  await getDesktopApi().settings.set(key, value as DesktopSettingsValue)
+  const desktopApi = await waitForDesktopApi()
+  await desktopApi.settings.set(key, value as DesktopSettingsValue)
 }
 
 async function deleteSetting(key: string): Promise<void> {
-  await getDesktopApi().settings.delete(key)
+  const desktopApi = await waitForDesktopApi()
+  await desktopApi.settings.delete(key)
 }
 
 async function pickDirectory(title: string): Promise<string | null> {
-  return await getDesktopApi().dialog.pickDirectory({ title })
+  const desktopApi = await waitForDesktopApi()
+  return await desktopApi.dialog.pickDirectory({ title })
 }
 
 async function readProjectTextFile(path: string): Promise<string> {
-  return await getDesktopApi().workspace.readProjectTextFile(path)
+  const desktopApi = await waitForDesktopApi()
+  return await desktopApi.workspace.readProjectTextFile(path)
 }
 
 /**
@@ -168,7 +173,8 @@ export function useWorkspace() {
    */
   const isProjectValid = async (path: string): Promise<boolean> => {
     try {
-      return await getDesktopApi().workspace.isProjectDirectory(path)
+      const desktopApi = await waitForDesktopApi()
+      return await desktopApi.workspace.isProjectDirectory(path)
     } catch (error) {
       console.error(`Failed to check path existence: ${path}`, error)
       return false
@@ -177,7 +183,8 @@ export function useWorkspace() {
 
   const registerProjectRoot = async (path: string): Promise<string | null> => {
     try {
-      const canonicalPath = await getDesktopApi().workspace.registerProjectRoot(path)
+      const desktopApi = await waitForDesktopApi()
+      const canonicalPath = await desktopApi.workspace.registerProjectRoot(path)
       return normalizePath(canonicalPath)
     } catch (error) {
       console.error('Failed to register project root permission:', error)
@@ -187,7 +194,8 @@ export function useWorkspace() {
 
   const clearProjectRoot = async (): Promise<void> => {
     try {
-      await getDesktopApi().workspace.clearProjectRoot()
+      const desktopApi = await waitForDesktopApi()
+      await desktopApi.workspace.clearProjectRoot()
     } catch (error) {
       console.error('Failed to clear project root permission:', error)
     }

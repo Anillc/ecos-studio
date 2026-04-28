@@ -6,7 +6,7 @@
 
 import { onMounted, onUnmounted } from 'vue'
 import type { DesktopMenuEventId } from '@ecos-studio/shared'
-import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
+import { waitForDesktopApi } from '@/platform/desktop'
 
 export type MenuEventId = DesktopMenuEventId
 
@@ -28,17 +28,19 @@ export function useMenuEvents(handlers: Partial<Record<MenuEventId, MenuEventHan
   let unsubscribe: (() => void) | undefined
 
   onMounted(() => {
-    if (!hasDesktopApi()) {
-      return
-    }
+    void waitForDesktopApi({ timeoutMs: 5000 })
+      .then((desktopApi) => {
+        unsubscribe = desktopApi.menu.onAction((eventId) => {
+          const handler = handlers[eventId]
 
-    unsubscribe = getDesktopApi().menu.onAction((eventId) => {
-      const handler = handlers[eventId]
-
-      if (handler) {
-        handler()
-      }
-    })
+          if (handler) {
+            handler()
+          }
+        })
+      })
+      .catch((error) => {
+        console.warn('[useMenuEvents] Desktop bridge not available on mount:', error)
+      })
   })
 
   onUnmounted(() => {

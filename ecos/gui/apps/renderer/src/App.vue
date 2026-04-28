@@ -39,13 +39,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
+import type { DesktopApi } from '@ecos-studio/shared'
 import { useRouter, useRoute } from 'vue-router'
 import { useThemeStore } from '@/stores/themeStore'
 import { useAppMenuActions } from '@/composables/useAppMenuActions'
 import { useAppWindowClose } from '@/composables/useAppWindowClose'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { usePdkManager } from '@/composables/usePdkManager'
-import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
+import { getOptionalDesktopApi, hasDesktopApi, waitForDesktopApi } from '@/platform/desktop'
 
 import TopBar from '@/components/TopBar.vue'
 import Toast from 'primevue/toast'
@@ -61,7 +62,7 @@ const { loadRecentProjects, currentProject, openProject, newProject, closeProjec
   useWorkspace()
 const { loadPdks } = usePdkManager()
 const { showToast } = useWorkspace()
-const desktopApi = hasDesktopApi() ? getDesktopApi() : null
+const desktopApi = ref<DesktopApi | null>(getOptionalDesktopApi())
 const documentationUrl =
   'https://github.com/openecos-projects/ecos-studio/blob/main/ecos/docs/user-guide.md'
 // ---- 新建工程向导 ----
@@ -75,8 +76,10 @@ const handleWizardCreate = async (config: WorkspaceConfig) => {
 
 const openDocumentation = async () => {
   try {
-    if (desktopApi) {
-      await desktopApi.system.openExternal(documentationUrl)
+    if (desktopApi.value ?? hasDesktopApi()) {
+      const api = desktopApi.value ?? await waitForDesktopApi()
+      desktopApi.value = api
+      await api.system.openExternal(documentationUrl)
     } else {
       window.open(documentationUrl, '_blank', 'noopener,noreferrer')
     }
@@ -170,12 +173,12 @@ const markResizing = () => {
  * 见 styles/index.css 与本文件 scoped 样式中的 `.window-maximized` 规则。
  */
 async function syncMaximizedClass() {
-  if (!desktopApi) {
+  if (!desktopApi.value) {
     return
   }
 
   try {
-    const maxed = await desktopApi.window.isMaximized()
+    const maxed = await desktopApi.value.window.isMaximized()
     document.body.classList.toggle('window-maximized', maxed)
   } catch {
     /* ignore: window API unavailable (e.g. SSR / test) */
@@ -191,6 +194,15 @@ const handleSelectStart = (e: Event) => {
 }
 
 onMounted(async () => {
+  if (!desktopApi.value) {
+    try {
+      desktopApi.value = await waitForDesktopApi({ timeoutMs: 5000 })
+    } catch (error) {
+      console.warn('[App] Desktop bridge not available on initial mount:', error)
+    }
+  }
+  console.info('[App] Desktop bridge available:', Boolean(desktopApi.value))
+
   themeStore.initTheme()
   // 在应用启动时加载最近项目和已导入的 PDK
   await Promise.all([loadRecentProjects(), loadPdks()])
@@ -200,15 +212,15 @@ onMounted(async () => {
   // 启动时先同步一次最大化状态（从持久化会话恢复的场景）
   void syncMaximizedClass()
 
-  if (!desktopApi) {
+  if (!desktopApi.value) {
     return
   }
 
   // 由桌面桥接的 resize 事件统一驱动降级状态，覆盖所有缩放来源。
-  unlistenWindowResized = desktopApi.window.onResized(() => {
+  unlistenWindowResized = desktopApi.value.window.onResized(() => {
     markResizing()
   })
-  unlistenWindowMaximizedChanged = desktopApi.window.onMaximizedChanged((isMaximized) => {
+  unlistenWindowMaximizedChanged = desktopApi.value.window.onMaximizedChanged((isMaximized) => {
     document.body.classList.toggle('window-maximized', isMaximized)
   })
 })

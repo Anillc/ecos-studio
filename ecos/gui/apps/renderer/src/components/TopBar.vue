@@ -81,7 +81,8 @@ import { appMenuActionIds } from '@ecos-studio/shared'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useThemeStore } from '@/stores/themeStore'
 import { useRoute } from 'vue-router'
-import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
+import type { DesktopApi } from '@ecos-studio/shared'
+import { getOptionalDesktopApi, waitForDesktopApi } from '@/platform/desktop'
 // ---- 类型定义 ----
 interface DropdownItem {
   label?: string
@@ -111,7 +112,7 @@ const emit = defineEmits<{
 
 const themeStore = useThemeStore()
 const isDark = computed(() => themeStore.themeName === 'dark')
-const desktopApi = hasDesktopApi() ? getDesktopApi() : null
+const desktopApi = ref<DesktopApi | null>(getOptionalDesktopApi())
 const toggleTheme = () => {
   themeStore.toggleTheme()
 }
@@ -178,27 +179,32 @@ const isMaximized = ref(false)
 let unlistenMaximizedChanged: (() => void) | undefined
 
 async function syncMaximizedState() {
-  if (!desktopApi) {
+  if (!desktopApi.value) {
     return
   }
 
   try {
-    isMaximized.value = await desktopApi.window.isMaximized()
+    isMaximized.value = await desktopApi.value.window.isMaximized()
   } catch {
     /* ignore */
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
 
-  if (!desktopApi) {
-    return
+  if (!desktopApi.value) {
+    try {
+      desktopApi.value = await waitForDesktopApi({ timeoutMs: 5000 })
+    } catch (error) {
+      console.warn('[TopBar] Desktop bridge did not become available in time:', error)
+      return
+    }
   }
 
   void syncMaximizedState()
-  unlistenMaximizedChanged = desktopApi.window.onMaximizedChanged((nextIsMaximized) => {
+  unlistenMaximizedChanged = desktopApi.value.window.onMaximizedChanged((nextIsMaximized) => {
     isMaximized.value = nextIsMaximized
   })
 })
@@ -211,15 +217,18 @@ onUnmounted(() => {
 
 // ---- 窗口控制 ----
 const handleMinimize = async () => {
-  await desktopApi?.window.minimize()
+  const api = desktopApi.value ?? await waitForDesktopApi()
+  await api.window.minimize()
 }
 
 const handleMaximize = async () => {
-  await desktopApi?.window.toggleMaximize()
+  const api = desktopApi.value ?? await waitForDesktopApi()
+  await api.window.toggleMaximize()
 }
 
 const handleClose = async () => {
-  await desktopApi?.window.close()
+  const api = desktopApi.value ?? await waitForDesktopApi()
+  await api.window.close()
 }
 </script>
 

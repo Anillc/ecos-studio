@@ -2,14 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   consoleError,
-  getDesktopApi,
-  hasDesktopApi,
+  waitForDesktopApi,
   mountedCallbacks,
   unmountedCallbacks,
 } = vi.hoisted(() => ({
   consoleError: vi.fn(),
-  getDesktopApi: vi.fn(),
-  hasDesktopApi: vi.fn(),
+  waitForDesktopApi: vi.fn(),
   mountedCallbacks: [] as Array<() => void | Promise<void>>,
   unmountedCallbacks: [] as Array<() => void>,
 }))
@@ -24,8 +22,7 @@ vi.mock('vue', () => ({
 }))
 
 vi.mock('@/platform/desktop', () => ({
-  getDesktopApi,
-  hasDesktopApi,
+  waitForDesktopApi,
 }))
 
 import { useAppWindowClose } from './useAppWindowClose'
@@ -35,8 +32,7 @@ describe('useAppWindowClose', () => {
     mountedCallbacks.length = 0
     unmountedCallbacks.length = 0
     consoleError.mockReset()
-    getDesktopApi.mockReset()
-    hasDesktopApi.mockReset()
+    waitForDesktopApi.mockReset()
     vi.spyOn(console, 'error').mockImplementation(consoleError)
   })
 
@@ -50,8 +46,7 @@ describe('useAppWindowClose', () => {
     const confirmClose = vi.fn().mockResolvedValue(undefined)
     let onCloseRequested: (() => void) | undefined
 
-    hasDesktopApi.mockReturnValue(true)
-    getDesktopApi.mockReturnValue({
+    waitForDesktopApi.mockResolvedValue({
       window: {
         confirmClose,
         onCloseRequested: vi.fn((listener: () => void) => {
@@ -66,6 +61,7 @@ describe('useAppWindowClose', () => {
     useAppWindowClose(cleanup)
 
     await mountedCallbacks[0]?.()
+    await Promise.resolve()
     await onCloseRequested?.()
 
     expect(cleanup).toHaveBeenCalledTimes(1)
@@ -80,8 +76,7 @@ describe('useAppWindowClose', () => {
     const confirmClose = vi.fn().mockResolvedValue(undefined)
     let onCloseRequested: (() => void) | undefined
 
-    hasDesktopApi.mockReturnValue(true)
-    getDesktopApi.mockReturnValue({
+    waitForDesktopApi.mockResolvedValue({
       window: {
         confirmClose,
         onCloseRequested: vi.fn((listener: () => void) => {
@@ -96,6 +91,7 @@ describe('useAppWindowClose', () => {
     useAppWindowClose(cleanup)
 
     await mountedCallbacks[0]?.()
+    await Promise.resolve()
     await onCloseRequested?.()
 
     expect(consoleError).toHaveBeenCalledTimes(1)

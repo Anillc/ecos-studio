@@ -1,9 +1,10 @@
-import { getDesktopApi, hasDesktopApi } from '@/platform/desktop'
+import { hasDesktopApi, waitForDesktopApi } from '@/platform/desktop'
 
 export async function setDesktopWindowTitle(title: string): Promise<void> {
   if (!hasDesktopApi()) {
     return
   }
 
-  await getDesktopApi().window.setTitle(title)
+  const desktopApi = await waitForDesktopApi()
+  await desktopApi.window.setTitle(title)
 }

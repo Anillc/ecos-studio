@@ -1,28 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getDesktopApi, hasDesktopApi } = vi.hoisted(() => ({
-  getDesktopApi: vi.fn(),
+const { hasDesktopApi, waitForDesktopApi } = vi.hoisted(() => ({
   hasDesktopApi: vi.fn(),
+  waitForDesktopApi: vi.fn(),
 }))
 
 vi.mock('@/platform/desktop', () => ({
-  getDesktopApi,
   hasDesktopApi,
+  waitForDesktopApi,
 }))
 
 import { setDesktopWindowTitle } from './windowTitle'
 
 describe('setDesktopWindowTitle', () => {
   beforeEach(() => {
-    getDesktopApi.mockReset()
     hasDesktopApi.mockReset()
+    waitForDesktopApi.mockReset()
   })
 
   it('updates the title through the desktop bridge when available', async () => {
     const setTitle = vi.fn().mockResolvedValue(undefined)
 
     hasDesktopApi.mockReturnValue(true)
-    getDesktopApi.mockReturnValue({
+    waitForDesktopApi.mockResolvedValue({
       window: {
         setTitle,
       },
@@ -37,6 +37,6 @@ describe('setDesktopWindowTitle', () => {
     hasDesktopApi.mockReturnValue(false)
 
     await expect(setDesktopWindowTitle('Project B')).resolves.toBeUndefined()
-    expect(getDesktopApi).not.toHaveBeenCalled()
+    expect(waitForDesktopApi).not.toHaveBeenCalled()
   })
 })
