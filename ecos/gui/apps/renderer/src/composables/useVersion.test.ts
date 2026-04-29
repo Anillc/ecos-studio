@@ -71,6 +71,7 @@ function createDesktopBridge(getVersions: DesktopApi['app']['getVersions']) {
           files: [],
         },
       }),
+      watchProjectFile: async () => () => undefined,
     },
     tiles: {
       generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),

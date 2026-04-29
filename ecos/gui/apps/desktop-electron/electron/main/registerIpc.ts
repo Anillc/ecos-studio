@@ -7,7 +7,9 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron'
 import {
+  desktopApiEventChannels,
   desktopApiIpcChannels,
+  type DesktopProjectFileChangedEvent,
   type DesktopDirectoryDialogOptions,
   type DesktopFileDialogOptions,
   type DesktopSettingsValue,
@@ -45,6 +47,11 @@ export interface DesktopBridgeServices {
     registerProjectRoot(path: string): Promise<string>
     requestProjectPathAccess(path: string): Promise<string>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
+    unwatchProjectFile(subscriptionId: string): Promise<void>
+    watchProjectFile(
+      path: string,
+      listener: (event: DesktopProjectFileChangedEvent) => void,
+    ): Promise<string>
     writeProjectTextFile(path: string, content: string): Promise<void>
   }
   tileService: {
@@ -97,6 +104,26 @@ export function registerIpc(
   target: IpcMainLike = ipcMain,
   services: DesktopBridgeServices,
 ): void {
+  const projectFileWatchSubscriptions = new Map<
+    string,
+    {
+      sender: IpcMainInvokeEvent['sender']
+      onDestroyed: () => void
+    }
+  >()
+
+  const unwatchProjectFile = async (subscriptionId: string): Promise<void> => {
+    const subscription = projectFileWatchSubscriptions.get(subscriptionId)
+
+    if (!subscription) {
+      return
+    }
+
+    projectFileWatchSubscriptions.delete(subscriptionId)
+    subscription.sender.off('destroyed', subscription.onDestroyed)
+    await services.workspaceService.unwatchProjectFile(subscriptionId)
+  }
+
   target.handle(desktopApiIpcChannels.appGetVersions, async () => {
     return await services.appInfoService.getVersions()
   })
@@ -211,6 +238,41 @@ export function registerIpc(
     desktopApiIpcChannels.workspaceScanPdkDirectory,
     async (_event, path: string) => {
       return await services.workspaceService.scanPdkDirectory(path)
+    },
+  )
+
+  target.handle(
+    desktopApiIpcChannels.workspaceWatchProjectFile,
+    async (event, path: string) => {
+      const sender = event.sender
+      let subscriptionId: string | null = null
+      const onDestroyed = (): void => {
+        if (!subscriptionId) return
+        void unwatchProjectFile(subscriptionId)
+      }
+
+      subscriptionId = await services.workspaceService.watchProjectFile(path, (payload) => {
+        if (event.sender.isDestroyed()) return
+        event.sender.send(desktopApiEventChannels.workspaceFileChanged, payload)
+      })
+      projectFileWatchSubscriptions.set(subscriptionId, {
+        sender,
+        onDestroyed,
+      })
+      sender.once('destroyed', onDestroyed)
+
+      if (sender.isDestroyed()) {
+        onDestroyed()
+      }
+
+      return subscriptionId
+    },
+  )
+
+  target.handle(
+    desktopApiIpcChannels.workspaceUnwatchProjectFile,
+    async (_event, subscriptionId: string) => {
+      await unwatchProjectFile(subscriptionId)
     },
   )
 

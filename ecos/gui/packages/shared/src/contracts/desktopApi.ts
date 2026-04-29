@@ -1,5 +1,9 @@
 import type { TileGenerationRequest, TileGenerationResult } from '../types/tile.ts'
-import type { DesktopEventUnsubscribe, DesktopMenuEventId } from './desktopEvents.ts'
+import type {
+  DesktopEventUnsubscribe,
+  DesktopMenuEventId,
+  DesktopProjectFileChangedEvent,
+} from './desktopEvents.ts'
 
 export type DesktopSettingsValue =
   | string
@@ -87,6 +91,10 @@ export interface DesktopApi {
     readProjectBinaryFile(path: string): Promise<Uint8Array>
     writeProjectTextFile(path: string, content: string): Promise<void>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>
+    watchProjectFile(
+      path: string,
+      listener: (event: DesktopProjectFileChangedEvent) => void,
+    ): Promise<DesktopEventUnsubscribe>
   }
   tiles: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>

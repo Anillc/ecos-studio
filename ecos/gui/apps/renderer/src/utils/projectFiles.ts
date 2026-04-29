@@ -1,4 +1,9 @@
-import { isAbsoluteLocalPath, joinLocalPath } from '@ecos-studio/shared'
+import {
+  isAbsoluteLocalPath,
+  joinLocalPath,
+  type DesktopEventUnsubscribe,
+  type DesktopProjectFileChangedEvent,
+} from '@ecos-studio/shared'
 import { getDesktopApi } from '@/platform/desktop'
 
 export interface ProjectFilePathOptions {
@@ -74,6 +79,18 @@ export async function writeProjectTextFile(
 ): Promise<void> {
   const resolvedPath = resolveProjectFilePath(path, options.projectPath)
   await getDesktopApi().workspace.writeProjectTextFile(resolvedPath, content)
+}
+
+export async function watchProjectFile(
+  path: string,
+  listener: (event: DesktopProjectFileChangedEvent) => void,
+  options: ProjectFilePathOptions = {},
+): Promise<DesktopEventUnsubscribe | null> {
+  const resolvedPath = resolveProjectFilePath(path, options.projectPath)
+  const workspace = getDesktopApi().workspace
+  const watchFn = workspace.watchProjectFile
+  if (typeof watchFn !== 'function') return null
+  return await watchFn.call(workspace, resolvedPath, listener)
 }
 
 export async function readProjectBlobUrl(

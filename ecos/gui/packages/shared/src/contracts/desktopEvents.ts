@@ -27,3 +27,11 @@ export const appMenuActionIds = {
 export type AppMenuAction = (typeof appMenuActionIds)[keyof typeof appMenuActionIds]
 
 export type DesktopEventUnsubscribe = () => void
+
+export type DesktopProjectFileChangeEventType = 'change' | 'rename' | 'error'
+
+export interface DesktopProjectFileChangedEvent {
+  subscriptionId: string
+  path: string
+  eventType: DesktopProjectFileChangeEventType
+}

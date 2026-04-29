@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   desktopApiEventChannels,
   desktopApiIpcChannels,
@@ -8,6 +8,7 @@ import type {
   DesktopDirectoryDialogOptions,
   DesktopFileDialogOptions,
   DesktopMenuEventId,
+  DesktopProjectFileChangedEvent,
   DesktopSettingsValue,
 } from '@ecos-studio/shared'
 
@@ -91,6 +92,22 @@ const desktopApi: DesktopApi = {
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceWriteProjectTextFile, path, content),
     scanPdkDirectory: (path) =>
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceScanPdkDirectory, path),
+    watchProjectFile: async (path, listener) => {
+      const subscriptionId = await ipcRenderer.invoke(
+        desktopApiIpcChannels.workspaceWatchProjectFile,
+        path,
+      ) as string
+      const eventListener = (_event: IpcRendererEvent, payload: DesktopProjectFileChangedEvent) => {
+        if (payload.subscriptionId !== subscriptionId) return
+        listener(payload)
+      }
+      ipcRenderer.on(desktopApiEventChannels.workspaceFileChanged, eventListener)
+
+      return () => {
+        ipcRenderer.removeListener(desktopApiEventChannels.workspaceFileChanged, eventListener)
+        void ipcRenderer.invoke(desktopApiIpcChannels.workspaceUnwatchProjectFile, subscriptionId)
+      }
+    },
   },
   tiles: {
     generate: (request) => ipcRenderer.invoke(desktopApiIpcChannels.tilesGenerate, request),

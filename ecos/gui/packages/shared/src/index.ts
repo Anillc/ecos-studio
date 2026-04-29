@@ -19,6 +19,8 @@ export type {
 export {
   appMenuActionIds,
   desktopMenuEventIds,
+  type DesktopProjectFileChangedEvent,
+  type DesktopProjectFileChangeEventType,
   type AppMenuAction,
   type DesktopEventUnsubscribe,
   type DesktopMenuEventId,

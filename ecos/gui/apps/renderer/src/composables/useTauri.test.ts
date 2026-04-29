@@ -95,6 +95,7 @@ const desktopBridge = {
         files: [],
       },
     }),
+    watchProjectFile: async () => () => undefined,
   },
   tiles: {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),

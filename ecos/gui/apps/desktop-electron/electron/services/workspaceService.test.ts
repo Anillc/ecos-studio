@@ -117,4 +117,35 @@ describe('WorkspaceService', () => {
       '/workspace/home/parameters.json',
     )
   })
+
+  it('watches a project-scoped file through the validated canonical path', async () => {
+    const directory = await createTempDir('ecos-workspace-service-watch-')
+    const filePath = join(directory, 'flow.json')
+    await writeFile(filePath, '{"steps":[]}', 'utf8')
+
+    const projectScopeProvider = {
+      clearProjectRoot: vi.fn(),
+      isProjectDirectory: vi.fn(),
+      registerProjectRoot: vi.fn(),
+      requestProjectPathAccess: vi.fn().mockResolvedValue(filePath),
+      scanPdkDirectory: vi.fn(),
+    }
+
+    const service = new WorkspaceService({
+      apiPortProvider: {
+        getPort: vi.fn(),
+      },
+      projectScopeProvider,
+    })
+
+    const listener = vi.fn()
+    const subscriptionId = await service.watchProjectFile('/workspace/home/flow.json', listener)
+
+    expect(subscriptionId).toMatch(/^project-file-watch-/)
+    expect(projectScopeProvider.requestProjectPathAccess).toHaveBeenCalledWith(
+      '/workspace/home/flow.json',
+    )
+
+    await service.unwatchProjectFile(subscriptionId)
+  })
 })

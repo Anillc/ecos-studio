@@ -20,6 +20,8 @@ export const desktopApiIpcChannels = {
   workspaceReadProjectBinaryFile: 'workspace:read-project-binary-file',
   workspaceWriteProjectTextFile: 'workspace:write-project-text-file',
   workspaceScanPdkDirectory: 'workspace:scan-pdk-directory',
+  workspaceWatchProjectFile: 'workspace:watch-project-file',
+  workspaceUnwatchProjectFile: 'workspace:unwatch-project-file',
   tilesGenerate: 'tiles:generate',
   systemOpenExternal: 'system:open-external',
 } as const
@@ -29,6 +31,7 @@ export const desktopApiEventChannels = {
   windowCloseRequested: 'window:close-requested',
   windowResized: 'window:resized',
   windowMaximizedChanged: 'window:maximized-changed',
+  workspaceFileChanged: 'workspace:file-changed',
 } as const
 
 export const ipcChannels = {

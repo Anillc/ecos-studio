@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import { desktopApiIpcChannels } from '@ecos-studio/shared'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { fromWebContents, openExternal, showOpenDialog } = vi.hoisted(() => ({
   fromWebContents: vi.fn(),
@@ -43,6 +44,8 @@ function registerHandlers() {
       registerProjectRoot: vi.fn(),
       requestProjectPathAccess: vi.fn(),
       scanPdkDirectory: vi.fn(),
+      unwatchProjectFile: vi.fn(),
+      watchProjectFile: vi.fn(),
       writeProjectTextFile: vi.fn(),
     },
     tileService: {
@@ -107,6 +110,8 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceReadProjectBinaryFile,
       desktopApiIpcChannels.workspaceWriteProjectTextFile,
       desktopApiIpcChannels.workspaceScanPdkDirectory,
+      desktopApiIpcChannels.workspaceWatchProjectFile,
+      desktopApiIpcChannels.workspaceUnwatchProjectFile,
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.systemOpenExternal,
       desktopApiIpcChannels.appGetVersions,
@@ -320,5 +325,85 @@ describe('registerIpc', () => {
     })
 
     expect(services.tileService.generate).toHaveBeenCalledWith(request)
+  })
+
+  it('sends project file change notifications to the requesting renderer', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    const event = { sender }
+    services.workspaceService.watchProjectFile.mockImplementation(async (_path, listener) => {
+      listener({
+        subscriptionId: 'project-file-watch-1',
+        path: '/tmp/project/home/flow.json',
+        eventType: 'change',
+      })
+      return 'project-file-watch-1'
+    })
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceWatchProjectFile)?.(
+        event,
+        '/tmp/project/home/flow.json',
+      ),
+    ).resolves.toBe('project-file-watch-1')
+
+    expect(sender.listenerCount('destroyed')).toBe(1)
+
+    await handlers.get(desktopApiIpcChannels.workspaceUnwatchProjectFile)?.(
+      event,
+      'project-file-watch-1',
+    )
+
+    expect(services.workspaceService.watchProjectFile).toHaveBeenCalledWith(
+      '/tmp/project/home/flow.json',
+      expect.any(Function),
+    )
+    expect(sender.send).toHaveBeenCalledWith(
+      'workspace:file-changed',
+      {
+        subscriptionId: 'project-file-watch-1',
+        path: '/tmp/project/home/flow.json',
+        eventType: 'change',
+      },
+    )
+    expect(services.workspaceService.unwatchProjectFile).toHaveBeenCalledWith(
+      'project-file-watch-1',
+    )
+    expect(sender.listenerCount('destroyed')).toBe(0)
+  })
+
+  it('unwatches a project file when the requesting renderer is destroyed', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    const event = { sender }
+    services.workspaceService.watchProjectFile.mockResolvedValue('project-file-watch-1')
+
+    await handlers.get(desktopApiIpcChannels.workspaceWatchProjectFile)?.(
+      event,
+      '/tmp/project/home/flow.json',
+    )
+
+    expect(sender.listenerCount('destroyed')).toBe(1)
+
+    sender.emit('destroyed')
+    await vi.waitFor(() => {
+      expect(services.workspaceService.unwatchProjectFile).toHaveBeenCalledWith(
+        'project-file-watch-1',
+      )
+    })
+
+    await handlers.get(desktopApiIpcChannels.workspaceUnwatchProjectFile)?.(
+      event,
+      'project-file-watch-1',
+    )
+
+    expect(services.workspaceService.unwatchProjectFile).toHaveBeenCalledTimes(1)
+    expect(sender.listenerCount('destroyed')).toBe(0)
   })
 })

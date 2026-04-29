@@ -83,6 +83,7 @@ const desktopBridge = {
     readProjectBinaryFile: async () => new Uint8Array(),
     writeProjectTextFile: async () => undefined,
     scanPdkDirectory,
+    watchProjectFile: async () => () => undefined,
   },
   tiles: {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
