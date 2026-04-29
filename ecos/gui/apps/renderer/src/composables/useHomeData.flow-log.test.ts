@@ -6,4 +6,10 @@ describe('useHomeData flow log loading strategy', () => {
     expect(useHomeDataSource).toContain('ensureFlowLogSegmentContentLoaded')
     expect(useHomeDataSource).not.toContain('await hydrateSegmentsWithLogs(flowLogSegments')
   })
+
+  it('subscribes to project file changes while keeping interval polling as a fallback', () => {
+    expect(useHomeDataSource).toContain('watchProjectFile')
+    expect(useHomeDataSource).toContain('startProjectFileWatcher')
+    expect(useHomeDataSource).toContain('setInterval')
+  })
 })

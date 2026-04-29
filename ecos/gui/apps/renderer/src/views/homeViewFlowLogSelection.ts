@@ -34,7 +34,13 @@ export function getDefaultSelectedFlowLogKey(
 export function reconcileSelectedFlowLogKey(
   segments: readonly FlowLogSegment[],
   selectedKey: string | null,
+  options: { preferLive?: boolean } = {},
 ): string | null {
+  if (options.preferLive) {
+    const liveSegment = segments.find((segment) => segment.live)
+    if (liveSegment) return flowLogStepKey(liveSegment)
+  }
+
   if (selectedKey && segments.some((segment) => flowLogStepKey(segment) === selectedKey)) {
     return selectedKey
   }

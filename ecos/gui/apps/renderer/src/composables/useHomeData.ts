@@ -5,7 +5,7 @@ import { flowExecutionActive } from './useFlowRunner'
 import { getHomePageApi } from '@/api/flow'
 import { ResponseEnum } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
-import { readProjectBlobUrl, readProjectTextFile } from '@/utils/projectFiles'
+import { readProjectBlobUrl, readProjectTextFile, watchProjectFile } from '@/utils/projectFiles'
 import { requestProjectPathAccess, resolveProjectPathAccess } from '@/utils/projectFs'
 import { mergePlannedFlowLogSegments } from './flowLogSegmentPlan'
 
@@ -488,6 +488,9 @@ export function useHomeData() {
   let liveSession = 0
   let pollFlowJsonTimer: ReturnType<typeof setInterval> | null = null
   let pollLogFallbackTimer: ReturnType<typeof setInterval> | null = null
+  let unwatchFlowJsonFile: (() => void) | null = null
+  let unwatchLogFile: (() => void) | null = null
+  let liveProjectPath: string | null = null
   let lastOngoingKey: string | null = null
 
   /**
@@ -736,6 +739,8 @@ export function useHomeData() {
   }
 
   function cleanupLogWatchOnly(): void {
+    unwatchLogFile?.()
+    unwatchLogFile = null
     if (pollLogFallbackTimer != null) {
       clearInterval(pollLogFallbackTimer)
       pollLogFallbackTimer = null
@@ -744,22 +749,54 @@ export function useHomeData() {
 
   function cleanupFlowLogLiveWatch(): void {
     cleanupLogWatchOnly()
+    unwatchFlowJsonFile?.()
+    unwatchFlowJsonFile = null
     if (pollFlowJsonTimer != null) {
       clearInterval(pollFlowJsonTimer)
       pollFlowJsonTimer = null
     }
+    liveProjectPath = null
     lastOngoingKey = null
+  }
+
+  async function startProjectFileWatcher(
+    sid: number,
+    path: string,
+    onChange: () => void | Promise<void>,
+  ): Promise<(() => void) | null> {
+    if (sid !== liveSession || !path) return null
+    try {
+      const unwatch = await watchProjectFile(path, () => {
+        if (sid !== liveSession) return
+        void onChange()
+      })
+      if (sid !== liveSession) {
+        unwatch?.()
+        return null
+      }
+      return unwatch
+    } catch (err) {
+      console.warn('Failed to watch project file:', path, err)
+      return null
+    }
   }
 
   async function bindLogFileWatch(sid: number, logPath: string): Promise<void> {
     cleanupLogWatchOnly()
+
+    const ensureLogFileWatcher = async (resolvedLogPath: string): Promise<void> => {
+      if (unwatchLogFile || sid !== liveSession) return
+      unwatchLogFile = await startProjectFileWatcher(sid, resolvedLogPath, patchLive)
+    }
 
     const patchLive = async (): Promise<void> => {
       if (sid !== liveSession) return
       try {
         const resolvedLogPath = await resolvedPathMemo(logPath)
         if (!resolvedLogPath) return
+        await ensureLogFileWatcher(resolvedLogPath)
         const t = await readProjectTextFile(resolvedLogPath)
+        if (sid !== liveSession) return
         const i = flowLogSegments.value.findIndex((s) => s.live)
         if (i >= 0) {
           const cur = flowLogSegments.value[i]!
@@ -772,6 +809,7 @@ export function useHomeData() {
     }
 
     await patchLive()
+    if (sid !== liveSession) return
 
     pollLogFallbackTimer = setInterval(() => {
       void patchLive()
@@ -780,20 +818,23 @@ export function useHomeData() {
 
   async function refreshFlowLogLivePanel(sid: number): Promise<void> {
     if (sid !== liveSession) return
+    const projectPath = liveProjectPath
+    if (!projectPath || currentProject.value?.path !== projectPath) return
     let flowRemote = sharedHomeData.value?.flow
-    if (!flowRemote && currentProject.value?.path) {
-      const h = await fetchSharedHomeData(currentProject.value.path, isInTauri)
+    if (!flowRemote) {
+      const h = await fetchSharedHomeData(projectPath, isInTauri)
+      if (sid !== liveSession || currentProject.value?.path !== projectPath) return
       flowRemote = h?.flow ?? ''
     }
     if (!flowRemote) return
 
-    const flowLocal = convertToLocalPath(flowRemote)
+    const flowLocal = convertRemoteToLocalPath(flowRemote, projectPath)
     if (!workspaceRootFromFlowPath(flowLocal)) return
 
     flowLogError.value = null
     try {
       const segments = await buildFlowLogSegmentsFromFlowLocal(flowLocal, true)
-      if (sid !== liveSession) return
+      if (sid !== liveSession || currentProject.value?.path !== projectPath) return
       flowLogSegments.value = segments
       const ongoing = segments.find((s) => s.live)
       flowLogStepName.value = ongoing?.stepName ?? ''
@@ -1114,6 +1155,46 @@ export function useHomeData() {
     }
   }
 
+  async function startFlowLogLiveWatchForCurrentProject(): Promise<void> {
+    if (!isInTauri || !flowExecutionActive.value) return
+    const projectPath = currentProject.value?.path
+    if (!projectPath) return
+
+    liveSession++
+    const sid = liveSession
+    cleanupFlowLogLiveWatch()
+    liveProjectPath = projectPath
+
+    const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+    if (sid !== liveSession || currentProject.value?.path !== projectPath) return
+
+    const flowRemote = homeData?.flow ?? ''
+    if (!flowRemote) {
+      console.warn('flow-log live: no flow path in home data')
+      return
+    }
+
+    const flowLocal = convertRemoteToLocalPath(flowRemote, projectPath)
+    const resolvedFlowPath = await resolvedPathMemo(flowLocal)
+    if (sid !== liveSession || currentProject.value?.path !== projectPath) return
+    if (!resolvedFlowPath) return
+
+    unwatchFlowJsonFile = await startProjectFileWatcher(sid, resolvedFlowPath, () => {
+      void refreshFlowLogLivePanel(sid)
+    })
+    if (sid !== liveSession || currentProject.value?.path !== projectPath) {
+      unwatchFlowJsonFile?.()
+      unwatchFlowJsonFile = null
+      return
+    }
+
+    pollFlowJsonTimer = setInterval(() => {
+      void refreshFlowLogLivePanel(sid)
+    }, 1600)
+
+    await refreshFlowLogLivePanel(sid)
+  }
+
   // run_step / rtl2gds 期间：监听 flow.json 与当前步日志文件，渐进更新 Flow step log
   watch(
     flowExecutionActive,
@@ -1130,31 +1211,7 @@ export function useHomeData() {
         return
       }
 
-      if (!currentProject.value?.path) return
-
-      liveSession++
-      const sid = liveSession
-      cleanupFlowLogLiveWatch()
-
-      let flowRemote = sharedHomeData.value?.flow
-      if (!flowRemote) {
-        const h = await fetchSharedHomeData(currentProject.value.path, isInTauri)
-        flowRemote = h?.flow ?? ''
-      }
-      if (!flowRemote) {
-        console.warn('flow-log live: no flow path in home data')
-        return
-      }
-
-      const flowLocal = convertToLocalPath(flowRemote)
-      const resolvedFlowPath = await resolvedPathMemo(flowLocal)
-      if (!resolvedFlowPath) return
-
-      pollFlowJsonTimer = setInterval(() => {
-        void refreshFlowLogLivePanel(sid)
-      }, 1600)
-
-      await refreshFlowLogLivePanel(sid)
+      await startFlowLogLiveWatchForCurrentProject()
     },
     { immediate: true },
   )
@@ -1162,9 +1219,21 @@ export function useHomeData() {
   // 监听当前项目变化，自动重新加载
   watch(
     () => currentProject.value?.path,
-    async (newPath) => {
+    async (newPath, oldPath) => {
       if (newPath) {
+        const projectChanged = Boolean(oldPath && oldPath !== newPath)
+        if (projectChanged) {
+          liveSession++
+          cleanupFlowLogLiveWatch()
+        }
         await loadHomeData()
+        if (
+          projectChanged &&
+          flowExecutionActive.value &&
+          currentProject.value?.path === newPath
+        ) {
+          await startFlowLogLiveWatchForCurrentProject()
+        }
       } else {
         clearHomeData(true)
       }

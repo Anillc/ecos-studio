@@ -100,7 +100,10 @@ onUnmounted(() => {
       <span v-else-if="missing">The selected step did not produce a readable log file.</span>
       <span v-else>Select a started step or wait for the current step to emit logs.</span>
     </div>
-    <div v-else ref="rootRef" class="flow-log-viewer-editor"></div>
+    <div v-else class="flow-log-viewer-editor-wrap" :class="{ 'is-live': live }">
+      <div ref="rootRef" class="flow-log-viewer-editor"></div>
+      <span v-if="live" class="flow-log-terminal-cursor" aria-hidden="true"></span>
+    </div>
   </div>
 </template>
 
@@ -113,11 +116,45 @@ onUnmounted(() => {
   background: var(--bg-primary);
 }
 
+.flow-log-viewer-editor-wrap,
 .flow-log-viewer-editor {
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+.flow-log-viewer-editor-wrap {
+  position: relative;
+  display: flex;
+}
+
+.flow-log-viewer-editor {
   overflow: hidden;
+}
+
+.flow-log-terminal-cursor {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  width: 7px;
+  height: 15px;
+  border-radius: 1px;
+  background: var(--accent-color);
+  box-shadow: 0 0 10px rgba(var(--accent-rgb, 59, 130, 246), 0.55);
+  pointer-events: none;
+  animation: flow-log-cursor-blink 1s steps(1, end) infinite;
+}
+
+@keyframes flow-log-cursor-blink {
+  0%,
+  49% {
+    opacity: 0.95;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .flow-log-viewer-empty {

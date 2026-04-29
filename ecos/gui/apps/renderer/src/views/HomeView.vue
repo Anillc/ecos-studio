@@ -553,6 +553,7 @@ import FlowLogCodeViewer from '@/components/FlowLogCodeViewer.vue'
 import FlowLogStepChooser from '@/components/FlowLogStepChooser.vue'
 import { useParameters } from '@/composables/useParameters'
 import { useHomeData, type AnalysisChartItem, type FlowLogSegment } from '@/composables/useHomeData'
+import { flowExecutionActive } from '@/composables/useFlowRunner'
 import { isWindowResizing } from '@/composables/useWindowResizeState'
 import {
   flowLogStepKey,
@@ -662,9 +663,13 @@ function updateFlowLogChooserAnchorPosition(): void {
 }
 
 watch(
-  flowLogSegments,
-  (segments) => {
-    selectedFlowLogKey.value = reconcileSelectedFlowLogKey(segments, selectedFlowLogKey.value)
+  [flowLogSegments, flowExecutionActive],
+  ([segments, isFlowRunning]) => {
+    selectedFlowLogKey.value = reconcileSelectedFlowLogKey(
+      segments,
+      selectedFlowLogKey.value,
+      { preferLive: isFlowRunning },
+    )
   },
   {
     immediate: true,

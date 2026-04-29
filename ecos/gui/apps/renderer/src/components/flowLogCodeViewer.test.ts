@@ -535,6 +535,12 @@ describe('flowLogCodeViewer helpers', () => {
     expect(flowLogCodeViewerSource).toContain('flow-log-viewer-editor')
   })
 
+  it('renders a blinking terminal cursor while live log content is visible', () => {
+    expect(flowLogCodeViewerSource).toContain('flow-log-viewer-editor-wrap')
+    expect(flowLogCodeViewerSource).toContain('flow-log-terminal-cursor')
+    expect(flowLogCodeViewerSource).toContain('@keyframes flow-log-cursor-blink')
+  })
+
   it('uses roomier typography for long log reading', () => {
     expect(helperSource).toContain("fontSize: '11px'")
     expect(helperSource).toContain("lineHeight: '1.6'")
