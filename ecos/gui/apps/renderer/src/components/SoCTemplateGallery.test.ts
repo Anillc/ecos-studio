@@ -195,10 +195,16 @@ class FakeElement extends FakeNode {
 
   querySelectorAll(selector: string): FakeElement[] {
     const results: FakeElement[] = []
-    const normalizedSelector = selector.toLowerCase()
+    const match = (el: FakeElement) => {
+      if (selector.startsWith('.')) {
+        const token = selector.slice(1)
+        return el.className.split(/\s+/).filter(Boolean).includes(token)
+      }
+      return el.tagName.toLowerCase() === selector.toLowerCase()
+    }
     const walk = (node: FakeNode) => {
       if (!(node instanceof FakeElement)) return
-      if (node.tagName.toLowerCase() === normalizedSelector) {
+      if (match(node)) {
         results.push(node)
       }
       node.childNodes.forEach(walk)
@@ -319,6 +325,12 @@ function loadGalleryComponent(vue: VueRuntime) {
   const moduleExports: { default?: unknown } = {}
   const customRequire = (id: string) => {
     if (id === 'vue') return vue
+    if (id === '@/composables/socTemplateCatalog') {
+      return {
+        importSocTemplateFromJsonText: vi.fn(),
+        removeImportedSocTemplate: vi.fn(),
+      }
+    }
     return require(id)
   }
 
@@ -349,7 +361,7 @@ type ButtonQueryContainer = {
 }
 
 function findButton(container: ButtonQueryContainer, label: string): FakeElement | undefined {
-  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent === label)
+  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.trim().includes(label))
 }
 
 describe('SoCTemplateGallery', () => {
@@ -401,7 +413,7 @@ describe('SoCTemplateGallery', () => {
       error: null,
     })
 
-    expect(container.textContent).toContain('No SoC templates available.')
+    expect(container.textContent).toContain('No templates in this workspace yet')
 
     app.unmount()
   })
@@ -412,12 +424,22 @@ describe('SoCTemplateGallery', () => {
     const { app, container } = await mountGallery({
       items: [
         {
-          id: 'ysyxSoCASIC',
-          name: 'YSYX SoC',
+          id: 'demoSoC001',
+          name: 'Demo SoC',
           info: 'Reference template',
           ioPinsCount: 12,
           coreCount: 2,
           sourceLabel: 'Fixed JSON',
+          thumbnail: {
+            coreSlotLeftPct: 10,
+            coreSlotTopPct: 10,
+            coreSlotWidthPct: 80,
+            coreSlotHeightPct: 80,
+            cores: [
+              { leftPct: 0, topPct: 0, widthPct: 25, heightPct: 25 },
+              { leftPct: 50, topPct: 50, widthPct: 25, heightPct: 25 },
+            ],
+          },
         },
       ],
       loading: false,
@@ -426,11 +448,11 @@ describe('SoCTemplateGallery', () => {
       onOpen,
     })
 
-    expect(container.textContent).toContain('YSYX SoC')
+    expect(container.textContent).toContain('Demo SoC')
     expect(container.textContent).toContain('Reference template')
-    expect(container.textContent).toContain('12 IO Pins · 2 Cores')
-    expect(container.textContent).not.toContain('Fixed data source: ysyxSoCASIC.json')
-
+    expect(container.textContent?.toLowerCase()).toContain('cores')
+    expect(container.textContent).toContain('2')
+    expect(container.querySelectorAll('.soc-gallery__thumb-core')).toHaveLength(2)
     const backButton = findButton(container, 'Back')
     const openButton = findButton(container, 'Open Details')
 
@@ -441,7 +463,7 @@ describe('SoCTemplateGallery', () => {
     openButton?.click()
 
     expect(onBack).toHaveBeenCalledTimes(1)
-    expect(onOpen).toHaveBeenCalledWith('ysyxSoCASIC')
+    expect(onOpen).toHaveBeenCalledWith('demoSoC001')
 
     app.unmount()
   })

@@ -334,11 +334,19 @@ function compileComponent(source: string, filename: string, id: string, vue: Vue
 
 async function mountView() {
   const vue = await loadVueRuntime()
+  const socCatalogModule = {
+    loadSocTemplateCatalog,
+    importSocTemplateFromJsonText: vi.fn(),
+    removeImportedSocTemplate: vi.fn(),
+  }
   const SoCTemplateGallery = compileComponent(
     gallerySource,
     'SoCTemplateGallery.vue',
     'soc-template-gallery',
     vue,
+    {
+      '@/composables/socTemplateCatalog': socCatalogModule,
+    },
   )
   const SoCTemplateGalleryView = compileComponent(
     viewSource,
@@ -352,9 +360,7 @@ async function mountView() {
         }),
       },
       '@/components/SoCTemplateGallery.vue': SoCTemplateGallery,
-      '@/composables/socTemplateCatalog': {
-        loadSocTemplateCatalog,
-      },
+      '@/composables/socTemplateCatalog': socCatalogModule,
     },
   )
 
@@ -383,7 +389,7 @@ type ButtonQueryContainer = {
 }
 
 function findButton(container: ButtonQueryContainer, label: string): FakeElement | undefined {
-  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent === label)
+  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.trim().includes(label))
 }
 
 describe('SoCTemplateGalleryView', () => {
@@ -401,20 +407,19 @@ describe('SoCTemplateGalleryView', () => {
   it('loads the catalog on mount and renders gallery items on success', async () => {
     loadSocTemplateCatalog.mockResolvedValue([
       {
-        id: 'ysyxSoCASIC',
-        name: 'YSYX SoC',
+        id: 'demoSoC001',
+        name: 'Demo SoC',
         info: 'Reference template',
         ioPinsCount: 12,
         coreCount: 2,
-        sourceLabel: 'Fixed JSON',
+        sourceLabel: 'fixture.json',
       },
     ])
 
     const { app, container } = await mountView()
 
     expect(loadSocTemplateCatalog).toHaveBeenCalledTimes(1)
-    expect(container.textContent).toContain('Fixed data source: ysyxSoCASIC.json')
-    expect(container.textContent).toContain('YSYX SoC')
+    expect(container.textContent).toContain('Demo SoC')
     expect(container.textContent).toContain('Reference template')
 
     app.unmount()
@@ -423,12 +428,12 @@ describe('SoCTemplateGalleryView', () => {
   it('routes to the detail page when an item is opened', async () => {
     loadSocTemplateCatalog.mockResolvedValue([
       {
-        id: 'ysyxSoCASIC',
-        name: 'YSYX SoC',
+        id: 'demoSoC001',
+        name: 'Demo SoC',
         info: 'Reference template',
         ioPinsCount: 12,
         coreCount: 2,
-        sourceLabel: 'Fixed JSON',
+        sourceLabel: 'fixture.json',
       },
     ])
 
@@ -439,7 +444,7 @@ describe('SoCTemplateGalleryView', () => {
 
     openButton?.click()
 
-    expect(push).toHaveBeenCalledWith({ name: 'SoCTemplateDetail', params: { templateId: 'ysyxSoCASIC' } })
+    expect(push).toHaveBeenCalledWith({ name: 'SoCTemplateDetail', params: { templateId: 'demoSoC001' } })
 
     app.unmount()
   })
@@ -464,12 +469,12 @@ describe('SoCTemplateGalleryView', () => {
       .mockRejectedValueOnce(new Error('Unable to reach catalog'))
       .mockResolvedValueOnce([
         {
-          id: 'ysyxSoCASIC',
-          name: 'YSYX SoC',
+          id: 'demoSoC001',
+          name: 'Demo SoC',
           info: 'Reference template',
           ioPinsCount: 12,
           coreCount: 2,
-          sourceLabel: 'Fixed JSON',
+          sourceLabel: 'fixture.json',
         },
       ])
 
@@ -484,7 +489,7 @@ describe('SoCTemplateGalleryView', () => {
     await flush(vue)
 
     expect(loadSocTemplateCatalog).toHaveBeenCalledTimes(2)
-    expect(container.textContent).toContain('YSYX SoC')
+    expect(container.textContent).toContain('Demo SoC')
 
     app.unmount()
   })

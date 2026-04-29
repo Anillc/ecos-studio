@@ -9,6 +9,7 @@ const template = {
   ioPinsCount: 0,
   coreCount: 3,
   sourceLabel: 'Fixed JSON',
+  dbu: 1000,
   die: { llx: 0, lly: 0, urx: 100, ury: 100, width: 100, height: 100 },
   coreArea: { llx: 0, lly: 0, urx: 100, ury: 100, width: 100, height: 100 },
   cores: [
@@ -16,6 +17,7 @@ const template = {
     { id: 8, name: 'core8', info: 'No info provided', align: 'left', orient: 'N', boundingBox: { llx: 10, lly: 10, urx: 30, ury: 30, width: 20, height: 20 } },
     { id: 9, name: 'core9', info: 'ok', align: 'right', orient: 'FN', boundingBox: { llx: 40, lly: 40, urx: 60, ury: 60, width: 20, height: 20 } },
   ],
+  ioPins: [],
 } satisfies SocTemplateDetail
 
 describe('socTemplatePreviewSelection', () => {

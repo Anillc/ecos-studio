@@ -384,9 +384,11 @@ function createTemplate(cores: SocTemplateDetail['cores']): SocTemplateDetail {
     ioPinsCount: 0,
     coreCount: cores.length,
     sourceLabel: 'fixture',
+    dbu: 1000,
     die: createRect({ llx: 0, lly: 0, urx: 100, ury: 100 }),
     coreArea: createRect({ llx: 10, lly: 10, urx: 90, ury: 90 }),
     cores,
+    ioPins: [],
   }
 }
 

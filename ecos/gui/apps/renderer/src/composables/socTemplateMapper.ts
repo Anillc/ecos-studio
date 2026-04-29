@@ -17,6 +17,28 @@ export type SocTemplateCore = {
   boundingBox: SocTemplateRect
 }
 
+export type SocTemplateIoPin = {
+  name: string
+  info: string
+  boundingBox: SocTemplateRect
+}
+
+export type SocTemplateThumbnailCoreRect = {
+  leftPct: number
+  topPct: number
+  widthPct: number
+  heightPct: number
+}
+
+/** Mini floorplan for gallery cards: core-area inset on die + core bboxes (same projection as detail preview). */
+export type SocTemplateThumbnailLayout = {
+  coreSlotLeftPct: number
+  coreSlotTopPct: number
+  coreSlotWidthPct: number
+  coreSlotHeightPct: number
+  cores: SocTemplateThumbnailCoreRect[]
+}
+
 export type SocTemplateSummary = {
   id: string
   name: string
@@ -24,18 +46,23 @@ export type SocTemplateSummary = {
   ioPinsCount: number
   coreCount: number
   sourceLabel: string
+  /** Present when the catalog had full template geometry (bundled / imported). */
+  thumbnail?: SocTemplateThumbnailLayout
 }
 
 export type SocTemplateDetail = SocTemplateSummary & {
+  dbu: number
   die: SocTemplateRect
   coreArea: SocTemplateRect
   cores: SocTemplateCore[]
+  ioPins: SocTemplateIoPin[]
 }
 
 const FALLBACK_INFO = 'No info provided'
 const FALLBACK_TEMPLATE_ID = 'unknown-template'
 const FALLBACK_CORE_NAME = 'unknown-core'
 const FALLBACK_TEXT = 'unknown'
+const FALLBACK_DBU = 1000
 
 type UnknownRecord = Record<string, unknown>
 
@@ -100,6 +127,17 @@ export function normalizeSocTemplateDetail(raw: any, sourceLabel: string): SocTe
     }
   })
 
+  const rawIoPins = toRecord(rawRecord.io_pins)
+  const ioPinList = Array.isArray(rawIoPins.list) ? rawIoPins.list : []
+  const ioPins = ioPinList.map((pin): SocTemplateIoPin => {
+    const pinRecord = toRecord(pin)
+    return {
+      name: toText(pinRecord.name, 'io'),
+      info: normalizeInfo(pinRecord.info),
+      boundingBox: normalizeRect(pinRecord.bounding_box),
+    }
+  })
+
   const designName = toText(rawRecord.design_name, FALLBACK_TEMPLATE_ID)
 
   return {
@@ -109,9 +147,11 @@ export function normalizeSocTemplateDetail(raw: any, sourceLabel: string): SocTe
     ioPinsCount: toNumber(toRecord(rawRecord.io_pins).number),
     coreCount: toNumber(rawCores.number, cores.length),
     sourceLabel,
+    dbu: toNumber(rawRecord.dbu, FALLBACK_DBU),
     die: normalizeRect(rawRecord.die),
     coreArea: normalizeRect(rawRecord.core),
     cores,
+    ioPins,
   }
 }
 

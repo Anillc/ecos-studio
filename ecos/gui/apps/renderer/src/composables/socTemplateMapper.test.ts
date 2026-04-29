@@ -3,6 +3,7 @@ import { normalizeSocTemplateDetail, toSocTemplateSummary } from './socTemplateM
 
 const raw = {
   design_name: 'ysyxSoCASIC',
+  dbu: 1000,
   die: { llx: 0, lly: 0, urx: 100, ury: 100, width: 100, height: 100, area: 10000 },
   core: { llx: 10, lly: 10, urx: 90, ury: 90, width: 80, height: 80, area: 6400 },
   io_pins: { number: 58, list: [] },
@@ -19,7 +20,9 @@ describe('socTemplateMapper', () => {
   it('normalizes detail data and fills missing info with a fallback', () => {
     const detail = normalizeSocTemplateDetail(raw, 'Fixed JSON')
     expect(detail.info).toBe('No info provided')
+    expect(detail.dbu).toBe(1000)
     expect(detail.ioPinsCount).toBe(58)
+    expect(detail.ioPins).toEqual([])
     expect(detail.coreCount).toBe(2)
     expect(detail.cores[0]).toMatchObject({ id: 4, align: 'left', orient: 'FN', info: 'No info provided' })
   })
@@ -39,6 +42,7 @@ describe('socTemplateMapper', () => {
     const detail = normalizeSocTemplateDetail(
       {
         design_name: 'drifted-template',
+        dbu: '2000',
         die: { llx: '1', lly: undefined, urx: '50.5', ury: null, width: '100', height: 'bad', area: '2500' },
         core: { llx: '10', lly: '20', urx: {}, ury: 40, width: '30', height: undefined },
         io_pins: { number: '7' },
@@ -59,6 +63,7 @@ describe('socTemplateMapper', () => {
       'Fixed JSON',
     )
 
+    expect(detail.dbu).toBe(2000)
     expect(detail.die).toEqual({ llx: 1, lly: 0, urx: 50.5, ury: 0, width: 100, height: 0, area: 2500 })
     expect(detail.coreArea).toEqual({ llx: 10, lly: 20, urx: 0, ury: 40, width: 30, height: 0, area: 0 })
     expect(detail.cores[0]?.boundingBox).toEqual({ llx: 5, lly: 6, urx: 15, ury: 16, width: 10, height: 0, area: 100 })

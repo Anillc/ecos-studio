@@ -6,6 +6,7 @@ describe('SoCTemplateInspector', () => {
     expect(source).toContain('I/O Pins')
     expect(source).toContain('align')
     expect(source).toContain('bounding box')
+    expect(source).toContain('area')
     expect(source).toContain('No info provided')
   })
 })
