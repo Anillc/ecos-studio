@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { execFile as execFileCallback } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -33,6 +33,58 @@ afterEach(async () => {
 })
 
 describe('build-gui bundle validation', () => {
+  it('runs pnpm from PATH with the repository Node version', async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), 'ecos-build-gui-pnpm-'))
+    tempDirs.push(rootDir)
+
+    const guiDir = join(rootDir, 'gui')
+    const fakeBinDir = join(rootDir, 'bin')
+    await mkdir(guiDir, { recursive: true })
+    await mkdir(fakeBinDir, { recursive: true })
+    await writeFile(join(guiDir, '.nvmrc'), '23.11.0\n')
+
+    await writeFile(join(fakeBinDir, 'npx'), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" > "$LOG_DIR/npx-args"
+while [[ $# -gt 0 && "$1" != "--" ]]; do
+  shift
+done
+shift
+exec "$@"
+`)
+    await chmod(join(fakeBinDir, 'npx'), 0o755)
+
+    await writeFile(join(fakeBinDir, 'pnpm'), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" > "$LOG_DIR/pnpm-args"
+`)
+    await chmod(join(fakeBinDir, 'pnpm'), 0o755)
+
+    await expect(execFile('bash', [
+      '-lc',
+      `source "${scriptPath}"; pnpm_with_repo_node "${guiDir}" install --frozen-lockfile`,
+    ], {
+      env: {
+        ...process.env,
+        LOG_DIR: rootDir,
+        PATH: `${fakeBinDir}:${process.env.PATH ?? ''}`,
+      },
+    })).resolves.toMatchObject({
+      stderr: '',
+    })
+
+    const npxArgs = await readFile(join(rootDir, 'npx-args'), 'utf8')
+    const pnpmArgs = await readFile(join(rootDir, 'pnpm-args'), 'utf8')
+
+    expect(npxArgs).toContain('node@23.11.0')
+    expect(npxArgs).not.toContain('/usr/local/bin/pnpm')
+    expect(pnpmArgs).toBe(`--dir
+${guiDir}
+install
+--frozen-lockfile
+`)
+  })
+
   it('fails when the packaged release is missing a usable OSS CAD suite', async () => {
     const { releaseDir } = await makeFakeRelease()
 

@@ -29,7 +29,12 @@ pnpm_with_repo_node() {
 
     local node_version
     node_version="$(read_repo_node_version "$gui_dir")"
-    npx -y "node@${node_version}" /usr/local/bin/pnpm --dir "$gui_dir" "$@"
+    if ! command -v pnpm >/dev/null 2>&1; then
+        echo "ERROR: pnpm not found in PATH. Run the Node.js/pnpm setup before building the GUI bundle." >&2
+        exit 1
+    fi
+
+    npx -y -p "node@${node_version}" -- bash -c 'exec pnpm --dir "$1" "${@:2}"' bash "$gui_dir" "$@"
 }
 
 normalize_csv() {
