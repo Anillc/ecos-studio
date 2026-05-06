@@ -154,10 +154,14 @@ import { ApiServerService } from './apiServerService'
 describe('ApiServerService', () => {
   const originalFetch = globalThis.fetch
   const originalReuseFlag = process.env.ECOS_REUSE_API_SERVER
+  const originalApiLogLevel = process.env.ECOS_API_LOG_LEVEL
+  const originalElectronLogLevel = process.env.ECOS_ELECTRON_LOG_LEVEL
+  const originalReadyTimeout = process.env.ECOS_API_READY_TIMEOUT_SECS
   const originalServerDirectory = process.env.ECOS_SERVER_DIRECTORY
   const originalBinariesDirectory = process.env.ECOS_ELECTRON_BINARIES_DIR
   const originalOssCadDirectory = process.env.ECOS_ELECTRON_OSS_CAD_DIR
   let processKillSpy: ReturnType<typeof vi.spyOn>
+  let consoleInfoSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     access.mockReset()
@@ -169,11 +173,15 @@ describe('ApiServerService', () => {
     electronApp.isPackaged = false
     electronApp.getVersion.mockReturnValue('0.1.0-alpha.4')
     process.env.ECOS_REUSE_API_SERVER = ''
+    delete process.env.ECOS_API_LOG_LEVEL
+    delete process.env.ECOS_ELECTRON_LOG_LEVEL
+    delete process.env.ECOS_API_READY_TIMEOUT_SECS
     delete process.env.ECOS_SERVER_DIRECTORY
     delete process.env.ECOS_ELECTRON_BINARIES_DIR
     delete process.env.ECOS_ELECTRON_OSS_CAD_DIR
     globalThis.fetch = vi.fn()
     processKillSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+    consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
   })
 
   afterEach(() => {
@@ -187,6 +195,24 @@ describe('ApiServerService', () => {
       delete process.env.ECOS_REUSE_API_SERVER
     } else {
       process.env.ECOS_REUSE_API_SERVER = originalReuseFlag
+    }
+
+    if (originalApiLogLevel == null) {
+      delete process.env.ECOS_API_LOG_LEVEL
+    } else {
+      process.env.ECOS_API_LOG_LEVEL = originalApiLogLevel
+    }
+
+    if (originalElectronLogLevel == null) {
+      delete process.env.ECOS_ELECTRON_LOG_LEVEL
+    } else {
+      process.env.ECOS_ELECTRON_LOG_LEVEL = originalElectronLogLevel
+    }
+
+    if (originalReadyTimeout == null) {
+      delete process.env.ECOS_API_READY_TIMEOUT_SECS
+    } else {
+      process.env.ECOS_API_READY_TIMEOUT_SECS = originalReadyTimeout
     }
 
     if (originalServerDirectory == null) {
@@ -208,6 +234,7 @@ describe('ApiServerService', () => {
     }
 
     processKillSpy.mockRestore()
+    consoleInfoSpy.mockRestore()
     vi.useRealTimers()
   })
 
@@ -272,6 +299,91 @@ describe('ApiServerService', () => {
     await stopPromise
 
     expect(processKillSpy).toHaveBeenCalledWith(-4321, 'SIGTERM')
+  })
+
+  it('keeps Electron API startup logs quiet by default', async () => {
+    portAvailabilityQueue.push(true, true)
+    access.mockRejectedValue(new Error('missing venv'))
+    socketConnectQueue.push(true)
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: async () => ({
+        instance_token: 'deterministic-token',
+        status: 'ok',
+      }),
+      ok: true,
+    })
+
+    const ownedChild = new FakeChildProcess(4321)
+    spawn.mockReturnValue(ownedChild)
+
+    const service = new ApiServerService()
+    await service.start()
+
+    expect(consoleInfoSpy).not.toHaveBeenCalled()
+  })
+
+  it('emits Electron API startup logs when ECOS_ELECTRON_LOG_LEVEL enables info', async () => {
+    process.env.ECOS_ELECTRON_LOG_LEVEL = 'info'
+    portAvailabilityQueue.push(true, true)
+    access.mockRejectedValue(new Error('missing venv'))
+    socketConnectQueue.push(true)
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: async () => ({
+        instance_token: 'deterministic-token',
+        status: 'ok',
+      }),
+      ok: true,
+    })
+
+    const ownedChild = new FakeChildProcess(4321)
+    spawn.mockReturnValue(ownedChild)
+
+    const service = new ApiServerService()
+    await service.start()
+
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[desktop-electron] Starting FastAPI server (%s mode) from %s on port %d',
+      'dev',
+      'python3',
+      8765,
+    )
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[desktop-electron] FastAPI server ready on port %d after %d attempts (%.1fs)',
+      8765,
+      1,
+      expect.any(Number),
+    )
+  })
+
+  it('passes ECOS_API_LOG_LEVEL to the Python API server command', async () => {
+    process.env.ECOS_API_LOG_LEVEL = 'info'
+    portAvailabilityQueue.push(true, true)
+    access.mockRejectedValue(new Error('missing venv'))
+    socketConnectQueue.push(true)
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: async () => ({
+        instance_token: 'deterministic-token',
+        status: 'ok',
+      }),
+      ok: true,
+    })
+
+    const ownedChild = new FakeChildProcess(4321)
+    spawn.mockReturnValue(ownedChild)
+
+    const service = new ApiServerService()
+    await service.start()
+
+    expect(spawn).toHaveBeenCalledWith(
+      'python3',
+      expect.arrayContaining(['--disable-stdio-redirect', '--log-level', 'info']),
+      expect.objectContaining({
+        env: expect.objectContaining({
+          ECOS_API_LOG_LEVEL: 'info',
+          ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
+        }),
+      }),
+    )
   })
 
   it('returns GUI and backend runtime versions', async () => {
@@ -349,7 +461,15 @@ describe('ApiServerService', () => {
 
     expect(spawn).toHaveBeenCalledWith(
       '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu',
-      ['--host', '127.0.0.1', '--port', '8765', '--disable-stdio-redirect'],
+      [
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '8765',
+        '--disable-stdio-redirect',
+        '--log-level',
+        'warning',
+      ],
       expect.objectContaining({
         cwd: '/opt/ecos/resources/binaries',
         env: expect.objectContaining({
@@ -396,7 +516,15 @@ describe('ApiServerService', () => {
 
     expect(spawn).toHaveBeenCalledWith(
       '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu/ecos-server',
-      ['--host', '127.0.0.1', '--port', '8765', '--disable-stdio-redirect'],
+      [
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '8765',
+        '--disable-stdio-redirect',
+        '--log-level',
+        'warning',
+      ],
       expect.objectContaining({
         cwd: '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu',
         env: expect.objectContaining({

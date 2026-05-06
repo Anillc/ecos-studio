@@ -6,11 +6,12 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app } from 'electron'
 import type { VersionInfo } from '@ecos-studio/shared'
+import { electronLogger } from './logger'
 
 const API_HOST = '127.0.0.1'
 const DEFAULT_API_PORT = 8765
 const MAX_API_PORT = 8865
-const API_READY_TIMEOUT_MS = 15_000
+const API_READY_TIMEOUT_SECS_DEFAULT = 180
 const API_HEALTH_TIMEOUT_MS = 2_000
 const UNKNOWN_VERSION = 'unknown'
 
@@ -21,6 +22,7 @@ interface LaunchSpec {
   command: string
   cwd: string
   env: NodeJS.ProcessEnv
+  mode: 'dev' | 'packaged'
 }
 
 interface ServerStartResult {
@@ -40,6 +42,66 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+function getApiLogLevel(): string {
+  const configuredLevel = process.env.ECOS_API_LOG_LEVEL?.trim()
+  return configuredLevel || 'warning'
+}
+
+function getApiReadyTimeoutMs(): number {
+  const rawValue = process.env.ECOS_API_READY_TIMEOUT_SECS?.trim()
+  if (!rawValue) {
+    return API_READY_TIMEOUT_SECS_DEFAULT * 1000
+  }
+
+  const timeoutSecs = Number.parseInt(rawValue, 10)
+  if (Number.isFinite(timeoutSecs) && timeoutSecs > 0) {
+    return timeoutSecs * 1000
+  }
+
+  electronLogger.warn(
+    '[desktop-electron] ECOS_API_READY_TIMEOUT_SECS=%s is invalid; falling back to %ds',
+    rawValue,
+    API_READY_TIMEOUT_SECS_DEFAULT,
+  )
+  return API_READY_TIMEOUT_SECS_DEFAULT * 1000
+}
+
+function createApiServerArgs(port: number, extraArgs: string[] = []): string[] {
+  return [
+    '--host',
+    API_HOST,
+    '--port',
+    String(port),
+    ...extraArgs,
+    '--disable-stdio-redirect',
+    '--log-level',
+    getApiLogLevel(),
+  ]
+}
+
+function createPythonServerArgs(
+  serverScriptPath: string,
+  port: number,
+  extraArgs: string[] = [],
+): string[] {
+  return [
+    serverScriptPath,
+    ...createApiServerArgs(port, extraArgs),
+  ]
+}
+
+function createApiServerEnv(token: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ECOS_API_LOG_LEVEL: getApiLogLevel(),
+    ECOS_SERVER_INSTANCE_TOKEN: token,
+  }
+}
+
+function isLaunchedFromTerminal(): boolean {
+  return Boolean(process.stdout.isTTY || process.stderr.isTTY)
 }
 
 function createGuiOnlyVersionInfo(): VersionInfo {
@@ -258,27 +320,18 @@ async function resolveLaunchSpec(port: number, token: string): Promise<LaunchSpe
       : process.platform === 'win32'
         ? 'python'
         : 'python3'
-    const args = [
+    const args = createPythonServerArgs(
       serverScriptPath,
-      '--host',
-      API_HOST,
-      '--port',
-      String(port),
-      '--disable-stdio-redirect',
-    ]
-
-    if (!app.isPackaged) {
-      args.push('--reload', '--reload-dir', serverDirectory)
-    }
+      port,
+      app.isPackaged ? [] : ['--reload', '--reload-dir', serverDirectory],
+    )
 
     return {
       command,
       args,
       cwd: serverDirectory,
-      env: {
-        ...process.env,
-        ECOS_SERVER_INSTANCE_TOKEN: token,
-      },
+      env: createApiServerEnv(token),
+      mode: 'dev',
     }
   }
 
@@ -313,20 +366,23 @@ async function resolveLaunchSpec(port: number, token: string): Promise<LaunchSpe
         ?? (processResourcesPath
           ? join(processResourcesPath, 'resources', 'oss-cad-suite')
           : null)
-      const env: NodeJS.ProcessEnv = {
-        ...process.env,
-        ECOS_SERVER_INSTANCE_TOKEN: token,
-      }
+      const env: NodeJS.ProcessEnv = createApiServerEnv(token)
 
       if (resourcesDirectory && (await pathExists(resourcesDirectory))) {
         env.CHIPCOMPILER_OSS_CAD_DIR = resourcesDirectory
+      } else if (resourcesDirectory) {
+        electronLogger.warn(
+          '[desktop-electron] Expected oss-cad-suite at %s, but it was not found.',
+          resourcesDirectory,
+        )
       }
 
       return {
         command,
-        args: ['--host', API_HOST, '--port', String(port), '--disable-stdio-redirect'],
+        args: createApiServerArgs(port),
         cwd,
         env,
+        mode: 'packaged',
       }
     }
   }
@@ -343,15 +399,26 @@ async function waitForServerReady(
   child: ChildProcess,
   port: number,
   expectedToken: string,
+  timeoutMs: number,
 ): Promise<ReadyState> {
   const startTime = Date.now()
   let delayMs = 100
+  let attempt = 0
   let spawnError: Error | null = null
   child.once('error', (error) => {
     spawnError = error
   })
 
-  while (Date.now() - startTime < API_READY_TIMEOUT_MS) {
+  electronLogger.info(
+    '[desktop-electron] Waiting for FastAPI server on port %d (timeout: %ds, token check: %s)',
+    port,
+    Math.ceil(timeoutMs / 1000),
+    'enabled',
+  )
+
+  while (Date.now() - startTime < timeoutMs) {
+    attempt += 1
+
     if (spawnError) {
       return {
         status: 'failed',
@@ -360,11 +427,21 @@ async function waitForServerReady(
     }
 
     if ((await canConnectToPort(port, 200)) && (await isApiServerHealthy(port, expectedToken))) {
+      electronLogger.info(
+        '[desktop-electron] FastAPI server ready on port %d after %d attempts (%.1fs)',
+        port,
+        attempt,
+        (Date.now() - startTime) / 1000,
+      )
       return { status: 'ready' }
     }
 
     if (child.exitCode !== null || child.signalCode !== null) {
       if (!(await isPortAvailable(port))) {
+        electronLogger.warn(
+          '[desktop-electron] API server exited before readiness on port %d and the port is now occupied; treating as port conflict',
+          port,
+        )
         return { status: 'port-conflict' }
       }
 
@@ -372,6 +449,15 @@ async function waitForServerReady(
         status: 'failed',
         message: `server process exited before readiness with status ${child.exitCode ?? child.signalCode}`,
       }
+    }
+
+    if (Date.now() - startTime >= 4000 && attempt % 3 === 0) {
+      electronLogger.info(
+        '[desktop-electron] Still waiting for FastAPI server on port %d (%.1fs elapsed, attempt %d)',
+        port,
+        (Date.now() - startTime) / 1000,
+        attempt,
+      )
     }
 
     await wait(delayMs)
@@ -391,7 +477,7 @@ async function waitForServerReady(
 
   return {
     status: 'failed',
-    message: `server did not become ready on port ${port} within ${API_READY_TIMEOUT_MS}ms`,
+    message: `server did not become ready on port ${port} within ${timeoutMs}ms`,
   }
 }
 
@@ -451,6 +537,7 @@ export class ApiServerService {
       throw new Error('API server has not been started.')
     }
 
+    electronLogger.debug('[desktop-electron] API server port: %d', this.currentPort)
     return this.currentPort
   }
 
@@ -464,7 +551,7 @@ export class ApiServerService {
         ...backendVersions,
       }
     } catch (error) {
-      console.warn('[desktop-electron] Failed to get backend versions:', error)
+      electronLogger.warn('[desktop-electron] Failed to get backend versions:', error)
       return versions
     }
   }
@@ -475,10 +562,16 @@ export class ApiServerService {
     }
 
     const child = this.ownedProcess
+    const port = this.currentPort
     this.currentPort = null
     this.ownedProcess = null
     this.ownership = 'none'
 
+    electronLogger.info(
+      '[desktop-electron] Stopping FastAPI server (PID: %s, port: %s)',
+      child.pid ?? 'unknown',
+      port ?? 'unknown',
+    )
     await stopOwnedProcess(child)
   }
 
@@ -493,36 +586,61 @@ export class ApiServerService {
   private async startServer(): Promise<ServerStartResult> {
     if (
       !(await isPortAvailable(DEFAULT_API_PORT)) &&
-      (await isApiServerHealthy(DEFAULT_API_PORT)) &&
-      process.env.ECOS_REUSE_API_SERVER === '1'
+      (await isApiServerHealthy(DEFAULT_API_PORT))
     ) {
-      return {
-        ownership: 'external',
-        port: DEFAULT_API_PORT,
-        process: null,
+      if (process.env.ECOS_REUSE_API_SERVER === '1') {
+        electronLogger.info(
+          '[desktop-electron] Healthy API server on port %d and ECOS_REUSE_API_SERVER=1; reusing it',
+          DEFAULT_API_PORT,
+        )
+        return {
+          ownership: 'external',
+          port: DEFAULT_API_PORT,
+          process: null,
+        }
       }
+
+      electronLogger.warn(
+        '[desktop-electron] Port %d has a healthy API server but ECOS_REUSE_API_SERVER is not set; trying another port',
+        DEFAULT_API_PORT,
+      )
     }
 
     for (const port of candidatePorts()) {
       if (!(await isPortAvailable(port))) {
+        electronLogger.debug('[desktop-electron] Skipping occupied port %d', port)
         continue
       }
 
       const token = generateInstanceToken(port)
       const launchSpec = await resolveLaunchSpec(port, token)
+      const inheritStdio = !app.isPackaged || isLaunchedFromTerminal()
+      electronLogger.info(
+        '[desktop-electron] Starting FastAPI server (%s mode) from %s on port %d',
+        launchSpec.mode,
+        launchSpec.command,
+        port,
+      )
+      electronLogger.info(
+        '[desktop-electron] Server output -> %s',
+        inheritStdio ? 'terminal (stdio)' : 'discarded (desktop mode, no terminal)',
+      )
+      electronLogger.info('[desktop-electron] Workspace logs will be saved to <workspace>/log/')
       const child = spawn(launchSpec.command, launchSpec.args, {
         cwd: launchSpec.cwd,
         detached: process.platform !== 'win32',
         env: launchSpec.env,
-        stdio:
-          app.isPackaged && !(process.stdout.isTTY || process.stderr.isTTY)
-            ? 'ignore'
-            : 'inherit',
+        stdio: inheritStdio ? 'inherit' : 'ignore',
       })
 
-      const readyState = await waitForServerReady(child, port, token)
+      const readyState = await waitForServerReady(child, port, token, getApiReadyTimeoutMs())
 
       if (readyState.status === 'ready') {
+        electronLogger.info(
+          '[desktop-electron] FastAPI server started with PID %s on port %d',
+          child.pid ?? 'unknown',
+          port,
+        )
         return {
           ownership: 'owned',
           port,
@@ -533,9 +651,18 @@ export class ApiServerService {
       await stopOwnedProcess(child)
 
       if (readyState.status === 'port-conflict') {
+        electronLogger.warn(
+          '[desktop-electron] Port %d was lost during startup; retrying on next candidate',
+          port,
+        )
         continue
       }
 
+      electronLogger.error(
+        '[desktop-electron] Failed to start FastAPI server on port %d: %s',
+        port,
+        readyState.message,
+      )
       throw new Error(readyState.message)
     }
 
