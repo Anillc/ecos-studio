@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getMimeTypeFromPath,
+  readOptionalProjectTextFileTail,
+  readOptionalProjectTextFileUpdate,
+  readProjectTextFileTail,
   readProjectBlobUrl,
   readProjectTextFile,
   resolveProjectFilePath,
@@ -49,6 +52,20 @@ describe('projectFiles', () => {
 
   it('delegates text, blob, and write calls through the desktop bridge', async () => {
     const readProjectText = vi.fn().mockResolvedValue('{"steps":[]}')
+    const readProjectTextTail = vi.fn().mockResolvedValue('tail')
+    const readOptionalProjectTextTail = vi.fn().mockResolvedValue({
+      content: 'tail',
+      truncated: true,
+      sizeBytes: 4096,
+    })
+    const readOptionalProjectTextUpdate = vi.fn().mockResolvedValue({
+      content: 'next',
+      fromOffsetBytes: 10,
+      nextOffsetBytes: 14,
+      sizeBytes: 14,
+      reset: false,
+      truncated: false,
+    })
     const readProjectBinary = vi.fn().mockResolvedValue(Uint8Array.from([0x45, 0x43, 0x4f, 0x53]))
     const writeProjectText = vi.fn().mockResolvedValue(undefined)
 
@@ -56,6 +73,9 @@ describe('projectFiles', () => {
       ecosDesktop: {
         workspace: {
           readProjectTextFile: readProjectText,
+          readProjectTextFileTail: readProjectTextTail,
+          readOptionalProjectTextFileTail: readOptionalProjectTextTail,
+          readOptionalProjectTextFileUpdate: readOptionalProjectTextUpdate,
           readProjectBinaryFile: readProjectBinary,
           writeProjectTextFile: writeProjectText,
         },
@@ -69,12 +89,33 @@ describe('projectFiles', () => {
       readProjectBlobUrl('images/layout.png', { projectPath: '/workspace/demo' }),
     ).resolves.toBe('blob:project-file')
     await expect(
+      readProjectTextFileTail('logs/run.log', 64, { projectPath: '/workspace/demo' }),
+    ).resolves.toBe('tail')
+    await expect(
+      readOptionalProjectTextFileTail('logs/run.log', 64, { projectPath: '/workspace/demo' }),
+    ).resolves.toEqual({
+      content: 'tail',
+      truncated: true,
+      sizeBytes: 4096,
+    })
+    await expect(
+      readOptionalProjectTextFileUpdate('logs/run.log', 10, 64, {
+        projectPath: '/workspace/demo',
+      }),
+    ).resolves.toMatchObject({
+      content: 'next',
+      nextOffsetBytes: 14,
+    })
+    await expect(
       writeProjectTextFile('home/parameters.json', '{"PDK":"ics55"}', {
         projectPath: '/workspace/demo',
       }),
     ).resolves.toBeUndefined()
 
     expect(readProjectText).toHaveBeenCalledWith('/workspace/demo/home/flow.json')
+    expect(readProjectTextTail).toHaveBeenCalledWith('/workspace/demo/logs/run.log', 64)
+    expect(readOptionalProjectTextTail).toHaveBeenCalledWith('/workspace/demo/logs/run.log', 64)
+    expect(readOptionalProjectTextUpdate).toHaveBeenCalledWith('/workspace/demo/logs/run.log', 10, 64)
     expect(readProjectBinary).toHaveBeenCalledWith('/workspace/demo/images/layout.png')
     expect(writeProjectText).toHaveBeenCalledWith(
       '/workspace/demo/home/parameters.json',

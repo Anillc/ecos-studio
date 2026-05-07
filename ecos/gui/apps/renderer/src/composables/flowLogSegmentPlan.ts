@@ -4,10 +4,10 @@ export interface FlowLogSegmentLike {
   state: string
   failed: boolean
   missing: boolean
-  content: string
   live?: boolean
   truncated?: boolean
   totalSize?: number
+  lastReadOffsetBytes?: number
   logPath?: string
 }
 
@@ -40,10 +40,10 @@ export function mergePlannedFlowLogSegments<T extends FlowLogSegmentLike>(
 
     return {
       ...seg,
-      content: prior.content,
       missing: prior.missing,
       truncated: prior.truncated,
       totalSize: prior.totalSize,
+      lastReadOffsetBytes: prior.lastReadOffsetBytes,
       logPath,
     }
   })

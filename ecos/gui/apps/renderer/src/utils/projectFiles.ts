@@ -1,6 +1,10 @@
 import {
   isAbsoluteLocalPath,
   joinLocalPath,
+  type DesktopProjectLogTailEvent,
+  type DesktopProjectLogTailSubscriptionOptions,
+  type DesktopProjectTextFileTail,
+  type DesktopProjectTextFileUpdate,
   type DesktopEventUnsubscribe,
   type DesktopProjectFileChangedEvent,
 } from '@ecos-studio/shared'
@@ -57,6 +61,105 @@ export async function readProjectTextFile(
   return await getDesktopApi().workspace.readProjectTextFile(resolvedPath)
 }
 
+export async function readOptionalProjectTextFile(
+  path: string,
+  options: ProjectFilePathOptions = {},
+): Promise<string | null> {
+  const resolvedPath = resolveProjectFilePath(path, options.projectPath)
+  const workspace = getDesktopApi().workspace
+  const readOptional = workspace.readOptionalProjectTextFile
+  if (typeof readOptional === 'function') {
+    return await readOptional.call(workspace, resolvedPath)
+  }
+
+  try {
+    return await workspace.readProjectTextFile(resolvedPath)
+  } catch (error) {
+    if (
+      typeof error === 'object'
+      && error !== null
+      && 'message' in error
+      && typeof error.message === 'string'
+      && error.message.includes('ENOENT')
+    ) {
+      return null
+    }
+
+    throw error
+  }
+}
+
+export async function readProjectTextFileTail(
+  path: string,
+  maxChars: number,
+  options: ProjectFilePathOptions = {},
+): Promise<string | null> {
+  const resolvedPath = resolveProjectFilePath(path, options.projectPath)
+  const workspace = getDesktopApi().workspace
+  const readTail = workspace.readProjectTextFileTail
+  if (typeof readTail === 'function') {
+    return await readTail.call(workspace, resolvedPath, maxChars)
+  }
+
+  const fullContent = await readOptionalProjectTextFile(resolvedPath)
+  return fullContent === null ? null : fullContent.slice(-maxChars)
+}
+
+export async function readOptionalProjectTextFileTail(
+  path: string,
+  maxChars: number,
+  options: ProjectFilePathOptions = {},
+): Promise<DesktopProjectTextFileTail | null> {
+  const resolvedPath = resolveProjectFilePath(path, options.projectPath)
+  const workspace = getDesktopApi().workspace
+  const readTail = workspace.readOptionalProjectTextFileTail
+  if (typeof readTail === 'function') {
+    return await readTail.call(workspace, resolvedPath, maxChars)
+  }
+
+  const fullContent = await readOptionalProjectTextFile(resolvedPath)
+  if (fullContent === null) return null
+
+  return {
+    content: fullContent.slice(-maxChars),
+    truncated: fullContent.length > maxChars,
+    sizeBytes: new TextEncoder().encode(fullContent).byteLength,
+  }
+}
+
+export async function readOptionalProjectTextFileUpdate(
+  path: string,
+  fromOffsetBytes: number,
+  maxChars: number,
+  options: ProjectFilePathOptions = {},
+): Promise<DesktopProjectTextFileUpdate | null> {
+  const resolvedPath = resolveProjectFilePath(path, options.projectPath)
+  const workspace = getDesktopApi().workspace
+  const readUpdate = workspace.readOptionalProjectTextFileUpdate
+  if (typeof readUpdate === 'function') {
+    return await readUpdate.call(workspace, resolvedPath, fromOffsetBytes, maxChars)
+  }
+
+  const fullContent = await readOptionalProjectTextFile(resolvedPath)
+  if (fullContent === null) return null
+
+  const bytes = new TextEncoder().encode(fullContent)
+  const normalizedOffset = Math.max(0, Math.floor(fromOffsetBytes))
+  const reset = normalizedOffset > bytes.byteLength
+  const content = reset
+    ? fullContent.slice(-maxChars)
+    : fullContent.slice(normalizedOffset).slice(-maxChars)
+
+  return {
+    content,
+    fromOffsetBytes: reset ? 0 : normalizedOffset,
+    nextOffsetBytes: bytes.byteLength,
+    sizeBytes: bytes.byteLength,
+    reset,
+    truncated: reset || content.length >= maxChars,
+  }
+}
+
 export async function readProjectJsonFile<T>(
   path: string,
   options: ProjectFilePathOptions = {},
@@ -91,6 +194,19 @@ export async function watchProjectFile(
   const watchFn = workspace.watchProjectFile
   if (typeof watchFn !== 'function') return null
   return await watchFn.call(workspace, resolvedPath, listener)
+}
+
+export async function subscribeProjectLogTail(
+  path: string,
+  listener: (event: DesktopProjectLogTailEvent) => void,
+  options: DesktopProjectLogTailSubscriptionOptions = {},
+  projectOptions: ProjectFilePathOptions = {},
+): Promise<DesktopEventUnsubscribe | null> {
+  const resolvedPath = resolveProjectFilePath(path, projectOptions.projectPath)
+  const workspace = getDesktopApi().workspace
+  const subscribeFn = workspace.subscribeProjectLogTail
+  if (typeof subscribeFn !== 'function') return null
+  return await subscribeFn.call(workspace, resolvedPath, options, listener)
 }
 
 export async function readProjectBlobUrl(

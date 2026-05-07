@@ -1,11 +1,20 @@
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, shallowRef, watch, onUnmounted } from 'vue'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
 import { flowExecutionActive } from './useFlowRunner'
 import { getHomePageApi } from '@/api/flow'
 import { ResponseEnum } from '@/api/type'
 import type { ECCResponse } from '@/api/sse'
-import { readProjectBlobUrl, readProjectTextFile, watchProjectFile } from '@/utils/projectFiles'
+import type { DesktopProjectLogTailEvent } from '@ecos-studio/shared'
+import {
+  readOptionalProjectTextFile,
+  readOptionalProjectTextFileTail,
+  readOptionalProjectTextFileUpdate,
+  readProjectBlobUrl,
+  readProjectTextFile,
+  subscribeProjectLogTail,
+  watchProjectFile,
+} from '@/utils/projectFiles'
 import { requestProjectPathAccess, resolveProjectPathAccess } from '@/utils/projectFs'
 import { mergePlannedFlowLogSegments } from './flowLogSegmentPlan'
 
@@ -57,13 +66,14 @@ export interface FlowLogSegment {
   failed: boolean
   /** 磁盘上不存在或无法读取 */
   missing: boolean
-  content: string
   /** 当前 flow.json 中该步为 Ongoing，且处于 flowExecutionActive 会话中 */
   live?: boolean
   /** 当前 `content` 仅为文件尾部截取；UI 可据此显示"查看完整日志"按钮 */
   truncated?: boolean
-  /** 完整日志字符数（未截断时 = content.length） */
+  /** 完整日志字节数（未截断时约等于磁盘文件大小） */
   totalSize?: number
+  /** 已读到的文件字节偏移，用于 live append 增量读取 */
+  lastReadOffsetBytes?: number
   /** 生成该段时对应的 log 文件绝对路径（用于展开完整内容） */
   logPath?: string
 }
@@ -122,6 +132,7 @@ let _fetchGeneration = 0
 
 /** 跨挂载持久化的 flow step log 列表 */
 const flowLogSegmentsState = ref<FlowLogSegment[]>([])
+const flowLogContentState = shallowRef<Record<string, string>>({})
 const flowLogStepNameState = ref('')
 const flowLogErrorState = ref<string | null>(null)
 /** 首次构建（segments 为空）时才会显示 loading；后续重新校验不再阻塞 UI */
@@ -131,6 +142,7 @@ let flowLogLoadSession = 0
 
 function resetFlowLogState(): void {
   flowLogSegmentsState.value = []
+  flowLogContentState.value = {}
   flowLogStepNameState.value = ''
   flowLogErrorState.value = null
   flowLogLoadingState.value = false
@@ -139,7 +151,7 @@ function resetFlowLogState(): void {
 }
 
 /**
- * 单个 log 文件内容缓存。
+ * 单个 log 文件尾部内容缓存。
  *
  * **Key 约定**：必须是 `resolveProjectPathAccess` 之后的**规范化绝对路径**。
  * 所有读取/失效入口都必须先 `resolvedPathMemo(localPath)` 再触达本 Map，
@@ -151,7 +163,7 @@ function resetFlowLogState(): void {
 interface LogFileCacheEntry {
   content: string
   truncated: boolean
-  /** 完整内容的字符数（未截断时 = content.length） */
+  /** 完整文件字节数 */
   totalSize: number
 }
 const logFileCache = new Map<string, LogFileCacheEntry>()
@@ -188,11 +200,51 @@ const resolvedPathCache = new Map<string, string>()
  * 超过时切尾部 + 置 `truncated: true`，UI 上的"查看完整日志"按钮会以
  * `forceFull: true` 再读一次，拿到整个文件。
  *
- * **TODO**: 真·流式尾部读还没做。`readLogFileSmart` 当前仍把**整个文件**
- * 读进 JS 字符串再切片，100MB 的日志会照样走一遍桌面桥接 IPC。
- * 后续要做真 tail read，需要给桥接层补一个自定义 "read log tail" 能力。
+ * 常规查看只从桌面桥接读取尾部；只有用户显式点击 Show full log 才会读取完整文件。
  */
 const MAX_LOG_READ_CHARS = 512 * 1024
+const LIVE_LOG_READ_CHARS = 192 * 1024
+const LIVE_LOG_UPDATE_DEBOUNCE_MS = 400
+const LIVE_LOG_INITIAL_RETRY_MS = 1200
+const LIVE_LOG_POLL_MS = 1200
+
+function flowLogSegmentKey(seg: Pick<FlowLogSegment, 'stepName' | 'tool'>): string {
+  return `${seg.stepName}\u001f${seg.tool}`
+}
+
+function setFlowLogContent(key: string, content: string): void {
+  if (flowLogContentState.value[key] === content) return
+  flowLogContentState.value = {
+    ...flowLogContentState.value,
+    [key]: content,
+  }
+}
+
+function appendFlowLogContent(key: string, content: string): void {
+  if (!content) return
+  setFlowLogContent(key, `${flowLogContentState.value[key] ?? ''}${content}`)
+}
+
+function clearFlowLogContent(key: string): void {
+  if (!(key in flowLogContentState.value)) return
+  const next = { ...flowLogContentState.value }
+  delete next[key]
+  flowLogContentState.value = next
+}
+
+function pruneFlowLogContentKeepOnly(aliveKeys: Iterable<string>): void {
+  const alive = aliveKeys instanceof Set ? aliveKeys : new Set(aliveKeys)
+  let changed = false
+  const next: Record<string, string> = {}
+  for (const [key, value] of Object.entries(flowLogContentState.value)) {
+    if (!alive.has(key)) {
+      changed = true
+      continue
+    }
+    next[key] = value
+  }
+  if (changed) flowLogContentState.value = next
+}
 
 async function resolvedPathMemo(localPath: string): Promise<string | null> {
   if (!localPath) return null
@@ -211,13 +263,8 @@ interface LogReadResult {
 }
 
 /**
- * 读取单个 step log 文件内容。
- *
- * 设计要点：
- * - 直接走桌面桥接的整文件文本读取，不在 renderer 侧做额外的文件系统 SDK 调用。
- * - 大文件（> MAX_LOG_READ_CHARS）就地切尾部 + `truncated: true`，并把完整
- *   字符数返回给 UI；"查看完整日志"按钮会以 `forceFull` 再读一次。
- *   （尾部读的**读盘侧**当前未优化，见 `MAX_LOG_READ_CHARS` 的 TODO。）
+ * 读取单个 step log 文件内容。默认只读取尾部，避免巨型日志跨 IPC 进入 renderer。
+ * 只有 `forceFull` 用于用户显式展开完整日志时才读取整文件。
  *
  * @param logPath **已 resolve / canonicalize 的绝对路径**。作为 `logFileCache` 的 key，
  *                调用方必须先走 `resolvedPathMemo` 保证同一文件始终用同一 key。
@@ -242,22 +289,35 @@ async function readLogFileSmart(
   }
 
   try {
-    const fullContent = await readProjectTextFile(logPath)
-    const totalSize = fullContent.length
-    const shouldTruncate = !opts.forceFull && totalSize > MAX_LOG_READ_CHARS
+    if (!opts.forceFull) {
+      const tail = await readOptionalProjectTextFileTail(logPath, MAX_LOG_READ_CHARS)
+      if (tail === null) {
+        logFileCache.delete(logPath)
+        return { content: '', truncated: false, missing: true, totalSize: 0 }
+      }
 
-    if (shouldTruncate) {
-      const slice = fullContent.slice(-MAX_LOG_READ_CHARS)
-      // 从行首开始切，避免首行半行乱码
-      const firstNl = slice.indexOf('\n')
-      const tail = firstNl >= 0 ? slice.slice(firstNl + 1) : slice
-      const shownKb = Math.floor(MAX_LOG_READ_CHARS / 1024)
-      const totalKb = Math.floor(totalSize / 1024)
-      const content = `[… truncated — showing last ~${shownKb} KB of ${totalKb} KB. Click "Show full log" above to load everything. …]\n${tail}`
-      logCacheSet(logPath, { content, truncated: true, totalSize })
-      return { content, truncated: true, missing: false, totalSize }
+      const totalSize = tail.sizeBytes
+      if (tail.truncated) {
+        const firstNl = tail.content.indexOf('\n')
+        const shownTail = firstNl >= 0 ? tail.content.slice(firstNl + 1) : tail.content
+        const shownKb = Math.floor(MAX_LOG_READ_CHARS / 1024)
+        const totalKb = Math.floor(totalSize / 1024)
+        const content = `[… truncated — showing last ~${shownKb} KB of ${totalKb} KB. Click "Show full log" above to load everything. …]\n${shownTail}`
+        logCacheSet(logPath, { content, truncated: true, totalSize })
+        return { content, truncated: true, missing: false, totalSize }
+      }
+
+      logCacheSet(logPath, { content: tail.content, truncated: false, totalSize })
+      return { content: tail.content, truncated: false, missing: false, totalSize }
     }
 
+    const fullContent = await readOptionalProjectTextFile(logPath)
+    if (fullContent === null) {
+      logFileCache.delete(logPath)
+      return { content: '', truncated: false, missing: true, totalSize: 0 }
+    }
+
+    const totalSize = new TextEncoder().encode(fullContent).byteLength
     logCacheSet(logPath, { content: fullContent, truncated: false, totalSize })
     return { content: fullContent, truncated: false, missing: false, totalSize }
   } catch {
@@ -468,7 +528,7 @@ export function resetSharedHomeDataProjectState() {
  */
 export function useHomeData() {
   const { isInTauri } = useTauri()
-  const { currentProject } = useWorkspace()
+  const { currentProject, stepRefreshCounter, triggerStepRefresh } = useWorkspace()
 
   // 响应式数据全部走模块级——HomeView remount 时直接复用上一次加载结果，
   // 只有源数据真的变了（项目切换 / SSE 推送 / 本地 flow 执行）才触发重读。
@@ -477,6 +537,7 @@ export function useHomeData() {
   const layoutBlobUrl = layoutBlobUrlState
   const analysisCharts = analysisChartsState
   const flowLogSegments = flowLogSegmentsState
+  const flowLogContentByKey = flowLogContentState
   const flowLogStepName = flowLogStepNameState
   const flowLogError = flowLogErrorState
   /** True while flow.json and step log files are being read (progressive fill). */
@@ -490,6 +551,9 @@ export function useHomeData() {
   let pollLogFallbackTimer: ReturnType<typeof setInterval> | null = null
   let unwatchFlowJsonFile: (() => void) | null = null
   let unwatchLogFile: (() => void) | null = null
+  let liveLogPatchTimer: ReturnType<typeof setTimeout> | null = null
+  let liveLogPatchInFlight = false
+  let liveLogPatchQueued = false
   let liveProjectPath: string | null = null
   let lastOngoingKey: string | null = null
 
@@ -678,6 +742,9 @@ export function useHomeData() {
     flowLocal: string,
     includeOngoingLive: boolean,
   ): Promise<{
+    hasFailedStep: boolean
+    hasOngoingStep: boolean
+    hasPendingStep: boolean
     tasks: Array<{
       seg: FlowLogSegment
       logPath: string
@@ -697,8 +764,16 @@ export function useHomeData() {
     const root = resolvedWorkspaceRoot.replace(/\\/g, '/')
 
     const tasks: Array<{ seg: FlowLogSegment; logPath: string }> = []
+    let hasFailedStep = false
+    let hasOngoingStep = false
+    let hasPendingStep = false
     for (const step of steps) {
       const stateLc = (step.state ?? '').trim().toLowerCase()
+      if (stateLc === 'incomplete' || stateLc === 'invalid' || stateLc === 'failed') {
+        hasFailedStep = true
+      }
+      if (stateLc === 'ongoing' || stateLc === 'running') hasOngoingStep = true
+      if (stateLc === 'unstart' || stateLc === 'pending') hasPendingStep = true
       if (stateLc === 'unstart') continue
       if (stateLc === 'ongoing' && !includeOngoingLive) continue
 
@@ -711,36 +786,22 @@ export function useHomeData() {
         state: step.state,
         failed,
         missing: false,
-        content: '',
         ...(live ? { live: true } : {}),
       }
       tasks.push({ seg, logPath })
     }
-    return { tasks }
-  }
-
-  /**
-   * 从已解析的 flow.json 本地路径构建步骤日志列表。
-   * 仅构建 metadata，并复用已缓存 / 已加载过的 content，不在这里批量读正文。
-   * 当前查看器只会显示一个 step，所以 bulk hydrate 的收益很低，代价却很高。
-   * @param includeOngoingLive 为 true 时包含 Ongoing 步，并标记 live
-   */
-  async function buildFlowLogSegmentsFromFlowLocal(
-    flowLocal: string,
-    includeOngoingLive: boolean,
-  ): Promise<FlowLogSegment[]> {
-    const plan = await planFlowLogSegments(flowLocal, includeOngoingLive)
-    if (!plan) return []
-
-    const logPaths = plan.tasks.map((t) => t.logPath)
-    pruneLogCacheKeepOnly(logPaths)
-
-    return mergePlannedFlowLogSegments(plan.tasks, flowLogSegments.value)
+    return { hasFailedStep, hasOngoingStep, hasPendingStep, tasks }
   }
 
   function cleanupLogWatchOnly(): void {
     unwatchLogFile?.()
     unwatchLogFile = null
+    if (liveLogPatchTimer != null) {
+      clearTimeout(liveLogPatchTimer)
+      liveLogPatchTimer = null
+    }
+    liveLogPatchInFlight = false
+    liveLogPatchQueued = false
     if (pollLogFallbackTimer != null) {
       clearInterval(pollLogFallbackTimer)
       pollLogFallbackTimer = null
@@ -757,6 +818,78 @@ export function useHomeData() {
     }
     liveProjectPath = null
     lastOngoingKey = null
+  }
+
+  function getLiveFlowLogSegment(expectedLogPath?: string): { index: number; segment: FlowLogSegment; key: string } | null {
+    const index = flowLogSegments.value.findIndex((segment) => segment.live)
+    if (index < 0) return null
+    const segment = flowLogSegments.value[index]
+    if (!segment) return null
+    if (expectedLogPath && segment.logPath && segment.logPath !== expectedLogPath) {
+      return null
+    }
+    return {
+      index,
+      segment,
+      key: flowLogSegmentKey(segment),
+    }
+  }
+
+  function applyLiveTailEvent(
+    event: DesktopProjectLogTailEvent,
+    resolvedLogPath: string,
+  ): void {
+    const live = getLiveFlowLogSegment(resolvedLogPath)
+    if (!live) return
+
+    const { index, segment, key } = live
+
+    if (event.eventType === 'waiting') {
+      invalidateLogFileCache(resolvedLogPath)
+      clearFlowLogContent(key)
+      flowLogSegments.value[index] = {
+        ...segment,
+        missing: false,
+        truncated: false,
+        totalSize: 0,
+        lastReadOffsetBytes: 0,
+        logPath: resolvedLogPath,
+      }
+      flowLogError.value = null
+      return
+    }
+
+    if (event.eventType === 'error') {
+      flowLogError.value = event.reason ?? 'Failed to tail live log'
+      return
+    }
+
+    if (event.eventType === 'closed') {
+      return
+    }
+
+    const nextContent = event.content ?? ''
+    const shouldPrefixBanner = event.truncated && (event.eventType === 'snapshot' || event.eventType === 'reset')
+    const content = shouldPrefixBanner
+      ? `[… live tail — showing latest log output. Full log is available after the step finishes. …]\n${nextContent}`
+      : nextContent
+
+    invalidateLogFileCache(resolvedLogPath)
+    if (event.eventType === 'append') {
+      appendFlowLogContent(key, content)
+    } else {
+      setFlowLogContent(key, content)
+    }
+
+    flowLogSegments.value[index] = {
+      ...segment,
+      missing: false,
+      truncated: Boolean(event.truncated),
+      totalSize: event.sizeBytes ?? segment.totalSize,
+      lastReadOffsetBytes: event.nextOffsetBytes ?? segment.lastReadOffsetBytes,
+      logPath: resolvedLogPath,
+    }
+    flowLogError.value = null
   }
 
   async function startProjectFileWatcher(
@@ -784,36 +917,137 @@ export function useHomeData() {
   async function bindLogFileWatch(sid: number, logPath: string): Promise<void> {
     cleanupLogWatchOnly()
 
-    const ensureLogFileWatcher = async (resolvedLogPath: string): Promise<void> => {
-      if (unwatchLogFile || sid !== liveSession) return
-      unwatchLogFile = await startProjectFileWatcher(sid, resolvedLogPath, patchLive)
+    const resolvedLogPath = await resolvedPathMemo(logPath)
+    if (!resolvedLogPath || sid !== liveSession) return
+
+    try {
+      const unwatch = await subscribeProjectLogTail(
+        resolvedLogPath,
+        (event) => {
+          if (sid !== liveSession) return
+          if (event.path !== resolvedLogPath) return
+          applyLiveTailEvent(event, resolvedLogPath)
+        },
+        {
+          maxInitialChars: LIVE_LOG_READ_CHARS,
+          maxChunkChars: LIVE_LOG_READ_CHARS,
+          pollIntervalMs: LIVE_LOG_INITIAL_RETRY_MS,
+        },
+      )
+
+      if (sid !== liveSession) {
+        unwatch?.()
+        return
+      }
+
+      if (unwatch) {
+        unwatchLogFile = unwatch
+        return
+      }
+    } catch (err) {
+      console.warn('Failed to subscribe to live log tail:', resolvedLogPath, err)
     }
 
-    const patchLive = async (): Promise<void> => {
+    const ensureLogFileWatcher = async (resolvedPath: string): Promise<void> => {
+      if (unwatchLogFile || sid !== liveSession) return
+      unwatchLogFile = await startProjectFileWatcher(sid, resolvedPath, patchLive)
+    }
+
+    const patchLiveNow = async (): Promise<void> => {
       if (sid !== liveSession) return
+      if (liveLogPatchInFlight) {
+        liveLogPatchQueued = true
+        return
+      }
+      liveLogPatchInFlight = true
       try {
-        const resolvedLogPath = await resolvedPathMemo(logPath)
-        if (!resolvedLogPath) return
         await ensureLogFileWatcher(resolvedLogPath)
-        const t = await readProjectTextFile(resolvedLogPath)
-        if (sid !== liveSession) return
         const i = flowLogSegments.value.findIndex((s) => s.live)
-        if (i >= 0) {
-          const cur = flowLogSegments.value[i]!
-          if (cur.content === t) return
-          flowLogSegments.value[i] = { ...cur, content: t, missing: false }
+        const cur = i >= 0 ? flowLogSegments.value[i]! : null
+        const key = cur ? flowLogSegmentKey(cur) : null
+        const update = await readOptionalProjectTextFileUpdate(
+          resolvedLogPath,
+          cur?.lastReadOffsetBytes ?? 0,
+          LIVE_LOG_READ_CHARS,
+        )
+        if (sid !== liveSession) return
+        if (update === null) {
+          invalidateLogFileCache(resolvedLogPath)
+          if (i >= 0) {
+            const cur = flowLogSegments.value[i]!
+            const key = flowLogSegmentKey(cur)
+            if (cur.missing || flowLogContentState.value[key]) {
+              clearFlowLogContent(key)
+              flowLogSegments.value[i] = {
+                ...cur,
+                missing: false,
+                truncated: false,
+                totalSize: 0,
+                lastReadOffsetBytes: 0,
+                logPath: resolvedLogPath,
+              }
+            }
+          }
+          return
+        }
+        if (i >= 0 && cur && key) {
+          if (
+            !update.content
+            && cur.lastReadOffsetBytes === update.nextOffsetBytes
+            && cur.totalSize === update.sizeBytes
+            && Boolean(cur.truncated) === update.truncated
+            && !cur.missing
+          ) {
+            return
+          }
+
+          invalidateLogFileCache(resolvedLogPath)
+          const content = update.truncated && update.reset
+            ? `[… live tail — showing latest log output. Full log is available after the step finishes. …]\n${update.content}`
+            : update.content
+          if (update.reset) {
+            setFlowLogContent(key, content)
+          } else {
+            appendFlowLogContent(key, content)
+          }
+          flowLogSegments.value[i] = {
+            ...cur,
+            missing: false,
+            truncated: update.truncated,
+            totalSize: update.sizeBytes,
+            lastReadOffsetBytes: update.nextOffsetBytes,
+            logPath: resolvedLogPath,
+          }
         }
       } catch {
         /* 尚未写入或短暂不可读 */
+      } finally {
+        liveLogPatchInFlight = false
+        if (liveLogPatchQueued && sid === liveSession) {
+          liveLogPatchQueued = false
+          schedulePatchLive()
+        }
       }
     }
 
-    await patchLive()
+    const schedulePatchLive = (delay = LIVE_LOG_UPDATE_DEBOUNCE_MS): void => {
+      if (sid !== liveSession || liveLogPatchTimer != null) return
+      liveLogPatchTimer = setTimeout(() => {
+        liveLogPatchTimer = null
+        void patchLiveNow()
+      }, delay)
+    }
+
+    const patchLive = (): void => {
+      schedulePatchLive()
+    }
+
+    await patchLiveNow()
     if (sid !== liveSession) return
 
     pollLogFallbackTimer = setInterval(() => {
-      void patchLive()
-    }, 650)
+      patchLive()
+    }, unwatchLogFile ? LIVE_LOG_POLL_MS : LIVE_LOG_INITIAL_RETRY_MS)
   }
 
   async function refreshFlowLogLivePanel(sid: number): Promise<void> {
@@ -833,7 +1067,23 @@ export function useHomeData() {
 
     flowLogError.value = null
     try {
-      const segments = await buildFlowLogSegmentsFromFlowLocal(flowLocal, true)
+      const plan = await planFlowLogSegments(flowLocal, true)
+      if (!plan || sid !== liveSession || currentProject.value?.path !== projectPath) return
+
+      if (
+        flowExecutionActive.value
+        && !plan.hasOngoingStep
+        && !plan.hasPendingStep
+      ) {
+        flowExecutionActive.value = false
+        triggerStepRefresh()
+      }
+
+      const logPaths = plan.tasks.map((t) => t.logPath)
+      const logKeys = plan.tasks.map((t) => flowLogSegmentKey(t.seg))
+      pruneLogCacheKeepOnly(logPaths)
+      pruneFlowLogContentKeepOnly(logKeys)
+      const segments = mergePlannedFlowLogSegments(plan.tasks, flowLogSegments.value)
       if (sid !== liveSession || currentProject.value?.path !== projectPath) return
       flowLogSegments.value = segments
       const ongoing = segments.find((s) => s.live)
@@ -854,8 +1104,14 @@ export function useHomeData() {
   }
 
   async function ensureFlowLogSegmentContentLoaded(segment: FlowLogSegment): Promise<boolean> {
+    if (segment.live) {
+      return false
+    }
+
     if (!isInTauri) return false
-    if (segment.content || segment.missing) return !segment.missing
+
+    const key = flowLogSegmentKey(segment)
+    if (flowLogContentState.value[key]) return true
 
     const logPath = segment.logPath
     if (!logPath) return false
@@ -872,16 +1128,24 @@ export function useHomeData() {
     const current = flowLogSegments.value[idx]
     if (!current) return false
 
+    if (result.missing && current.live) {
+      // Live logs commonly appear a moment after the step starts. Do not rewrite the
+      // segment here: HomeView watches selected segment identity and would immediately
+      // retry this on-demand read, creating a tight IPC loop while the file is absent.
+      return false
+    }
+
     const nextContent = result.missing
       ? `(Log file not found or unreadable)\n${logPath}`
       : result.content
+    setFlowLogContent(key, nextContent)
 
     flowLogSegments.value[idx] = {
       ...current,
-      content: nextContent,
       missing: result.missing,
       truncated: result.truncated,
       totalSize: result.totalSize,
+      lastReadOffsetBytes: result.totalSize,
       logPath,
     }
     return !result.missing
@@ -892,7 +1156,7 @@ export function useHomeData() {
    *
    * 行为：
    *  1) 读 flow.json 拿到 step 清单，按 (stepName, tool) 与当前 segments 做 merge：
-   *     已存在的步骤先复用旧 content，新增的步骤填空串；移除的步骤删掉。
+   *     已存在的步骤先复用轻量 metadata；正文单独按 key 缓存。
    *     这一步瞬时完成，不走文件 IO —— remount 或 flow.json 小改动时 UI 零闪烁。
    *  2) 只有当第一屏没有任何 segments 时才置 `flowLogLoading = true`；
    *     revalidate 场景下保持原 segments 持续可见。
@@ -938,12 +1202,14 @@ export function useHomeData() {
       }
 
       const logPaths = plan.tasks.map((t) => t.logPath)
+      const logKeys = plan.tasks.map((t) => flowLogSegmentKey(t.seg))
 
       // 本次 plan 里不再出现的 log 文件缓存直接清掉，防止同一项目内反复 run
       // 后 logFileCache 单调增长
       pruneLogCacheKeepOnly(logPaths)
+      pruneFlowLogContentKeepOnly(logKeys)
 
-      // 当前页面只展示一个选中 step 的正文，因此这里仅同步 metadata + 已缓存内容；
+      // 当前页面只展示一个选中 step 的正文，因此这里仅同步 metadata；
       // 真正的正文读取改为选中时按需触发，避免 mount 时为所有 step 做 IPC 读盘。
       flowLogSegments.value = mergePlannedFlowLogSegments(plan.tasks, flowLogSegments.value)
 
@@ -1003,11 +1269,12 @@ export function useHomeData() {
     }
 
     const cur = flowLogSegments.value[idx]!
+    setFlowLogContent(flowLogSegmentKey(cur), result.content)
     flowLogSegments.value[idx] = {
       ...cur,
-      content: result.content,
       truncated: false,
       totalSize: result.totalSize,
+      lastReadOffsetBytes: result.totalSize,
       missing: false,
     }
     return true
@@ -1125,7 +1392,7 @@ export function useHomeData() {
    *
    * **特意不调用 `resetFlowLogState()`**：reset 会把 `flowLogSegments` 置空，
    * 导致 UI 瞬时变成 loading / 空列表，这和整套"防闪烁"目标相悖。改由
-   * `loadAllFlowStepLogsFromFlowPath` 里的"按 key merge 旧 content"保证
+   * `loadAllFlowStepLogsFromFlowPath` 里的"按 key merge 旧 metadata"保证
    * 新旧数据平滑替换；`flowLogLoading` 会保持 false，避免误触发 loading 占位。
    * 如果要真的整屏清空（例如项目关闭），走 `clearHomeData(true)`。
    */
@@ -1241,6 +1508,16 @@ export function useHomeData() {
     { immediate: true }
   )
 
+  watch(
+    stepRefreshCounter,
+    async () => {
+      if (!currentProject.value?.path) return
+      invalidateSharedHomeData()
+      resetFlowLogState()
+      await loadHomeData()
+    },
+  )
+
   // 监听 SSE 通知，当收到包含 home_page 的通知时自动刷新 Home 数据
   const { sseMessages } = useWorkspace()
 
@@ -1313,6 +1590,7 @@ export function useHomeData() {
     layoutBlobUrl,
     analysisCharts,
     flowLogSegments,
+    flowLogContentByKey,
     flowLogStepName,
     flowLogError,
     flowLogLoading,

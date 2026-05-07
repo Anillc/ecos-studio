@@ -22,11 +22,6 @@ export function getDefaultSelectedFlowLogKey(
   const liveSegment = segments.find((segment) => segment.live)
   if (liveSegment) return flowLogStepKey(liveSegment)
 
-  for (let index = segments.length - 1; index >= 0; index -= 1) {
-    const segment = segments[index]
-    if (segment?.content) return flowLogStepKey(segment)
-  }
-
   const lastSegment = segments[segments.length - 1]
   return lastSegment ? flowLogStepKey(lastSegment) : null
 }

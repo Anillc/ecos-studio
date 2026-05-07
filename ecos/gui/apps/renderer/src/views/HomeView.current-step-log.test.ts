@@ -86,6 +86,11 @@ describe('HomeView current-step log viewer state', () => {
     expect(homeViewSource).not.toContain('flow-log-viewer-meta-row')
   })
 
+  it('lets the live watcher wait for a missing log instead of repeatedly reading on selection', () => {
+    expect(homeViewSource).toContain('if (segment.live && !selectedFlowLogContent.value)')
+    expect(homeViewSource).toContain('await ensureFlowLogSegmentContentLoaded(segment)')
+  })
+
   it('adds dialog semantics and escape handling for the transient chooser', () => {
     expect(homeViewSource).toContain('role="dialog"')
     expect(homeViewSource).toContain('aria-modal="true"')

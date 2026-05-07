@@ -14,7 +14,6 @@ const segments: FlowLogSegment[] = [
     state: 'Success',
     failed: false,
     missing: false,
-    content: 'import done',
   },
   {
     stepName: 'Synthesis',
@@ -25,7 +24,6 @@ const segments: FlowLogSegment[] = [
     live: true,
     truncated: true,
     totalSize: 4096,
-    content: 'live tail',
   },
 ]
 
@@ -34,14 +32,13 @@ describe('homeViewFlowLogSelection', () => {
     expect(getDefaultSelectedFlowLogKey(segments)).toBe('Synthesis\u001fyosys')
   })
 
-  it('falls back to the last segment with content when no live segment exists', () => {
+  it('falls back to the last segment when no live segment exists', () => {
     expect(getDefaultSelectedFlowLogKey([
       segments[0],
       {
         ...segments[1],
         live: false,
         state: 'Success',
-        content: 'finished',
       },
     ])).toBe('Synthesis\u001fyosys')
   })

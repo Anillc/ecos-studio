@@ -255,7 +255,7 @@
                 <FlowLogCodeViewer
                   v-if="selectedFlowLogSegment"
                   :key="selectedFlowLogKey ?? 'no-selection'"
-                  :content="selectedFlowLogSegment.content"
+                  :content="selectedFlowLogContent"
                   :live="Boolean(selectedFlowLogSegment.live)"
                   :missing="selectedFlowLogSegment.missing"
                   :loading="loadingSelectedFlowLogKey === selectedFlowLogKey"
@@ -572,6 +572,7 @@ const {
   layoutBlobUrl,
   analysisCharts,
   flowLogSegments,
+  flowLogContentByKey,
   flowLogStepName,
   flowLogError,
   flowLogLoading,
@@ -621,6 +622,19 @@ const selectedFlowLogSegment = computed(() => {
   if (!selectedFlowLogKey.value) return null
   return flowLogSegments.value.find((segment) => flowLogStepKey(segment) === selectedFlowLogKey.value) ?? null
 })
+const selectedFlowLogContent = computed(() => {
+  if (!selectedFlowLogKey.value) return ''
+  return flowLogContentByKey.value[selectedFlowLogKey.value] ?? ''
+})
+const flowLogSelectionSignature = computed(() =>
+  flowLogSegments.value
+    .map((segment) => [
+      flowLogStepKey(segment),
+      segment.state,
+      segment.live ? '1' : '0',
+    ].join(':'))
+    .join('\u001e'),
+)
 
 function toggleFlowLogStepChooser(): void {
   flowLogChooser.toggleFlowLogStepChooser()
@@ -663,18 +677,15 @@ function updateFlowLogChooserAnchorPosition(): void {
 }
 
 watch(
-  [flowLogSegments, flowExecutionActive],
-  ([segments, isFlowRunning]) => {
+  [flowLogSelectionSignature, flowExecutionActive],
+  ([, isFlowRunning]) => {
     selectedFlowLogKey.value = reconcileSelectedFlowLogKey(
-      segments,
+      flowLogSegments.value,
       selectedFlowLogKey.value,
       { preferLive: isFlowRunning },
     )
   },
-  {
-    immediate: true,
-    deep: true,
-  },
+  { immediate: true },
 )
 
 watch(
@@ -707,7 +718,13 @@ watch(
       loadingSelectedFlowLogKey.value = null
       return
     }
-    if (segment.content || segment.missing) {
+    if (segment.live && !selectedFlowLogContent.value) {
+      if (loadingSelectedFlowLogKey.value === flowLogStepKey(segment)) {
+        loadingSelectedFlowLogKey.value = null
+      }
+      return
+    }
+    if (selectedFlowLogContent.value || segment.missing) {
       if (loadingSelectedFlowLogKey.value === flowLogStepKey(segment)) {
         loadingSelectedFlowLogKey.value = null
       }

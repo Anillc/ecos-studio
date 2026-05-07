@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mergePlannedFlowLogSegments } from './flowLogSegmentPlan'
 
 describe('mergePlannedFlowLogSegments', () => {
-  it('preserves existing content metadata when rebuilding the step plan', () => {
+  it('preserves existing lightweight metadata when rebuilding the step plan', () => {
     const merged = mergePlannedFlowLogSegments(
       [
         {
@@ -12,7 +12,6 @@ describe('mergePlannedFlowLogSegments', () => {
             state: 'Success',
             failed: false,
             missing: false,
-            content: '',
           },
           logPath: '/workspace/Import_python/log/Import.log',
         },
@@ -24,7 +23,6 @@ describe('mergePlannedFlowLogSegments', () => {
             failed: false,
             missing: false,
             live: true,
-            content: '',
           },
           logPath: '/workspace/Route_openroad/log/Route.log',
         },
@@ -39,8 +37,8 @@ describe('mergePlannedFlowLogSegments', () => {
           live: true,
           truncated: true,
           totalSize: 4096,
+          lastReadOffsetBytes: 4096,
           logPath: '/workspace/Route_openroad/log/Route.log',
-          content: 'cached tail',
         },
       ],
     )
@@ -52,7 +50,6 @@ describe('mergePlannedFlowLogSegments', () => {
         state: 'Success',
         failed: false,
         missing: false,
-        content: '',
         logPath: '/workspace/Import_python/log/Import.log',
       },
       {
@@ -64,8 +61,8 @@ describe('mergePlannedFlowLogSegments', () => {
         live: true,
         truncated: true,
         totalSize: 4096,
+        lastReadOffsetBytes: 4096,
         logPath: '/workspace/Route_openroad/log/Route.log',
-        content: 'cached tail',
       },
     ])
   })
