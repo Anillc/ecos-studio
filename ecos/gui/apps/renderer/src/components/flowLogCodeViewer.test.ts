@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module'
 import { parse, compileScript } from 'vue/compiler-sfc'
 import * as ts from 'typescript'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildFlowLogViewerExtensions,
   isFlowLogViewerNearTail,
@@ -56,6 +56,7 @@ function loadFlowLogCodeViewerComponent(vue: typeof import('vue')) {
           create: (config: { doc: string }) => ({
             ...config,
             doc: {
+              length: config.doc.length,
               toString: () => config.doc,
             },
           }),
@@ -85,9 +86,12 @@ function loadFlowLogCodeViewerComponent(vue: typeof import('vue')) {
 
         state: {
           doc: {
+            length: number
             toString: () => string
           }
         }
+
+        private docText = ''
 
         scrollDOM = {
           clientHeight: 0,
@@ -101,14 +105,16 @@ function loadFlowLogCodeViewerComponent(vue: typeof import('vue')) {
           const changes = transaction.changes
           if (!changes) return
 
-          const current = this.state.doc.toString()
+          const current = this.docText
           const next = changes.from === 0 && changes.to === current.length
             ? changes.insert
             : `${current.slice(0, changes.from)}${changes.insert}${current.slice(changes.to ?? changes.from)}`
+          this.docText = next
 
           this.state = {
             ...this.state,
             doc: {
+              length: next.length,
               toString: () => next,
             },
           }
@@ -117,6 +123,7 @@ function loadFlowLogCodeViewerComponent(vue: typeof import('vue')) {
         constructor(config: { parent: HTMLElement, state: any }) {
           this.parent = config.parent
           this.state = config.state
+          this.docText = config.state.doc.toString()
           codemirrorMocks.editorViewInstances.push(this)
 
           const editor = document.createElement('div')
@@ -143,6 +150,7 @@ vi.mock('@codemirror/state', () => ({
     create: vi.fn((config: { doc: string }) => ({
       ...config,
       doc: {
+        length: config.doc.length,
         toString: () => config.doc,
       },
     })),
@@ -171,9 +179,12 @@ vi.mock('@codemirror/view', () => {
 
     state: {
       doc: {
+        length: number
         toString: () => string
       }
     }
+
+    private docText = ''
 
     scrollDOM = {
       clientHeight: 0,
@@ -187,14 +198,16 @@ vi.mock('@codemirror/view', () => {
       const changes = transaction.changes
       if (!changes) return
 
-      const current = this.state.doc.toString()
+      const current = this.docText
       const next = changes.from === 0 && changes.to === current.length
         ? changes.insert
         : `${current.slice(0, changes.from)}${changes.insert}${current.slice(changes.to ?? changes.from)}`
+      this.docText = next
 
       this.state = {
         ...this.state,
         doc: {
+          length: next.length,
           toString: () => next,
         },
       }
@@ -203,6 +216,7 @@ vi.mock('@codemirror/view', () => {
     constructor(config: { parent: HTMLElement, state: any }) {
       this.parent = config.parent
       this.state = config.state
+      this.docText = config.state.doc.toString()
       codemirrorMocks.editorViewInstances.push(this)
 
       const editor = document.createElement('div')
@@ -228,6 +242,8 @@ type GlobalKey =
   | 'HTMLElement'
   | 'SVGElement'
   | 'DocumentFragment'
+  | 'requestAnimationFrame'
+  | 'cancelAnimationFrame'
 
 const originalGlobals = {
   document: globalThis.document,
@@ -237,6 +253,8 @@ const originalGlobals = {
   HTMLElement: globalThis.HTMLElement,
   SVGElement: globalThis.SVGElement,
   DocumentFragment: globalThis.DocumentFragment,
+  requestAnimationFrame: globalThis.requestAnimationFrame,
+  cancelAnimationFrame: globalThis.cancelAnimationFrame,
 } as const
 
 let domInstalled = false
@@ -465,6 +483,14 @@ function ensureDom() {
     value: FakeElement,
     configurable: true,
   })
+  Object.defineProperty(globalThis, 'requestAnimationFrame', {
+    value: (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0),
+    configurable: true,
+  })
+  Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+    value: (handle: number) => clearTimeout(handle),
+    configurable: true,
+  })
 
   domInstalled = true
 }
@@ -480,6 +506,8 @@ function restoreDomGlobals() {
     'HTMLElement',
     'SVGElement',
     'DocumentFragment',
+    'requestAnimationFrame',
+    'cancelAnimationFrame',
   ]
 
   for (const key of keys) {
@@ -496,6 +524,40 @@ function restoreDomGlobals() {
   }
 
   domInstalled = false
+}
+
+function installManualAnimationFrames() {
+  let rafId = 0
+  const callbacks = new Map<number, FrameRequestCallback>()
+
+  Object.defineProperty(globalThis, 'requestAnimationFrame', {
+    value: vi.fn((callback: FrameRequestCallback) => {
+      const id = ++rafId
+      callbacks.set(id, callback)
+      return id
+    }),
+    configurable: true,
+  })
+  Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+    value: vi.fn((id: number) => {
+      callbacks.delete(id)
+    }),
+    configurable: true,
+  })
+
+  return {
+    flushNextFrame() {
+      const next = callbacks.entries().next().value
+      if (!next) return false
+      const [id, callback] = next
+      callbacks.delete(id)
+      callback(Date.now())
+      return true
+    },
+    pendingFrameCount() {
+      return callbacks.size
+    },
+  }
 }
 
 afterEach(() => {
@@ -549,6 +611,14 @@ describe('flowLogCodeViewer helpers', () => {
 })
 
 describe('FlowLogCodeViewer async content behavior', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('initializes the editor after content arrives late', async () => {
     ensureDom()
     const vue = await import('vue')
@@ -581,12 +651,171 @@ describe('FlowLogCodeViewer async content behavior', () => {
 
     state.content = 'first log line\nsecond log line'
     await vue.nextTick()
+    await vi.advanceTimersByTimeAsync(16)
     await vue.nextTick()
 
     expect(container.querySelector('.flow-log-viewer-empty')).toBeNull()
     expect(container.querySelector('.flow-log-viewer-editor')).not.toBeNull()
     expect(container.querySelector('.cm-editor')).not.toBeNull()
     expect(codemirrorMocks.editorViewInstances).toHaveLength(1)
+
+    app.unmount()
+  })
+
+  it('appends new content without reading the current CodeMirror document string', async () => {
+    ensureDom()
+    const vue = await import('vue')
+    const FlowLogCodeViewer = loadFlowLogCodeViewerComponent(vue)
+
+    const state = vue.reactive({
+      content: 'first line',
+    })
+    const Host = vue.defineComponent({
+      setup() {
+        return () => vue.h(FlowLogCodeViewer, {
+          content: state.content,
+          live: true,
+          missing: false,
+          loading: false,
+        })
+      },
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const app = vue.createApp(Host)
+    app.mount(container as never)
+
+    const instance = codemirrorMocks.editorViewInstances[0]
+    const toStringSpy = vi.spyOn(instance.state.doc, 'toString')
+    state.content = 'first line\nsecond line'
+    await vue.nextTick()
+    await vi.advanceTimersByTimeAsync(16)
+
+    expect(toStringSpy).not.toHaveBeenCalled()
+    expect(instance.dispatch).toHaveBeenCalledWith({
+      changes: {
+        from: 'first line'.length,
+        insert: '\nsecond line',
+      },
+    })
+
+    app.unmount()
+  })
+
+  it('scrolls live log content to the latest line on initial render', async () => {
+    ensureDom()
+    const raf = installManualAnimationFrames()
+    const vue = await import('vue')
+    const FlowLogCodeViewer = loadFlowLogCodeViewerComponent(vue)
+
+    const Host = vue.defineComponent({
+      setup() {
+        return () => vue.h(FlowLogCodeViewer, {
+          content: 'first line\nsecond line',
+          live: true,
+          missing: false,
+          loading: false,
+        })
+      },
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const app = vue.createApp(Host)
+    app.mount(container as never)
+
+    const instance = codemirrorMocks.editorViewInstances[0]
+    instance.scrollDOM.clientHeight = 120
+    instance.scrollDOM.scrollHeight = 420
+    instance.scrollDOM.scrollTop = 0
+
+    expect(raf.flushNextFrame()).toBe(true)
+    expect(instance.scrollDOM.scrollTop).toBe(300)
+
+    app.unmount()
+  })
+
+  it('keeps a live log pinned to the bottom while new content is appended', async () => {
+    ensureDom()
+    const raf = installManualAnimationFrames()
+    const vue = await import('vue')
+    const FlowLogCodeViewer = loadFlowLogCodeViewerComponent(vue)
+
+    const state = vue.reactive({
+      content: 'first line',
+    })
+    const Host = vue.defineComponent({
+      setup() {
+        return () => vue.h(FlowLogCodeViewer, {
+          content: state.content,
+          live: true,
+          missing: false,
+          loading: false,
+        })
+      },
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const app = vue.createApp(Host)
+    app.mount(container as never)
+
+    const instance = codemirrorMocks.editorViewInstances[0]
+    instance.scrollDOM.clientHeight = 100
+    instance.scrollDOM.scrollHeight = 300
+    instance.scrollDOM.scrollTop = 0
+
+    raf.flushNextFrame()
+    expect(instance.scrollDOM.scrollTop).toBe(200)
+
+    state.content = 'first line\nsecond line'
+    await vue.nextTick()
+
+    expect(raf.flushNextFrame()).toBe(true)
+    instance.scrollDOM.scrollHeight = 460
+    expect(raf.flushNextFrame()).toBe(true)
+
+    expect(instance.scrollDOM.scrollTop).toBe(360)
+
+    app.unmount()
+  })
+
+  it('does not pull the live log back down when the user is reading older output', async () => {
+    ensureDom()
+    const raf = installManualAnimationFrames()
+    const vue = await import('vue')
+    const FlowLogCodeViewer = loadFlowLogCodeViewerComponent(vue)
+
+    const state = vue.reactive({
+      content: 'first line',
+    })
+    const Host = vue.defineComponent({
+      setup() {
+        return () => vue.h(FlowLogCodeViewer, {
+          content: state.content,
+          live: true,
+          missing: false,
+          loading: false,
+        })
+      },
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const app = vue.createApp(Host)
+    app.mount(container as never)
+
+    const instance = codemirrorMocks.editorViewInstances[0]
+    instance.scrollDOM.clientHeight = 100
+    instance.scrollDOM.scrollHeight = 300
+    instance.scrollDOM.scrollTop = 0
+
+    raf.flushNextFrame()
+    instance.scrollDOM.scrollTop = 80
+
+    state.content = 'first line\nsecond line'
+    await vue.nextTick()
+
+    expect(raf.flushNextFrame()).toBe(true)
+    expect(raf.pendingFrameCount()).toBe(0)
+    expect(instance.scrollDOM.scrollTop).toBe(80)
 
     app.unmount()
   })

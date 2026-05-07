@@ -23,10 +23,39 @@ const rootRef = ref<HTMLElement | null>(null)
 const isViewerEmpty = computed(() => !props.content)
 
 let view: EditorView | null = null
+let lastSyncedContent = ''
+let pendingContent: string | null = null
+let pendingSyncRaf: number | null = null
+let pendingTailScrollRaf: number | null = null
 
 function destroyViewer(): void {
+  if (pendingSyncRaf !== null) {
+    cancelAnimationFrame(pendingSyncRaf)
+    pendingSyncRaf = null
+  }
+  if (pendingTailScrollRaf !== null) {
+    cancelAnimationFrame(pendingTailScrollRaf)
+    pendingTailScrollRaf = null
+  }
   view?.destroy()
   view = null
+  lastSyncedContent = ''
+}
+
+function scrollViewerToTail(): void {
+  if (!view) return
+  const scrollDOM = view.scrollDOM
+  scrollDOM.scrollTop = Math.max(0, scrollDOM.scrollHeight - scrollDOM.clientHeight)
+}
+
+function scheduleScrollViewerToTail(): void {
+  if (pendingTailScrollRaf !== null) {
+    cancelAnimationFrame(pendingTailScrollRaf)
+  }
+  pendingTailScrollRaf = requestAnimationFrame(() => {
+    pendingTailScrollRaf = null
+    scrollViewerToTail()
+  })
 }
 
 function ensureViewerState(): void {
@@ -44,13 +73,16 @@ function ensureViewerState(): void {
       extensions: buildFlowLogViewerExtensions(),
     }),
   })
+  lastSyncedContent = props.content
+  if (props.live) {
+    scheduleScrollViewerToTail()
+  }
 }
 
 function syncViewerContent(nextContent: string): void {
   if (!view) return
 
-  const currentContent = view.state.doc.toString()
-  if (currentContent === nextContent) return
+  if (lastSyncedContent === nextContent) return
 
   const scrollDOM = view.scrollDOM
   const shouldFollowTail = props.live && isFlowLogViewerNearTail({
@@ -59,18 +91,30 @@ function syncViewerContent(nextContent: string): void {
     clientHeight: scrollDOM.clientHeight,
   }, FLOW_LOG_VIEWER_TAIL_THRESHOLD_PX)
 
-  const changes = nextContent.startsWith(currentContent)
-    ? { from: currentContent.length, insert: nextContent.slice(currentContent.length) }
-    : { from: 0, to: currentContent.length, insert: nextContent }
+  const docLength = view.state.doc.length
+  const changes = nextContent.startsWith(lastSyncedContent)
+    ? { from: docLength, insert: nextContent.slice(lastSyncedContent.length) }
+    : { from: 0, to: docLength, insert: nextContent }
 
   view.dispatch({ changes })
+  lastSyncedContent = nextContent
 
   if (shouldFollowTail) {
-    requestAnimationFrame(() => {
-      if (!view) return
-      view.scrollDOM.scrollTop = Math.max(0, view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight)
-    })
+    scheduleScrollViewerToTail()
   }
+}
+
+function scheduleViewerContentSync(nextContent: string): void {
+  pendingContent = nextContent
+  if (pendingSyncRaf !== null) return
+  pendingSyncRaf = requestAnimationFrame(() => {
+    pendingSyncRaf = null
+    const content = pendingContent
+    pendingContent = null
+    if (content === null) return
+    ensureViewerState()
+    syncViewerContent(content)
+  })
 }
 
 onMounted(() => {
@@ -78,12 +122,17 @@ onMounted(() => {
 })
 
 watch(() => props.content, (nextContent) => {
-  ensureViewerState()
-  syncViewerContent(nextContent)
+  scheduleViewerContentSync(nextContent)
 }, { flush: 'post' })
 
 watch([rootRef, isViewerEmpty], () => {
   ensureViewerState()
+}, { flush: 'post' })
+
+watch(() => props.live, (isLive) => {
+  if (isLive) {
+    scheduleScrollViewerToTail()
+  }
 }, { flush: 'post' })
 
 onUnmounted(() => {
