@@ -1,7 +1,7 @@
 <template>
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-xl transition-all p-4 sm:p-6">
+  <div class="new-project-wizard-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 sm:p-6">
     <div
-      class="relative w-full max-w-5xl bg-(--bg-primary)/95 backdrop-blur-2xl rounded-[24px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] border border-white/10 dark:border-white/5 overflow-hidden flex flex-col h-[85vh] max-h-[850px] ring-1 ring-black/5 dark:ring-white/5">
+      class="new-project-wizard-panel relative w-full max-w-5xl bg-(--bg-primary) rounded-[24px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] border border-white/10 dark:border-white/5 overflow-hidden flex flex-col h-[85vh] max-h-[850px] ring-1 ring-black/5 dark:ring-white/5">
       
       <!-- Top Decorative Gradient -->
       <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500/80 via-(--accent-color)/80 to-purple-500/80"></div>
@@ -504,7 +504,7 @@
           </div>
 
           <!-- Footer Actions -->
-          <div class="px-8 md:px-12 py-6 border-t border-(--border-color)/60 bg-(--bg-primary)/80 backdrop-blur-md flex items-center justify-between shrink-0 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)] z-10">
+          <div class="px-8 md:px-12 py-6 border-t border-(--border-color)/60 bg-(--bg-primary) flex items-center justify-between shrink-0 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)] z-10">
             <button v-if="currentStep > 1" @click="prevStep"
               class="px-6 py-3 text-(--text-primary) bg-(--bg-secondary)/40 border border-(--border-color) hover:bg-(--bg-secondary)/80 rounded-xl transition-colors duration-200 font-semibold cursor-pointer flex items-center gap-2 shadow-sm">
               <i class="ri-arrow-left-line"></i>
@@ -545,7 +545,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import type { WorkspaceConfig } from '../types'
 import { usePdkManager } from '../composables/usePdkManager'
 import { getDesktopApi } from '@/platform/desktop'
@@ -572,14 +572,17 @@ const steps = [
 // PDK 管理
 const { importedPdks, loadPdks, importPdk: doImportPdk, removePdk } = usePdkManager()
 const selectedPdkId = ref<string>('')
+const hasLoadedPdks = ref(false)
 
-onMounted(async () => {
+const ensurePdksLoaded = async () => {
+  if (hasLoadedPdks.value) return
+  hasLoadedPdks.value = true
   await loadPdks()
   // 如果只有一个 PDK，自动选中
   if (importedPdks.value.length === 1) {
     selectPdk(importedPdks.value[0])
   }
-})
+}
 
 const config = ref<WorkspaceConfig>({
   directory: '',
@@ -726,12 +729,18 @@ const nextStep = () => {
   if (currentStep.value < 4 && canProceed.value) {
     currentStep.value++
     highestStep.value = Math.max(highestStep.value, currentStep.value)
+    if (currentStep.value === 3) {
+      void ensurePdksLoaded()
+    }
   }
 }
 
 const jumpToStep = (step: number) => {
   highestStep.value = Math.max(highestStep.value, currentStep.value)
   currentStep.value = step
+  if (step === 3) {
+    void ensurePdksLoaded()
+  }
 }
 
 const handleStepClick = (targetStep: number) => {
@@ -767,6 +776,15 @@ const createProject = async () => {
 </script>
 
 <style scoped>
+.new-project-wizard-overlay {
+  isolation: isolate;
+  contain: layout style paint;
+}
+
+.new-project-wizard-panel {
+  contain: layout style paint;
+}
+
 /* Transition Effects */
 .fade-slide-enter-active,
 .fade-slide-leave-active {
