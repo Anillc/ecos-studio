@@ -3,6 +3,7 @@ import type {
   DesktopEventUnsubscribe,
   DesktopMenuEventId,
   DesktopProjectFileChangedEvent,
+  DesktopProjectLogTailEvent,
 } from './desktopEvents.ts'
 
 export type DesktopSettingsValue =
@@ -51,6 +52,27 @@ export interface VersionInfo {
   dreamplace: string
 }
 
+export interface DesktopProjectTextFileTail {
+  content: string
+  truncated: boolean
+  sizeBytes: number
+}
+
+export interface DesktopProjectTextFileUpdate {
+  content: string
+  fromOffsetBytes: number
+  nextOffsetBytes: number
+  sizeBytes: number
+  reset: boolean
+  truncated: boolean
+}
+
+export interface DesktopProjectLogTailSubscriptionOptions {
+  maxInitialChars?: number
+  maxChunkChars?: number
+  pollIntervalMs?: number
+}
+
 export interface DesktopApi {
   app: {
     getVersions(): Promise<VersionInfo>
@@ -88,6 +110,22 @@ export interface DesktopApi {
     clearProjectRoot(): Promise<void>
     requestProjectPathAccess(path: string): Promise<string>
     readProjectTextFile(path: string): Promise<string>
+    readOptionalProjectTextFile(path: string): Promise<string | null>
+    readProjectTextFileTail(path: string, maxChars: number): Promise<string | null>
+    readOptionalProjectTextFileTail?(
+      path: string,
+      maxChars: number,
+    ): Promise<DesktopProjectTextFileTail | null>
+    readOptionalProjectTextFileUpdate?(
+      path: string,
+      fromOffsetBytes: number,
+      maxChars: number,
+    ): Promise<DesktopProjectTextFileUpdate | null>
+    subscribeProjectLogTail?(
+      path: string,
+      options: DesktopProjectLogTailSubscriptionOptions,
+      listener: (event: DesktopProjectLogTailEvent) => void,
+    ): Promise<DesktopEventUnsubscribe>
     readProjectBinaryFile(path: string): Promise<Uint8Array>
     writeProjectTextFile(path: string, content: string): Promise<void>
     scanPdkDirectory(path: string): Promise<ScannedPdkDirectory>

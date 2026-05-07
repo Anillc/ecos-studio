@@ -17,6 +17,12 @@ export const desktopApiIpcChannels = {
   workspaceClearProjectRoot: 'workspace:clear-project-root',
   workspaceRequestProjectPathAccess: 'workspace:request-project-path-access',
   workspaceReadProjectTextFile: 'workspace:read-project-text-file',
+  workspaceReadOptionalProjectTextFile: 'workspace:read-optional-project-text-file',
+  workspaceReadProjectTextFileTail: 'workspace:read-project-text-file-tail',
+  workspaceReadOptionalProjectTextFileTail: 'workspace:read-optional-project-text-file-tail',
+  workspaceReadOptionalProjectTextFileUpdate: 'workspace:read-optional-project-text-file-update',
+  workspaceSubscribeProjectLogTail: 'workspace:subscribe-project-log-tail',
+  workspaceUnsubscribeProjectLogTail: 'workspace:unsubscribe-project-log-tail',
   workspaceReadProjectBinaryFile: 'workspace:read-project-binary-file',
   workspaceWriteProjectTextFile: 'workspace:write-project-text-file',
   workspaceScanPdkDirectory: 'workspace:scan-pdk-directory',
@@ -32,6 +38,7 @@ export const desktopApiEventChannels = {
   windowResized: 'window:resized',
   windowMaximizedChanged: 'window:maximized-changed',
   workspaceFileChanged: 'workspace:file-changed',
+  workspaceLogTail: 'workspace:log-tail',
 } as const
 
 export const ipcChannels = {

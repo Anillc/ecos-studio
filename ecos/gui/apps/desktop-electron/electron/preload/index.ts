@@ -9,6 +9,7 @@ import type {
   DesktopFileDialogOptions,
   DesktopMenuEventId,
   DesktopProjectFileChangedEvent,
+  DesktopProjectLogTailEvent,
   DesktopSettingsValue,
 } from '@ecos-studio/shared'
 
@@ -86,6 +87,43 @@ const desktopApi: DesktopApi = {
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceRequestProjectPathAccess, path),
     readProjectTextFile: (path) =>
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectTextFile, path),
+    readOptionalProjectTextFile: (path) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadOptionalProjectTextFile, path),
+    readProjectTextFileTail: (path, maxChars) =>
+      ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectTextFileTail, path, maxChars),
+    readOptionalProjectTextFileTail: (path, maxChars) =>
+      ipcRenderer.invoke(
+        desktopApiIpcChannels.workspaceReadOptionalProjectTextFileTail,
+        path,
+        maxChars,
+      ),
+    readOptionalProjectTextFileUpdate: (path, fromOffsetBytes, maxChars) =>
+      ipcRenderer.invoke(
+        desktopApiIpcChannels.workspaceReadOptionalProjectTextFileUpdate,
+        path,
+        fromOffsetBytes,
+        maxChars,
+      ),
+    subscribeProjectLogTail: async (path, options, listener) => {
+      const subscriptionId = await ipcRenderer.invoke(
+        desktopApiIpcChannels.workspaceSubscribeProjectLogTail,
+        path,
+        options,
+      ) as string
+      const eventListener = (
+        _event: IpcRendererEvent,
+        payload: DesktopProjectLogTailEvent,
+      ) => {
+        if (payload.subscriptionId !== subscriptionId) return
+        listener(payload)
+      }
+      ipcRenderer.on(desktopApiEventChannels.workspaceLogTail, eventListener)
+
+      return () => {
+        ipcRenderer.removeListener(desktopApiEventChannels.workspaceLogTail, eventListener)
+        void ipcRenderer.invoke(desktopApiIpcChannels.workspaceUnsubscribeProjectLogTail, subscriptionId)
+      }
+    },
     readProjectBinaryFile: (path) =>
       ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectBinaryFile, path),
     writeProjectTextFile: (path, content) =>

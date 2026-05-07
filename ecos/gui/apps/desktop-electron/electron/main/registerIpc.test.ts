@@ -40,11 +40,17 @@ function registerHandlers() {
       getApiPort: vi.fn(),
       isProjectDirectory: vi.fn(),
       readProjectBinaryFile: vi.fn(),
+      readOptionalProjectTextFile: vi.fn(),
+      readOptionalProjectTextFileTail: vi.fn(),
+      readOptionalProjectTextFileUpdate: vi.fn(),
       readProjectTextFile: vi.fn(),
+      readProjectTextFileTail: vi.fn(),
       registerProjectRoot: vi.fn(),
       requestProjectPathAccess: vi.fn(),
       scanPdkDirectory: vi.fn(),
+      subscribeProjectLogTail: vi.fn(),
       unwatchProjectFile: vi.fn(),
+      unsubscribeProjectLogTail: vi.fn(),
       watchProjectFile: vi.fn(),
       writeProjectTextFile: vi.fn(),
     },
@@ -107,6 +113,12 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceClearProjectRoot,
       desktopApiIpcChannels.workspaceRequestProjectPathAccess,
       desktopApiIpcChannels.workspaceReadProjectTextFile,
+      desktopApiIpcChannels.workspaceReadOptionalProjectTextFile,
+      desktopApiIpcChannels.workspaceReadProjectTextFileTail,
+      desktopApiIpcChannels.workspaceReadOptionalProjectTextFileTail,
+      desktopApiIpcChannels.workspaceReadOptionalProjectTextFileUpdate,
+      desktopApiIpcChannels.workspaceSubscribeProjectLogTail,
+      desktopApiIpcChannels.workspaceUnsubscribeProjectLogTail,
       desktopApiIpcChannels.workspaceReadProjectBinaryFile,
       desktopApiIpcChannels.workspaceWriteProjectTextFile,
       desktopApiIpcChannels.workspaceScanPdkDirectory,
@@ -193,6 +205,35 @@ describe('registerIpc', () => {
     services.workspaceService.getApiPort.mockResolvedValue(9123)
     services.workspaceService.isProjectDirectory.mockResolvedValue(true)
     services.workspaceService.readProjectTextFile.mockResolvedValue('{"steps":[]}')
+    services.workspaceService.readOptionalProjectTextFile.mockResolvedValue(null)
+    services.workspaceService.readProjectTextFileTail.mockResolvedValue('tail log')
+    services.workspaceService.readOptionalProjectTextFileTail.mockResolvedValue({
+      content: 'tail log',
+      truncated: true,
+      sizeBytes: 4096,
+    })
+    services.workspaceService.readOptionalProjectTextFileUpdate.mockResolvedValue({
+      content: 'next log',
+      fromOffsetBytes: 1024,
+      nextOffsetBytes: 1032,
+      sizeBytes: 1032,
+      reset: false,
+      truncated: false,
+    })
+    services.workspaceService.subscribeProjectLogTail.mockImplementation(async (_path, _options, listener) => {
+      listener({
+        subscriptionId: 'project-log-tail-1',
+        path: '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+        eventType: 'snapshot',
+        content: 'live log',
+        fromOffsetBytes: 0,
+        nextOffsetBytes: 8,
+        sizeBytes: 8,
+        reset: false,
+        truncated: false,
+      })
+      return 'project-log-tail-1'
+    })
     services.workspaceService.readProjectBinaryFile.mockResolvedValue(
       Uint8Array.from([0x45, 0x43, 0x4f, 0x53]),
     )
@@ -260,6 +301,51 @@ describe('registerIpc', () => {
       ),
     ).resolves.toBe('{"steps":[]}')
     await expect(
+      handlers.get(desktopApiIpcChannels.workspaceReadOptionalProjectTextFile)?.(
+        event,
+        '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+      ),
+    ).resolves.toBeNull()
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceReadProjectTextFileTail)?.(
+        event,
+        '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+        1024,
+      ),
+    ).resolves.toBe('tail log')
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceReadOptionalProjectTextFileTail)?.(
+        event,
+        '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+        1024,
+      ),
+    ).resolves.toEqual({
+      content: 'tail log',
+      truncated: true,
+      sizeBytes: 4096,
+    })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceReadOptionalProjectTextFileUpdate)?.(
+        event,
+        '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+        1024,
+        2048,
+      ),
+    ).resolves.toMatchObject({
+      content: 'next log',
+      nextOffsetBytes: 1032,
+    })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceSubscribeProjectLogTail)?.(
+        event,
+        '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+        {
+          maxInitialChars: 1024,
+          maxChunkChars: 1024,
+        },
+      ),
+    ).resolves.toBe('project-log-tail-1')
+    await expect(
       handlers.get(desktopApiIpcChannels.workspaceReadProjectBinaryFile)?.(
         event,
         '/tmp/project/.ecos/tile-cache/layout/route/cells.bin',
@@ -291,6 +377,30 @@ describe('registerIpc', () => {
     })
     expect(services.workspaceService.readProjectTextFile).toHaveBeenCalledWith(
       '/tmp/project/home/flow.json',
+    )
+    expect(services.workspaceService.readOptionalProjectTextFile).toHaveBeenCalledWith(
+      '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+    )
+    expect(services.workspaceService.readProjectTextFileTail).toHaveBeenCalledWith(
+      '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+      1024,
+    )
+    expect(services.workspaceService.readOptionalProjectTextFileTail).toHaveBeenCalledWith(
+      '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+      1024,
+    )
+    expect(services.workspaceService.readOptionalProjectTextFileUpdate).toHaveBeenCalledWith(
+      '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+      1024,
+      2048,
+    )
+    expect(services.workspaceService.subscribeProjectLogTail).toHaveBeenCalledWith(
+      '/tmp/project/Synthesis_yosys/log/Synthesis.log',
+      {
+        maxInitialChars: 1024,
+        maxChunkChars: 1024,
+      },
+      expect.any(Function),
     )
     expect(services.workspaceService.readProjectBinaryFile).toHaveBeenCalledWith(
       '/tmp/project/.ecos/tile-cache/layout/route/cells.bin',
@@ -404,6 +514,54 @@ describe('registerIpc', () => {
     )
 
     expect(services.workspaceService.unwatchProjectFile).toHaveBeenCalledTimes(1)
+    expect(sender.listenerCount('destroyed')).toBe(0)
+  })
+
+  it('unsubscribes live log tails when the renderer is destroyed or unsubscribes explicitly', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    const event = { sender }
+    services.workspaceService.subscribeProjectLogTail.mockImplementation(async (_path, _options, listener) => {
+      listener({
+        subscriptionId: 'project-log-tail-1',
+        path: '/tmp/project/home/flow.log',
+        eventType: 'snapshot',
+        content: 'log chunk',
+      })
+      return 'project-log-tail-1'
+    })
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceSubscribeProjectLogTail)?.(
+        event,
+        '/tmp/project/home/flow.log',
+        {
+          maxInitialChars: 256,
+          maxChunkChars: 256,
+        },
+      ),
+    ).resolves.toBe('project-log-tail-1')
+
+    expect(sender.listenerCount('destroyed')).toBe(1)
+    expect(sender.send).toHaveBeenCalledWith(
+      'workspace:log-tail',
+      expect.objectContaining({
+        subscriptionId: 'project-log-tail-1',
+        eventType: 'snapshot',
+        content: 'log chunk',
+      }),
+    )
+
+    await handlers.get(desktopApiIpcChannels.workspaceUnsubscribeProjectLogTail)?.(
+      event,
+      'project-log-tail-1',
+    )
+    expect(services.workspaceService.unsubscribeProjectLogTail).toHaveBeenCalledWith(
+      'project-log-tail-1',
+    )
     expect(sender.listenerCount('destroyed')).toBe(0)
   })
 })

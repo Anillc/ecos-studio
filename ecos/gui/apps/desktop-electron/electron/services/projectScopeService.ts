@@ -1,5 +1,5 @@
 import { readdir, realpath, stat } from 'node:fs/promises'
-import { isAbsolute, relative, win32 } from 'node:path'
+import { isAbsolute, join, relative, resolve, win32 } from 'node:path'
 import type { PdkDetectedFiles, ScannedPdkDirectory } from '@ecos-studio/shared'
 
 const PROJECT_MARKER_FILES = ['home.json', 'flow.json', 'parameters.json']
@@ -20,9 +20,55 @@ async function canonicalizeExistingDirectory(path: string): Promise<string> {
   return canonicalPath
 }
 
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === code
+  )
+}
+
 function isWithinRoot(candidatePath: string, rootPath: string): boolean {
   const relativePath = relative(rootPath, candidatePath)
   return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+}
+
+async function canonicalizePotentialPathWithinRoot(
+  path: string,
+  rootPath: string,
+): Promise<string> {
+  const candidatePath = resolve(path)
+
+  if (!isWithinRoot(candidatePath, rootPath)) {
+    throw new Error(
+      `Refusing to grant access outside current project root: ${candidatePath}`,
+    )
+  }
+
+  const relativePath = relative(rootPath, candidatePath)
+  if (!relativePath) return rootPath
+
+  const segments = relativePath.split(/[\\/]+/).filter(Boolean)
+  let resolvedPrefix = rootPath
+  let lexicalPrefix = rootPath
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+    lexicalPrefix = join(lexicalPrefix, segment)
+
+    try {
+      resolvedPrefix = await realpath(lexicalPrefix)
+    } catch (error) {
+      if (isNodeErrorWithCode(error, 'ENOENT')) {
+        return join(resolvedPrefix, ...segments.slice(index))
+      }
+
+      throw error
+    }
+  }
+
+  return resolvedPrefix
 }
 
 async function scanTopLevelEntries(path: string): Promise<PdkDetectedFiles> {
@@ -104,7 +150,7 @@ export class ProjectScopeService {
       throw new Error('Project root is not registered')
     }
 
-    const canonicalPath = await canonicalizeExistingPath(path)
+    const canonicalPath = await canonicalizePotentialPathWithinRoot(path, this.activeProjectRoot)
 
     if (!isWithinRoot(canonicalPath, this.activeProjectRoot)) {
       throw new Error(

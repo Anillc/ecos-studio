@@ -61,4 +61,16 @@ describe('ProjectScopeService', () => {
       'outside current project root',
     )
   })
+
+  it('authorizes missing descendants without requiring the final file to exist', async () => {
+    const root = await createTempDir('ecos-project-root-')
+    await mkdir(join(root, 'Synthesis_yosys'), { recursive: true })
+
+    const service = new ProjectScopeService()
+    await service.registerProjectRoot(root)
+
+    await expect(
+      service.requestProjectPathAccess(join(root, 'Synthesis_yosys', 'log', 'Synthesis.log')),
+    ).resolves.toBe(join(root, 'Synthesis_yosys', 'log', 'Synthesis.log'))
+  })
 })
