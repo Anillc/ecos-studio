@@ -621,6 +621,18 @@ export function useWorkspace() {
       // 过滤心跳消息，不记录到 messages
       if (response.data?.type !== 'heartbeat') {
         sseMessages.value.push(response)
+        const notifyId = response.data?.id as string | undefined
+        const notifyType = response.data?.type as string | undefined
+        if (
+          notifyId === 'step' ||
+          notifyId === 'subflow' ||
+          notifyType === 'step_start' ||
+          notifyType === 'step_complete' ||
+          notifyType === 'task_complete' ||
+          notifyType === 'data_ready'
+        ) {
+          triggerStepRefresh()
+        }
       }
     })
 
@@ -662,6 +674,7 @@ export function useWorkspace() {
     triggerStepRefresh,
     // 准备工作区时的全屏遮罩（见 App.vue）
     apiBackendConnecting,
+    ensureApiReady,
     // Toast
     showToast,
   }

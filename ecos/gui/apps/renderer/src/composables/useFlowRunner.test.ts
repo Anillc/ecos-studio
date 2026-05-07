@@ -3,12 +3,16 @@ import { StateEnum, StepEnum } from '@/api/type'
 
 const {
   ensureTauri,
+  ensureApiReady,
   showToast,
+  triggerStepRefresh,
   runStepApi,
   rtl2gdsApi,
 } = vi.hoisted(() => ({
   ensureTauri: vi.fn(() => false),
+  ensureApiReady: vi.fn(() => Promise.resolve(true)),
   showToast: vi.fn(),
+  triggerStepRefresh: vi.fn(),
   runStepApi: vi.fn(),
   rtl2gdsApi: vi.fn(),
 }))
@@ -30,7 +34,9 @@ vi.mock('./useTauri', () => ({
 
 vi.mock('./useWorkspace', () => ({
   useWorkspace: () => ({
+    ensureApiReady,
     showToast,
+    triggerStepRefresh,
   }),
 }))
 
@@ -45,7 +51,10 @@ describe('useFlowRunner desktop-only guard', () => {
   beforeEach(() => {
     ensureTauri.mockReset()
     ensureTauri.mockReturnValue(false)
+    ensureApiReady.mockReset()
+    ensureApiReady.mockResolvedValue(true)
     showToast.mockReset()
+    triggerStepRefresh.mockReset()
     runStepApi.mockReset()
     rtl2gdsApi.mockReset()
     flowExecutionActive.value = false
@@ -64,6 +73,8 @@ describe('useFlowRunner desktop-only guard', () => {
       life: 5000,
     })
     expect(runStepApi).not.toHaveBeenCalled()
+    expect(ensureApiReady).not.toHaveBeenCalled()
+    expect(triggerStepRefresh).not.toHaveBeenCalled()
     expect(result).toEqual({
       step: StepEnum.FLOORPLAN,
       state: StateEnum.Invalid,
@@ -83,6 +94,37 @@ describe('useFlowRunner desktop-only guard', () => {
       life: 5000,
     })
     expect(rtl2gdsApi).not.toHaveBeenCalled()
+    expect(ensureApiReady).not.toHaveBeenCalled()
+    expect(triggerStepRefresh).not.toHaveBeenCalled()
     expect(result).toBeNull()
+  })
+
+  it('triggers a refresh after the full flow API returns', async () => {
+    ensureTauri.mockReturnValue(true)
+    rtl2gdsApi.mockResolvedValue({
+      response: 'success',
+      data: { rerun: false },
+      message: ['done'],
+    })
+
+    const { runAllFlow } = useFlowRunner()
+
+    await expect(runAllFlow()).resolves.toEqual({ rerun: false })
+
+    expect(triggerStepRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not mark the full flow running when the API server is unavailable', async () => {
+    ensureTauri.mockReturnValue(true)
+    ensureApiReady.mockResolvedValue(false)
+
+    const { runAllFlow, isRunning } = useFlowRunner()
+
+    await expect(runAllFlow()).resolves.toBeNull()
+
+    expect(ensureApiReady).toHaveBeenCalledTimes(1)
+    expect(rtl2gdsApi).not.toHaveBeenCalled()
+    expect(triggerStepRefresh).not.toHaveBeenCalled()
+    expect(isRunning.value).toBe(false)
   })
 })

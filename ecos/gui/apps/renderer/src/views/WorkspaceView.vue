@@ -58,21 +58,34 @@ const handleMouseDown = (e: MouseEvent) => {
 const handleMouseUp = () => {
   if (isResizing) {
     isResizing = false
-    document.body.classList.remove('splitter-resizing')
-    document.body.classList.remove('splitter-resizing-vertical')
+  }
+  document.body.classList.remove('splitter-resizing')
+  document.body.classList.remove('splitter-resizing-vertical')
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState !== 'visible') {
+    handleMouseUp()
   }
 }
 
 onMounted(() => {
   document.addEventListener('mousedown', handleMouseDown)
   document.addEventListener('mouseup', handleMouseUp)
+  document.addEventListener('pointerup', handleMouseUp)
+  document.addEventListener('dragend', handleMouseUp)
+  window.addEventListener('blur', handleMouseUp)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('mouseup', handleMouseUp)
-  document.body.classList.remove('splitter-resizing')
-  document.body.classList.remove('splitter-resizing-vertical')
+  document.removeEventListener('pointerup', handleMouseUp)
+  document.removeEventListener('dragend', handleMouseUp)
+  window.removeEventListener('blur', handleMouseUp)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  handleMouseUp()
 })
 </script>
 <template>

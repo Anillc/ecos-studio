@@ -10,6 +10,20 @@ import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
 /** 任意流程命令执行中为 true，供 Home flow log 等订阅，避免多实例 composable 状态不一致 */
 export const flowExecutionActive = ref(false)
 
+/**
+ * Flow execution should not inherit transient global interaction locks.
+ * These classes are used only while the user is actively resizing panes/windows;
+ * if one remains on <body>, the whole UI can become unclickable.
+ */
+function clearTransientInteractionLocks() {
+  if (typeof document === 'undefined') return
+  document.body.classList.remove(
+    'splitter-resizing',
+    'splitter-resizing-vertical',
+    'window-resizing',
+  )
+}
+
 // ============ Composable ============
 
 /**
@@ -21,7 +35,7 @@ export const flowExecutionActive = ref(false)
  */
 export function useFlowRunner() {
   const { ensureTauri } = useTauri()
-  const { showToast } = useWorkspace()
+  const { ensureApiReady, showToast, triggerStepRefresh } = useWorkspace()
   const route = useRoute()
 
   // 状态（与 flowExecutionActive 同一引用）
@@ -69,10 +83,15 @@ export function useFlowRunner() {
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
 
+    if (!(await ensureApiReady())) {
+      return { step: step as StepEnum, state: StateEnum.Invalid }
+    }
+
     if (isRunning.value) {
       return { step: step as StepEnum, state: StateEnum.Ongoing }
     }
 
+    clearTransientInteractionLocks()
     isRunning.value = true
     state.value = StateEnum.Ongoing
     error.value = null
@@ -104,6 +123,7 @@ export function useFlowRunner() {
         })
       }
 
+      triggerStepRefresh()
       return result.data
     } catch (err) {
       console.error('Single-step run failed:', err)
@@ -114,6 +134,7 @@ export function useFlowRunner() {
         life: 6000
       })
     } finally {
+      clearTransientInteractionLocks()
       isRunning.value = false
     }
     return null
@@ -134,10 +155,15 @@ export function useFlowRunner() {
       return null
     }
 
+    if (!(await ensureApiReady())) {
+      return null
+    }
+
     if (isRunning.value) {
       return null
     }
 
+    clearTransientInteractionLocks()
     isRunning.value = true
     state.value = StateEnum.Ongoing
     error.value = null
@@ -172,6 +198,7 @@ export function useFlowRunner() {
         })
       }
 
+      triggerStepRefresh()
       return result.data
     } catch (err) {
       console.error('Run-all flow failed:', err)
@@ -184,6 +211,7 @@ export function useFlowRunner() {
         life: 8000
       })
     } finally {
+      clearTransientInteractionLocks()
       isRunning.value = false
     }
     return null

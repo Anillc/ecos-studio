@@ -496,11 +496,16 @@ onMounted(() => document.addEventListener('click', closeMenu))
 onUnmounted(() => document.removeEventListener('click', closeMenu))
 
 // 跨组件刷新信号
-const { triggerStepRefresh } = useWorkspace()
+const { ensureApiReady, triggerStepRefresh } = useWorkspace()
 
 // ============ 事件处理 ============
 const handleRunFlow = async () => {
   closeMenu()
+  if (!(await ensureApiReady())) {
+    await refreshFlowStages()
+    return
+  }
+
   if (currentStage.value === 'home') {
     setFirstRunStepOngoing()
     await runAllFlow()

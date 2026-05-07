@@ -113,7 +113,7 @@ function fallbackRunStepKeys(): string[] {
  */
 export function useFlowStages() {
   const { isInTauri } = useTauri()
-  const { currentProject } = useWorkspace()
+  const { currentProject, stepRefreshCounter } = useWorkspace()
 
   // 动态加载的流程步骤
   const dynamicFlowStages = ref<FlowStage[]>([])
@@ -308,6 +308,14 @@ export function useFlowStages() {
       }
     },
     { immediate: true }
+  )
+
+  watch(
+    stepRefreshCounter,
+    async () => {
+      if (!currentProject.value?.path) return
+      await refreshFlowStages()
+    },
   )
 
   // 监听 SSE 通知，当收到 step/subflow 通知时自动刷新流程步骤
