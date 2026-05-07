@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import * as vue from '../../../../node_modules/.pnpm/vue@3.5.26_typescript@5.9.3/node_modules/vue/dist/vue.runtime.esm-bundler.js'
-
-type SimpleRef<T> = { value: T }
+import { ref, type Ref } from 'vue'
 
 const testState = vi.hoisted(() => ({
-  currentProject: null as SimpleRef<{ path: string } | null> | null,
-  flowExecutionActive: null as SimpleRef<boolean> | null,
-  sseMessages: null as SimpleRef<unknown[]> | null,
-  stepRefreshCounter: null as SimpleRef<number> | null,
+  currentProject: null as Ref<{ path: string } | null> | null,
+  flowExecutionActive: null as Ref<boolean> | null,
+  sseMessages: null as Ref<unknown[]> | null,
+  stepRefreshCounter: null as Ref<number> | null,
   getHomePageApi: vi.fn(),
   readProjectBlobUrl: vi.fn(),
   readOptionalProjectTextFile: vi.fn(),
@@ -40,7 +38,15 @@ const testState = vi.hoisted(() => ({
   }>,
 }))
 
-vi.mock('vue', () => vue)
+vi.mock('vue', async () => {
+  const actual = await vi.importActual<typeof import('vue')>('vue')
+  return {
+    ...actual,
+    onUnmounted: (callback: () => void) => {
+      testState.unmountCallbacks.push(callback)
+    },
+  }
+})
 
 vi.mock('./useWorkspace', () => ({
   useWorkspace: () => ({
@@ -116,10 +122,10 @@ async function importFreshHomeDataModule() {
 
 describe('useHomeData live project file watchers', () => {
   beforeEach(() => {
-    testState.currentProject = { value: null }
-    testState.flowExecutionActive = { value: false }
-    testState.sseMessages = { value: [] }
-    testState.stepRefreshCounter = { value: 0 }
+    testState.currentProject = ref(null)
+    testState.flowExecutionActive = ref(false)
+    testState.sseMessages = ref([])
+    testState.stepRefreshCounter = ref(0)
     testState.unmountCallbacks.length = 0
     testState.logTailListeners.length = 0
 
@@ -136,13 +142,13 @@ describe('useHomeData live project file watchers', () => {
     testState.triggerStepRefresh.mockReset()
     testState.subscribeProjectLogTail.mockReset()
 
-    testState.getHomePageApi.mockResolvedValue({
+    testState.getHomePageApi.mockImplementation(async () => ({
       response: 'success',
       data: {
-        path: '/workspace/a/home/home.json',
+        path: `${testState.currentProject!.value?.path ?? '/workspace/a'}/home/home.json`,
       },
       message: [],
-    })
+    }))
     testState.requestProjectPathAccess.mockResolvedValue(true)
     testState.resolveProjectPathAccess.mockImplementation(async (path: string) => path)
     testState.subscribeProjectLogTail.mockImplementation(async (
