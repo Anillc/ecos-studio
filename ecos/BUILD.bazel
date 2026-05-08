@@ -77,7 +77,7 @@ genrule(
         "gui/pnpm-workspace.yaml",
         "gui/tailwind.config.ts",
     ] + [
-        ":build_ecos_server",
+        ":build_ecos_server_bundle",
         "@oss_cad_suite_pruned//:all_files",
         "@oss_cad_suite_pruned//:yosys_bin",
         ":build_gui_script",
@@ -89,7 +89,7 @@ genrule(
 
         bash "$(location :build_gui_script)" \\
             --gui-src-dir "$$(dirname $(location gui/package.json))" \\
-            --api-server-bin "$(location :build_ecos_server)" \\
+            --api-server-bin "$(location :build_ecos_server_bundle)" \\
             --oss-cad-bin "$(location @oss_cad_suite_pruned//:yosys_bin)" \\
             --out-tar "$@"
     """,
