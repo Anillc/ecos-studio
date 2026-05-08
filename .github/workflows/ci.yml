@@ -208,7 +208,8 @@ jobs:
             exit 1
           fi
 
-          uv pip install --python .venv/bin/python --reinstall --no-deps "$WHEEL"
+          uv pip uninstall --python .venv/bin/python ecc-dreamplace || true
+          uv pip install --python .venv/bin/python --no-index --no-deps "$WHEEL"
 
           .venv/bin/python - <<'PY'
           import importlib.metadata
