@@ -562,7 +562,7 @@ const handleRunFlow = async () => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
 }
 
 .dot-success-active {
@@ -607,7 +607,7 @@ const handleRunFlow = async () => {
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .mode-trigger:hover:not(:disabled) {
@@ -698,11 +698,11 @@ const handleRunFlow = async () => {
 
 /* 菜单动画 */
 .mode-menu-enter-active {
-  transition: all 0.15s ease-out;
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
 }
 
 .mode-menu-leave-active {
-  transition: all 0.1s ease-in;
+  transition: opacity 0.1s ease-in, transform 0.1s ease-in;
 }
 
 .mode-menu-enter-from {
@@ -728,7 +728,7 @@ const handleRunFlow = async () => {
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
   flex-shrink: 0;
 }
 

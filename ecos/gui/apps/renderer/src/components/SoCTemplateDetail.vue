@@ -28,7 +28,7 @@ const originBadge = computed(() => ({ label: 'Local', accent: false }))
 <template>
   <section class="soc-detail flex flex-col gap-8 lg:gap-10" aria-label="SoC template detail">
     <!-- Hero -->
-    <header class="soc-detail__hero relative overflow-hidden rounded-2xl border border-(--border-color) bg-(--bg-secondary)/90 p-6 shadow-[0_2px_16px_-8px_rgba(0,0,0,0.06)] backdrop-blur-[1px] sm:p-8 dark:shadow-[0_2px_16px_-8px_rgba(0,0,0,0.35)]">
+    <header class="soc-detail__hero relative overflow-hidden rounded-2xl border border-(--border-color) bg-(--bg-secondary)/90 p-6 shadow-[0_2px_16px_-8px_rgba(0,0,0,0.06)] sm:p-8 dark:shadow-[0_2px_16px_-8px_rgba(0,0,0,0.35)]">
       <div class="soc-detail__hero-accent pointer-events-none" aria-hidden="true" />
       <div class="relative flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
         <div class="flex min-w-0 flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">

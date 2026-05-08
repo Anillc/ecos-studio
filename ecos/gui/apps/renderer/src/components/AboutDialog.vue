@@ -109,11 +109,15 @@ async function copyVersions(): Promise<void> {
   background: var(--border-color);
 }
 
+.about-dialog .p-dialog-close-button:focus,
+.about-dialog .p-dialog-close-button:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .about-dialog-mask.p-dialog-mask,
 .about-dialog-mask.p-overlay-mask {
   background: rgba(0, 0, 0, 0.45) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
 }
 </style>
 

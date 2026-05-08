@@ -62,7 +62,7 @@
 
           <!-- 颜色条图例 -->
           <div
-            class="absolute bottom-3 right-3 flex flex-col items-end gap-1 bg-(--bg-secondary)/90 backdrop-blur-sm rounded-lg p-2 border border-(--border-color)/50">
+            class="absolute bottom-3 right-3 flex flex-col items-end gap-1 bg-(--bg-secondary)/90 rounded-lg p-2 border border-(--border-color)/50">
             <div class="w-4 h-24 rounded overflow-hidden"
               style="background: linear-gradient(to bottom, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff);"></div>
             <div class="flex flex-col justify-between h-24 text-[8px] text-(--text-secondary) font-mono">
@@ -698,7 +698,6 @@ function csvRows(content: string): string[][] {
   opacity: 0;
   transform: translateY(-2px);
   transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
-  backdrop-filter: blur(4px);
 }
 
 .group:hover .image-fs-overlay-btn,
@@ -721,7 +720,6 @@ function csvRows(content: string): string[][] {
   justify-content: center;
   padding: 16px;
   background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(4px);
   box-sizing: border-box;
 }
 

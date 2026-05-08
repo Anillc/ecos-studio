@@ -60,7 +60,7 @@ function onRemoveImported(templateId: string): void {
 <template>
   <section class="soc-gallery flex flex-col gap-10" aria-label="SoC template catalog">
     <!-- Hero -->
-    <header class="soc-gallery__hero relative overflow-hidden rounded-2xl border border-(--border-color) bg-(--bg-secondary)/85 p-6 shadow-[0_1px_0_0_color-mix(in_srgb,var(--border-color)_80%,transparent)] backdrop-blur-[2px] sm:p-8">
+    <header class="soc-gallery__hero relative overflow-hidden rounded-2xl border border-(--border-color) bg-(--bg-secondary)/85 p-6 shadow-[0_1px_0_0_color-mix(in_srgb,var(--border-color)_80%,transparent)] sm:p-8">
       <div class="soc-gallery__hero-accent pointer-events-none" aria-hidden="true" />
       <div class="relative flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
         <div class="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
@@ -140,7 +140,7 @@ function onRemoveImported(templateId: string): void {
     <!-- Loading -->
     <div
       v-if="loading"
-      class="soc-gallery__panel rounded-2xl border border-(--border-color) bg-(--bg-secondary)/90 p-10 backdrop-blur-[1px]"
+      class="soc-gallery__panel rounded-2xl border border-(--border-color) bg-(--bg-secondary)/90 p-10"
       aria-busy="true"
     >
       <div class="soc-gallery__shimmer mx-auto max-w-lg space-y-5">

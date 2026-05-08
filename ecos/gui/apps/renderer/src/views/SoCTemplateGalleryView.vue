@@ -85,8 +85,7 @@ onMounted(loadCatalog)
   position: absolute;
   pointer-events: none;
   border-radius: 50%;
-  filter: blur(48px);
-  opacity: 0.85;
+  opacity: 0.55;
 }
 
 .soc-view__orb--tr {

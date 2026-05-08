@@ -261,7 +261,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(5px);
 }
 
 .api-backend-panel {

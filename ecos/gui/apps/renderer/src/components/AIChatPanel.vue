@@ -29,7 +29,7 @@
             <!-- 模式选择器 - Cursor 风格 -->
             <div class="relative" ref="modeSelectRef">
               <button @click="toggleModeMenu"
-                class="mode-selector flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-(--border-color) bg-(--bg-primary) hover:border-(--text-secondary)/50 transition-all">
+                class="mode-selector flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-(--border-color) bg-(--bg-primary) hover:border-(--text-secondary)/50 transition-colors duration-150">
                 <i :class="[currentMode.icon, 'text-sm text-(--text-secondary)']"></i>
                 <i class="ri-arrow-down-s-line text-xs text-(--text-secondary) transition-transform duration-200"
                   :class="{ 'rotate-180': showModeMenu }"></i>
@@ -38,10 +38,10 @@
               <!-- 上拉菜单 -->
               <Transition name="popup">
                 <div v-if="showModeMenu"
-                  class="absolute bottom-full left-0 mb-2 min-w-[140px] bg-(--bg-tertiary) border border-(--border-color)/50 rounded-xl shadow-xl overflow-hidden z-50 backdrop-blur-sm">
+                  class="absolute bottom-full left-0 mb-2 min-w-[140px] bg-(--bg-tertiary) border border-(--border-color)/50 rounded-xl shadow-xl overflow-hidden z-50">
                   <div class="py-1">
                     <div v-for="mode in modes" :key="mode.id" @click="selectMode(mode.id)" :class="[
-                      'flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-all',
+                      'flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors duration-150',
                       currentModeId === mode.id
                         ? 'text-(--text-primary) bg-(--bg-secondary)'
                         : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-secondary)/50'
@@ -252,7 +252,12 @@ const handleKeyDown = (e: KeyboardEvent) => {
   color: var(--text-secondary);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
   overflow: hidden;
 }
 
@@ -286,7 +291,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 /* 上拉菜单动画 */
 .popup-enter-active,
 .popup-leave-active {
-  transition: all 0.15s ease-out;
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
 }
 
 .popup-enter-from,

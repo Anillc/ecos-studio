@@ -423,7 +423,7 @@
                 <!-- Review Cards -->
                 <div class="space-y-5">
                   <!-- Section 1 & 2 combined -->
-                  <div class="bg-(--bg-secondary)/20 rounded-2xl border border-(--border-color) overflow-hidden backdrop-blur-sm">
+                  <div class="bg-(--bg-secondary)/20 rounded-2xl border border-(--border-color) overflow-hidden">
                     <div class="px-6 py-4 border-b border-(--border-color)/60 flex items-center justify-between bg-(--bg-secondary)/40">
                       <h3 class="font-bold text-(--text-primary) flex items-center gap-2">
                         <i class="ri-folder-info-line text-(--accent-color)"></i>
@@ -458,7 +458,7 @@
                   </div>
 
                   <!-- Technology Card -->
-                  <div class="bg-(--bg-secondary)/20 rounded-2xl border border-(--border-color) overflow-hidden backdrop-blur-sm">
+                  <div class="bg-(--bg-secondary)/20 rounded-2xl border border-(--border-color) overflow-hidden">
                     <div class="px-6 py-4 border-b border-(--border-color)/60 flex items-center justify-between bg-(--bg-secondary)/40">
                       <h3 class="font-bold text-(--text-primary) flex items-center gap-2">
                         <i class="ri-cpu-line text-(--accent-color)"></i>

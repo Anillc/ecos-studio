@@ -129,7 +129,7 @@ function hideAll(): void {
   padding: 2px 6px;
   border-radius: 3px;
   color: var(--text-secondary);
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 .header-btn:hover {
   background: var(--bg-hover);
@@ -174,7 +174,7 @@ function hideAll(): void {
   border-radius: 3px;
   color: var(--text-secondary);
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 .vis-toggle:hover {
   background: var(--bg-hover);
@@ -208,7 +208,7 @@ function hideAll(): void {
   border-radius: 3px;
   color: var(--text-tertiary, #555);
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: color 0.15s, background-color 0.15s;
 }
 
 .expand-btn {

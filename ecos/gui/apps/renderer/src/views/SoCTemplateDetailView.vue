@@ -44,7 +44,7 @@ watch(() => props.templateId, loadDetail, { immediate: true })
 
     <div class="relative z-10 mx-auto max-w-[1680px] px-5 py-8 sm:px-7 lg:px-10 lg:py-12">
       <!-- Loading -->
-      <div v-if="loading" class="soc-detail-loading rounded-2xl border border-(--border-color) bg-(--bg-secondary)/90 p-8 backdrop-blur-[1px] sm:p-10" aria-busy="true">
+      <div v-if="loading" class="soc-detail-loading rounded-2xl border border-(--border-color) bg-(--bg-secondary)/90 p-8 sm:p-10" aria-busy="true">
         <div class="soc-detail-loading__shimmer mx-auto max-w-4xl space-y-6">
           <div class="flex flex-wrap gap-4">
             <div class="soc-detail-loading__bone h-11 w-36 rounded-xl" />
@@ -135,8 +135,7 @@ watch(() => props.templateId, loadDetail, { immediate: true })
   position: absolute;
   pointer-events: none;
   border-radius: 50%;
-  filter: blur(48px);
-  opacity: 0.85;
+  opacity: 0.55;
 }
 
 .soc-view__orb--tr {

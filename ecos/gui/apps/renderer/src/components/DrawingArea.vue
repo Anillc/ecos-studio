@@ -784,7 +784,7 @@ onUnmounted(() => {
         :style="{ bottom: `${LAYOUT_HOTKEY_BAR_BOTTOM_PX}px` }"
       >
         <div
-          class="pointer-events-auto flex flex-wrap items-center justify-center gap-x-1 gap-y-1 rounded-lg border border-(--border-color) bg-(--bg-primary)/95 px-2 py-1.5 shadow-lg backdrop-blur-sm"
+          class="pointer-events-auto flex flex-wrap items-center justify-center gap-x-1 gap-y-1 rounded-lg border border-(--border-color) bg-(--bg-primary)/95 px-2 py-1.5 shadow-lg"
           role="toolbar"
           aria-label="版图快捷键"
         >

@@ -1431,7 +1431,6 @@ function stateClass(state: string): string {
   justify-content: stretch;
   padding: 12px;
   background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(4px);
   box-sizing: border-box;
 }
 
@@ -1601,7 +1600,7 @@ function stateClass(state: string): string {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
   font-size: 11px;
 }
 
@@ -1806,15 +1805,16 @@ html.dark .monitor-value {
   box-shadow: 0 0 15px 3px rgba(var(--accent-rgb, 59, 130, 246), 0.4), 0 0 30px 6px rgba(var(--accent-rgb, 59, 130, 246), 0.2);
   opacity: 0.8;
   animation: scan-animation 3.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: transform, opacity;
   pointer-events: none;
   z-index: 5;
 }
 
 @keyframes scan-animation {
-  0% { top: -10px; opacity: 0; }
+  0% { transform: translateY(-10px); opacity: 0; }
   10% { opacity: 0.8; }
   90% { opacity: 0.8; }
-  100% { top: 100%; opacity: 0; }
+  100% { transform: translateY(100vh); opacity: 0; }
 }
 
 .layout-placeholder {
@@ -1907,7 +1907,7 @@ html.dark .monitor-value {
   padding: 8px;
   min-width: 0;
   min-height: 0;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
   cursor: pointer;
   overflow: hidden;
   /* 指标图表卡片内容不影响外部，resize 时也不会牵连兄弟卡片重排 */
@@ -2003,7 +2003,6 @@ html.dark .chart-card:hover {
   justify-content: center;
   padding: 24px;
   background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(4px);
   box-sizing: border-box;
 }
 
