@@ -187,6 +187,8 @@ jobs:
         run: uv sync --frozen --all-groups --all-extras --python 3.11
 
       - name: Download patched ecc-dreamplace wheel
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/ecc-dreamplace-wheel
           gh run download 25545474570 \
