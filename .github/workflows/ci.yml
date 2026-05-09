@@ -186,35 +186,6 @@ jobs:
         working-directory: ecos/server
         run: uv sync --frozen --all-groups --all-extras --python 3.11
 
-      - name: Download patched ecc-dreamplace wheel
-        run: |
-          mkdir -p /tmp/ecc-dreamplace-wheel
-          gh run download 25545474570 \
-            --repo openecos-projects/ecc-dreamplace \
-            --name ecc-dreamplace-wheel \
-            --dir /tmp/ecc-dreamplace-wheel
-
-          find /tmp/ecc-dreamplace-wheel -type f -name '*.whl' -print
-
-      - name: Override ecc-dreamplace in server venv
-        working-directory: ecos/server
-        run: |
-          WHEEL="$(find /tmp/ecc-dreamplace-wheel -type f -name 'ecc_dreamplace-*.whl' | head -n 1)"
-
-          if [ -z "$WHEEL" ]; then
-            echo "ERROR: ecc-dreamplace wheel not found" >&2
-            exit 1
-          fi
-
-          uv pip install --python .venv/bin/python --reinstall --no-deps "$WHEEL"
-
-          .venv/bin/python - <<'PY'
-          import importlib.metadata
-          import dreamplace
-          print("ecc-dreamplace =", importlib.metadata.version("ecc-dreamplace"))
-          print("dreamplace path =", dreamplace.__file__)
-          PY
-
       - name: Build Electron release bundle
         env:
           ENABLE_OSS_CAD_SUITE: "true"
