@@ -27,7 +27,7 @@ HOOKS_DIR = SERVER_DIR / "hooks"
 
 # macOS code signing identity (optional)
 CODESIGN_IDENTITY = os.environ.get("APPLE_SIGNING_IDENTITY")
-BUNDLE_MODE = os.environ.get("ECOS_PYINSTALLER_MODE", "onefile").strip().lower()
+BUNDLE_MODE = os.environ.get("ECOS_PYINSTALLER_MODE", "onedir").strip().lower()
 
 REQUIRED_DISTRIBUTION_METADATA = (
     "ecos-server",

@@ -18,4 +18,12 @@ describe('server bundle build configuration', () => {
     expect(specFile).toContain('ECOS_PYINSTALLER_MODE')
     expect(specFile).toContain('COLLECT(')
   })
+
+  it('defaults the PyInstaller API server bundle to onedir mode', () => {
+    const specFile = readFileSync(`${repoRoot}ecos/server/ecos.spec`, 'utf8')
+
+    expect(specFile).toContain(
+      'BUNDLE_MODE = os.environ.get("ECOS_PYINSTALLER_MODE", "onedir").strip().lower()',
+    )
+  })
 })
