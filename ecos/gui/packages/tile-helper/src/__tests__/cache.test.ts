@@ -2,7 +2,11 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
-import { finalizeLayoutTileCacheMeta, prepareLayoutTileCache } from '../cache'
+import {
+  finalizeLayoutTileCacheMeta,
+  getLayoutTileCacheStatus,
+  prepareLayoutTileCache,
+} from '../cache'
 
 const tempRoots: string[] = []
 
@@ -137,5 +141,62 @@ describe('prepareLayoutTileCache', () => {
     expect(meta.contentSha256).toBe(first.contentSha256)
     expect(typeof meta.generatedAt).toBe('string')
     expect(meta.generatedAt.length).toBeGreaterThan(0)
+  })
+
+  it('checks cache status without deleting stale cache files', async () => {
+    const fixture = await createProjectFixture()
+    const staleDir = join(
+      fixture.projectRoot,
+      '.ecos',
+      'tile-cache',
+      'layout',
+      'route',
+    )
+    const marker = join(staleDir, 'orphan.txt')
+    await mkdir(staleDir, { recursive: true })
+    await writeFile(marker, 'stale', 'utf8')
+
+    const status = await getLayoutTileCacheStatus({
+      projectPath: fixture.projectPath,
+      projectRoot: fixture.projectRoot,
+      stepKey: 'route',
+      layoutJsonPath: fixture.layoutJsonPath,
+    })
+
+    expect(status).toMatchObject({
+      outDir: staleDir,
+      fromCache: false,
+    })
+    await expect(readFile(marker, 'utf8')).resolves.toBe('stale')
+  })
+
+  it('reports cache status as ready when manifest and metadata match the layout hash', async () => {
+    const fixture = await createProjectFixture()
+    const prepared = await prepareLayoutTileCache({
+      projectPath: fixture.projectPath,
+      projectRoot: fixture.projectRoot,
+      stepKey: 'route',
+      layoutJsonPath: fixture.layoutJsonPath,
+    })
+    await writeFile(join(prepared.outDir, 'manifest.json'), '{"version":1}\n', 'utf8')
+    await finalizeLayoutTileCacheMeta({
+      projectRoot: fixture.projectRoot,
+      outDir: prepared.outDir,
+      layoutJsonPath: fixture.layoutJsonPath,
+      contentSha256: prepared.contentSha256,
+    })
+
+    await expect(
+      getLayoutTileCacheStatus({
+        projectPath: fixture.projectPath,
+        projectRoot: fixture.projectRoot,
+        stepKey: 'route',
+        layoutJsonPath: fixture.layoutJsonPath,
+      }),
+    ).resolves.toMatchObject({
+      outDir: prepared.outDir,
+      fromCache: true,
+      contentSha256: prepared.contentSha256,
+    })
   })
 })

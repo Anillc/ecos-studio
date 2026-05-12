@@ -89,6 +89,7 @@ const desktopBridge = {
   },
   tiles: {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
+    getStatus: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
   },
 } satisfies DesktopApi
 

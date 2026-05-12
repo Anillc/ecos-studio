@@ -29,6 +29,7 @@ export const desktopApiIpcChannels = {
   workspaceWatchProjectFile: 'workspace:watch-project-file',
   workspaceUnwatchProjectFile: 'workspace:unwatch-project-file',
   tilesGenerate: 'tiles:generate',
+  tilesStatus: 'tiles:status',
   systemOpenExternal: 'system:open-external',
 } as const
 

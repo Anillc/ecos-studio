@@ -92,6 +92,7 @@ export interface DesktopBridgeServices {
   }
   tileService: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
+    getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
   }
 }
 
@@ -522,6 +523,13 @@ export function registerIpc(
     desktopApiIpcChannels.tilesGenerate,
     async (_event, request) => {
       return await services.tileService.generate(request as TileGenerationRequest)
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.tilesStatus,
+    async (_event, request) => {
+      return await services.tileService.getStatus(request as TileGenerationRequest)
     },
   )
 

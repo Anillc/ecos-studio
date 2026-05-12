@@ -3,14 +3,17 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const {
   finalizeLayoutTileCacheMeta,
+  getLayoutTileCacheStatus,
   prepareLayoutTileCache,
 } = vi.hoisted(() => ({
   finalizeLayoutTileCacheMeta: vi.fn(),
+  getLayoutTileCacheStatus: vi.fn(),
   prepareLayoutTileCache: vi.fn(),
 }))
 
 vi.mock('@ecos-studio/tile-helper', () => ({
   finalizeLayoutTileCacheMeta,
+  getLayoutTileCacheStatus,
   prepareLayoutTileCache,
 }))
 
@@ -66,6 +69,7 @@ describe('TileService', () => {
 
   beforeEach(() => {
     prepareLayoutTileCache.mockReset()
+    getLayoutTileCacheStatus.mockReset()
     finalizeLayoutTileCacheMeta.mockReset()
     tileGenerationRunner.run.mockReset()
   })
@@ -136,5 +140,41 @@ describe('TileService', () => {
       layoutJsonPath: '/tmp/project/steps/layout.json',
       contentSha256: 'abc123',
     })
+  })
+
+  it('returns tile cache status without generating or finalizing metadata', async () => {
+    getLayoutTileCacheStatus.mockResolvedValue({
+      outDir: '/tmp/project/.ecos/tile-cache/layout/route',
+      fromCache: true,
+      contentSha256: 'abc123',
+    })
+
+    const service = new TileService({
+      projectRootProvider: {
+        getProjectRoot: vi.fn().mockResolvedValue('/tmp/project'),
+      },
+      tileGenerationRunner,
+    })
+
+    await expect(
+      service.getStatus({
+        projectPath: '/tmp/project',
+        layoutJsonRelative: './steps/layout.json',
+        stepKey: 'route',
+      }),
+    ).resolves.toEqual({
+      baseUrl: 'file:///tmp/project/.ecos/tile-cache/layout/route',
+      outDir: '/tmp/project/.ecos/tile-cache/layout/route',
+      fromCache: true,
+    })
+
+    expect(getLayoutTileCacheStatus).toHaveBeenCalledWith({
+      projectPath: '/tmp/project',
+      projectRoot: '/tmp/project',
+      stepKey: 'route',
+      layoutJsonPath: '/tmp/project/steps/layout.json',
+    })
+    expect(tileGenerationRunner.run).not.toHaveBeenCalled()
+    expect(finalizeLayoutTileCacheMeta).not.toHaveBeenCalled()
   })
 })

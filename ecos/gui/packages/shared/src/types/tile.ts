@@ -9,3 +9,5 @@ export interface TileGenerationResult {
   outDir: string
   fromCache: boolean
 }
+
+export type TileGenerationStatus = TileGenerationResult

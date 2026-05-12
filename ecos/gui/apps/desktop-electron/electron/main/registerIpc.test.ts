@@ -64,6 +64,7 @@ function registerHandlers() {
     },
     tileService: {
       generate: vi.fn(),
+      getStatus: vi.fn(),
     },
     appInfoService: {
       getVersions: vi.fn(),
@@ -134,6 +135,7 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceWatchProjectFile,
       desktopApiIpcChannels.workspaceUnwatchProjectFile,
       desktopApiIpcChannels.tilesGenerate,
+      desktopApiIpcChannels.tilesStatus,
       desktopApiIpcChannels.systemOpenExternal,
       desktopApiIpcChannels.appGetVersions,
     ].sort())
@@ -466,6 +468,32 @@ describe('registerIpc', () => {
     })
 
     expect(services.tileService.generate).toHaveBeenCalledWith(request)
+  })
+
+  it('delegates tile cache status checks to the provided tile service', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    services.tileService.getStatus.mockResolvedValue({
+      baseUrl: 'file:///tmp/project/.ecos/tile-cache/layout/route',
+      outDir: '/tmp/project/.ecos/tile-cache/layout/route',
+      fromCache: true,
+    })
+    const request = {
+      projectPath: '/tmp/project',
+      layoutJsonRelative: 'home/layout.json',
+      stepKey: 'route',
+    }
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.tilesStatus)?.(event, request),
+    ).resolves.toEqual({
+      baseUrl: 'file:///tmp/project/.ecos/tile-cache/layout/route',
+      outDir: '/tmp/project/.ecos/tile-cache/layout/route',
+      fromCache: true,
+    })
+
+    expect(services.tileService.getStatus).toHaveBeenCalledWith(request)
+    expect(services.tileService.generate).not.toHaveBeenCalled()
   })
 
   it('logs missing project binary files in a single normalized warning before returning an IPC error result', async () => {

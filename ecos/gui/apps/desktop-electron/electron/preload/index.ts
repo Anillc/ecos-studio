@@ -192,6 +192,16 @@ const desktopApi: DesktopApi = {
     },
   },
   tiles: {
+    getStatus: async (request) => {
+      try {
+        return await invokeDesktop(desktopApiIpcChannels.tilesStatus, request)
+      } catch (error) {
+        if (isMissingFileError(error)) {
+          throw new Error(`Layout data is not available for step "${request.stepKey}" yet.`)
+        }
+        throw error
+      }
+    },
     generate: async (request) => {
       try {
         return await invokeDesktop(desktopApiIpcChannels.tilesGenerate, request)

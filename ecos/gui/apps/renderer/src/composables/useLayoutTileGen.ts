@@ -72,3 +72,16 @@ export async function runLayoutTileGeneration(params: {
 
   return await getDesktopApi().tiles.generate(params)
 }
+
+export async function getLayoutTileGenerationStatus(params: {
+  projectPath: string
+  layoutJsonRelative: string
+  /** 与路由阶段一致，用于 `.ecos/tile-cache/layout/<stepKey>/` */
+  stepKey: string
+}): Promise<{ baseUrl: string; outDir: string; fromCache: boolean }> {
+  if (!isTauri()) {
+    throw new Error('瓦片生成仅可在 ECOS Studio 桌面应用中使用。')
+  }
+
+  return await getDesktopApi().tiles.getStatus(params)
+}

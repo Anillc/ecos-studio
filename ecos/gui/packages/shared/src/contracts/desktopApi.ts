@@ -136,5 +136,6 @@ export interface DesktopApi {
   }
   tiles: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
+    getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
   }
 }
