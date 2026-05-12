@@ -108,6 +108,7 @@ watch(
   ([projectPath, stepKey], prev) => {
     const prevPath = prev?.[0] ?? null
     if (projectPath !== prevPath) {
+      resetLoadingState()
       tilePrefetchStore.setProject(projectPath)
     }
     if (projectPath) {
@@ -230,6 +231,11 @@ const stepEnumValues = Object.values(StepEnum)
 
 function getStepEnumFromPath(path: string): StepEnum | undefined {
   return stepEnumValues.find(step => step.toLowerCase() === path.toLowerCase())
+}
+
+function resetLoadingState(): void {
+  layoutState.loadingState.value = 'idle'
+  layoutState.loadingMessage.value = ''
 }
 
 const onEditorReady = (editorInstance: Editor) => {
@@ -516,6 +522,7 @@ function _enterPlacement(cellId: number, orient: number): void {
 
 const handleStageChange = async (stage: string) => {
   if (!editor.value || !stage) return
+  resetLoadingState()
 
   const stepEnum = getStepEnumFromPath(stage)
   if (!stepEnum) {
@@ -584,7 +591,7 @@ async function onGenerateTilesFromToolbar(): Promise<void> {
   if (!projectPath || !rel) {
     layoutState.loadingState.value = 'error'
     layoutState.loadingMessage.value =
-      '未找到布局 JSON 路径：请确认当前步骤的 get_info(layout) 已返回 json/info 等字段。'
+      'Layout JSON path was not found. Check that get_info(layout) returns a json or info field for the current step.'
     return
   }
 
@@ -600,7 +607,7 @@ async function onGenerateTilesFromToolbar(): Promise<void> {
       source: 'user',
     })
     if (fromCache) {
-      layoutState.loadingMessage.value = '加载缓存的版图瓦片…'
+      layoutState.loadingMessage.value = 'Loading cached layout tiles...'
     }
     await loadTileLayout(baseUrl, outDir)
   } catch (err) {
@@ -623,7 +630,7 @@ async function onPreviewModeChange(mode: 'layout' | 'image'): Promise<void> {
 
   previewModeSwitchBusy.value = true
   layoutState.loadingState.value = 'loading'
-  layoutState.loadingMessage.value = mode === 'image' ? '加载预览图…' : '加载矢量版图…'
+  layoutState.loadingMessage.value = mode === 'image' ? 'Loading preview image...' : 'Loading vector layout...'
   try {
     if (mode === 'image') {
       tilePrefetchStore.clearDeferredPrefetchQueue()
@@ -673,6 +680,7 @@ watch(
     const pathParts = route.path.split('/')
     const currentStage = pathParts[pathParts.length - 1] || ''
     if (sseStep && currentStage.toLowerCase() === sseStep.toLowerCase()) {
+      tilePrefetchStore.invalidateStep(currentStage)
       await handleStageChange(currentStage)
     }
   }
@@ -682,6 +690,7 @@ watch(
 watch(stepRefreshCounter, () => {
   const pathParts = route.path.split('/')
   const stage = pathParts[pathParts.length - 1] || 'home'
+  tilePrefetchStore.invalidateStep(stage)
   handleStageChange(stage)
 })
 

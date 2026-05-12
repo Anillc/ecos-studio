@@ -33,6 +33,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
   const cachedTiles = ref<Record<string, LayoutTileGenResult>>({})
   /** 待预热任务（顺序即执行顺序：当前路由 → 用户访问顺序 → flow 剩余顺序） */
   const pendingQueue = ref<Array<{ stepKey: string; layoutJsonRelative: string }>>([])
+  const stepVersions = new Map<string, number>()
 
   /** flow.json 中的 run 步骤顺序 */
   const canonicalFlowStepKeys = ref<string[]>([])
@@ -44,6 +45,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
   const visitOrder = ref<string[]>([])
 
   let loopRunning = false
+  let rerunQueueAfterLoop = false
 
   const currentPrefetchingStepKey = computed(() => {
     const e = stepStates.value
@@ -60,7 +62,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
 
   /**
    * 按「当前路由 → 用户访问顺序 → flow 顺序」重建待处理队列并启动循环。
-   * 已 ready / 正在 prefetching 的步骤不会重复入队。
+   * 已 ready / 正在 prefetching / 本轮失败的步骤不会重复入队。
    */
   function schedulePrefetchQueue(): void {
     if (!enabled.value || !canPrefetchRuntime() || !projectPath.value) return
@@ -87,12 +89,48 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
     const next: Array<{ stepKey: string; layoutJsonRelative: string }> = []
     for (const stepKey of orderedKeys) {
       const st = states[stepKey]
-      if (st === 'ready' || st === 'prefetching') continue
+      if (st === 'ready' || st === 'prefetching' || st === 'error') continue
       next.push({ stepKey, layoutJsonRelative: layoutMap[stepKey]! })
     }
 
     pendingQueue.value = next
+    if (loopRunning) {
+      rerunQueueAfterLoop = true
+      return
+    }
     void runQueueLoop()
+  }
+
+  function clearStepResult(stepKey: string): void {
+    const { [stepKey]: _state, ...nextStates } = stepStates.value
+    const { [stepKey]: _tile, ...nextTiles } = cachedTiles.value
+    stepStates.value = nextStates
+    cachedTiles.value = nextTiles
+  }
+
+  function bumpStepVersion(stepKey: string): void {
+    stepVersions.set(stepKey, (stepVersions.get(stepKey) ?? 0) + 1)
+  }
+
+  function getStepVersion(stepKey: string): number {
+    return stepVersions.get(stepKey) ?? 0
+  }
+
+  function setLayoutJsonForStep(stepKey: string, layoutJsonRelative: string): void {
+    const previous = layoutJsonByStep.value[stepKey]
+    layoutJsonByStep.value = { ...layoutJsonByStep.value, [stepKey]: layoutJsonRelative }
+    if (previous != null && previous !== layoutJsonRelative) {
+      bumpStepVersion(stepKey)
+      clearStepResult(stepKey)
+    }
+  }
+
+  function invalidateStep(stepKey: string): void {
+    if (!stepKey) return
+    bumpStepVersion(stepKey)
+    clearStepResult(stepKey)
+    pendingQueue.value = pendingQueue.value.filter((job) => job.stepKey !== stepKey)
+    schedulePrefetchQueue()
   }
 
   /**
@@ -110,8 +148,8 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
   async function discoverAndSchedule(path: string): Promise<void> {
     if (!enabled.value || !canPrefetchRuntime()) return
     const stepKeys = await loadFlowRunStepKeysFromProject(path)
+    if (!enabled.value || paused.value || projectPath.value !== path) return
     canonicalFlowStepKeys.value = [...stepKeys]
-    layoutJsonByStep.value = {}
 
     for (const stepKey of stepKeys) {
       await requestIdle()
@@ -126,7 +164,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
         if (layoutResponse.response !== ResponseEnum.success || !layoutResponse.data?.info) continue
         const rel = pickLayoutJsonPath(layoutResponse.data.info)
         if (!rel) continue
-        layoutJsonByStep.value = { ...layoutJsonByStep.value, [stepKey]: rel }
+        setLayoutJsonForStep(stepKey, rel)
         schedulePrefetchQueue()
       } catch {
         /* 单步失败跳过 */
@@ -152,6 +190,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
     pendingQueue.value = []
     stepStates.value = {}
     cachedTiles.value = {}
+    stepVersions.clear()
     canonicalFlowStepKeys.value = []
     layoutJsonByStep.value = {}
     visitOrder.value = []
@@ -178,7 +217,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
   function enqueuePrefetch(steps: Array<{ stepKey: string; layoutJsonRelative: string }>): void {
     if (!enabled.value || !canPrefetchRuntime() || !projectPath.value) return
     for (const s of steps) {
-      layoutJsonByStep.value = { ...layoutJsonByStep.value, [s.stepKey]: s.layoutJsonRelative }
+      setLayoutJsonForStep(s.stepKey, s.layoutJsonRelative)
     }
     schedulePrefetchQueue()
   }
@@ -196,6 +235,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
         if (paused.value || projectPath.value !== root) break
         pendingQueue.value = pendingQueue.value.slice(1)
         const { stepKey, layoutJsonRelative } = job
+        const jobVersion = getStepVersion(stepKey)
         stepStates.value = { ...stepStates.value, [stepKey]: 'prefetching' }
         try {
           const result = await runLayoutTileGenerationSingleFlight({
@@ -204,15 +244,30 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
             stepKey,
             source: 'prefetch',
           })
+          if (jobVersion !== getStepVersion(stepKey)) continue
           cachedTiles.value = { ...cachedTiles.value, [stepKey]: result }
           stepStates.value = { ...stepStates.value, [stepKey]: 'ready' }
         } catch (e) {
+          if (jobVersion !== getStepVersion(stepKey)) continue
           console.warn('[layoutTilePrefetch]', stepKey, e)
           stepStates.value = { ...stepStates.value, [stepKey]: 'error' }
         }
       }
     } finally {
       loopRunning = false
+      const shouldRerun = rerunQueueAfterLoop
+      rerunQueueAfterLoop = false
+      if (
+        shouldRerun
+        && !paused.value
+        && enabled.value
+        && canPrefetchRuntime()
+        && projectPath.value === root
+      ) {
+        schedulePrefetchQueue()
+        return
+      }
+
       // `schedulePrefetchQueue` 可能在 await 期间更新队列；若仍有待处理任务则再开一轮
       if (
         pendingQueue.value.length > 0
@@ -242,6 +297,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
     visitOrder,
     setProject,
     notifyNavigatedStep,
+    invalidateStep,
     enqueuePrefetch,
     /** @deprecated 使用 discoverAndSchedule 内部逻辑；保留名以免外部误用 */
     enqueueAllFlowSteps: discoverAndSchedule,
