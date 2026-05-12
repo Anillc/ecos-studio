@@ -13,4 +13,10 @@ describe('DrawingArea loading state copy and reset', () => {
     expect(source).toContain('function resetLoadingState(): void')
     expect(source).toMatch(/const handleStageChange = async[\s\S]*?resetLoadingState\(\)/)
   })
+
+  it('treats DRC violation JSON as an optional result file', () => {
+    expect(source).toContain('readOptionalProjectTextFile')
+    expect(source).toMatch(/const text = await readOptionalProjectTextFile\(abs\)[\s\S]*?if \(text === null\) return/)
+    expect(source).not.toContain('workspace.readProjectTextFile(abs)')
+  })
 })

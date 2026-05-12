@@ -18,7 +18,6 @@ import { useWorkspace } from '@/composables/useWorkspace'
 import { useEDA } from '@/composables/useEDA'
 import { useLayoutState } from '@/composables/useLayoutState'
 import { isTauri } from '@/composables/useTauri'
-import { getDesktopApi } from '@/platform/desktop'
 import {
   deriveDrcStepPathFromLayoutJsonRelative,
   pickDrcJsonPath,
@@ -27,6 +26,7 @@ import {
 } from '@/composables/useLayoutTileGen'
 import { parseDrcStepJson, violationToFitRect } from '@/composables/drcStepParser'
 import { requestProjectPathAccess } from '@/utils/projectFs'
+import { readOptionalProjectTextFile } from '@/utils/projectFiles'
 import { runLayoutTileGenerationSingleFlight } from '@/composables/layoutTilePipeline'
 import { useLayoutTilePrefetchStore } from '@/stores/layoutTilePrefetchStore'
 import { getInfoApi } from '@/api/flow'
@@ -317,7 +317,8 @@ async function loadDrcViolationOverlayAfterTiles(_ed: Editor, dieWorldH: number)
   try {
     const abs = await resolveLayoutJsonAbsolutePath(projectPath, drcRel)
     if (!(await requestProjectPathAccess(abs))) return
-    const text = await getDesktopApi().workspace.readProjectTextFile(abs)
+    const text = await readOptionalProjectTextFile(abs)
+    if (text === null) return
     const raw = JSON.parse(text) as unknown
     const violations = parseDrcStepJson(raw, dieWorldH)
     drcViolationOverlay.setViolations(violations)
