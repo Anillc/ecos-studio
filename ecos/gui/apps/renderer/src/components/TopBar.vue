@@ -7,6 +7,17 @@
         <i class="ri-cpu-line"></i>
       </div>
 
+      <button
+        v-if="!isEcosHome"
+        @click="handleGoHome"
+        class="home-btn"
+        type="button"
+        title="回到首页"
+        aria-label="回到首页"
+      >
+        <i class="ri-home-4-line"></i>
+      </button>
+
       <!-- 菜单项（带下拉菜单） -->
       <div class="menu-items" ref="menuBarRef">
         <div v-for="menu in menus" :key="menu.label" class="menu-wrapper">
@@ -82,7 +93,7 @@ import type { AppMenuAction } from '@ecos-studio/shared'
 import { appMenuActionIds } from '@ecos-studio/shared'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useThemeStore } from '@/stores/themeStore'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { DesktopApi } from '@ecos-studio/shared'
 import { getOptionalDesktopApi, waitForDesktopApi } from '@/platform/desktop'
 // ---- 类型定义 ----
@@ -102,7 +113,9 @@ interface Menu {
 }
 
 const route = useRoute()
+const router = useRouter()
 const isWelcome = computed(() => route.path === '/')
+const isEcosHome = computed(() => route.name === 'ECOS')
 // ---- Props & Emits ----
 const props = defineProps<{
   projectName?: string | null
@@ -117,6 +130,11 @@ const isDark = computed(() => themeStore.themeName === 'dark')
 const desktopApi = ref<DesktopApi | null>(getOptionalDesktopApi())
 const toggleTheme = () => {
   themeStore.toggleTheme()
+}
+
+const handleGoHome = () => {
+  activeMenu.value = null
+  router.push({ name: 'ECOS' })
 }
 
 // ---- 菜单配置 ----
@@ -271,6 +289,26 @@ const handleClose = async () => {
   height: 28px;
   color: var(--accent-color);
   font-size: 18px;
+}
+
+.home-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.home-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
 }
 
 .app-icon-img {
