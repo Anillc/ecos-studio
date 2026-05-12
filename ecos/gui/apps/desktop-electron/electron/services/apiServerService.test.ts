@@ -150,7 +150,14 @@ vi.mock('node:net', () => ({
   createServer,
 }))
 
-import { ApiServerService } from './apiServerService'
+import {
+  ApiServerService,
+  getApiServerLatestLogFile,
+  getApiServerLogFile,
+  getElectronLatestMainLogFile,
+  getElectronMainLogFile,
+  getLogSessionId,
+} from './apiServerService'
 
 describe('ApiServerService', () => {
   const originalFetch = globalThis.fetch
@@ -379,17 +386,34 @@ describe('ApiServerService', () => {
       expect.arrayContaining([
         '--disable-stdio-redirect',
         '--log-file',
-        '/tmp/ecos-user-data/logs/api-server.log',
+        expect.stringMatching(
+          /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/api-server\.log$/,
+        ),
         '--log-level',
         'info',
       ]),
       expect.objectContaining({
         env: expect.objectContaining({
           ECOS_API_LOG_LEVEL: 'info',
-          ECOS_API_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
+          ECOS_API_LOG_FILE: expect.stringMatching(
+            /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/api-server\.log$/,
+          ),
+          ECOS_API_LATEST_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
           ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
         }),
       }),
+    )
+  })
+
+  it('keeps stable latest log paths and per-launch session log paths', () => {
+    expect(getLogSessionId()).toMatch(/^\d{8}-\d{6}-\d+$/)
+    expect(getElectronLatestMainLogFile()).toBe('/tmp/ecos-user-data/logs/main.log')
+    expect(getApiServerLatestLogFile()).toBe('/tmp/ecos-user-data/logs/api-server.log')
+    expect(getElectronMainLogFile()).toMatch(
+      /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/main\.log$/,
+    )
+    expect(getApiServerLogFile()).toMatch(
+      /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/api-server\.log$/,
     )
   })
 
@@ -475,7 +499,9 @@ describe('ApiServerService', () => {
         '8765',
         '--disable-stdio-redirect',
         '--log-file',
-        '/tmp/ecos-user-data/logs/api-server.log',
+        expect.stringMatching(
+          /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/api-server\.log$/,
+        ),
         '--log-level',
         'warning',
       ],
@@ -483,7 +509,10 @@ describe('ApiServerService', () => {
         cwd: '/opt/ecos/resources/binaries',
         env: expect.objectContaining({
           CHIPCOMPILER_OSS_CAD_DIR: '/opt/ecos/resources/oss-cad-suite',
-          ECOS_API_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
+          ECOS_API_LOG_FILE: expect.stringMatching(
+            /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/api-server\.log$/,
+          ),
+          ECOS_API_LATEST_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
           ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
         }),
       }),
@@ -533,7 +562,9 @@ describe('ApiServerService', () => {
         '8765',
         '--disable-stdio-redirect',
         '--log-file',
-        '/tmp/ecos-user-data/logs/api-server.log',
+        expect.stringMatching(
+          /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/api-server\.log$/,
+        ),
         '--log-level',
         'warning',
       ],
@@ -541,7 +572,10 @@ describe('ApiServerService', () => {
         cwd: '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu',
         env: expect.objectContaining({
           CHIPCOMPILER_OSS_CAD_DIR: '/opt/ecos/resources/oss-cad-suite',
-          ECOS_API_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
+          ECOS_API_LOG_FILE: expect.stringMatching(
+            /^\/tmp\/ecos-user-data\/logs\/sessions\/\d{8}-\d{6}-\d+\/api-server\.log$/,
+          ),
+          ECOS_API_LATEST_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
           ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
         }),
       }),

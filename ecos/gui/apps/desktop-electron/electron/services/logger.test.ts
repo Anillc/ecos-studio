@@ -1,6 +1,18 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createElectronLogger } from './logger'
+import {
+  configureElectronLoggerFile,
+  createElectronLogger,
+  electronLogger,
+  resetElectronLoggerFileForTest,
+} from './logger'
+
+async function createTempDirectory(prefix: string): Promise<string> {
+  return await mkdtemp(join(tmpdir(), prefix))
+}
 
 function createConsoleSink() {
   return {
@@ -16,6 +28,15 @@ function stripAnsi(value: string): string {
 }
 
 describe('createElectronLogger', () => {
+  const tempDirectories: string[] = []
+
+  afterEach(async () => {
+    resetElectronLoggerFileForTest()
+    await Promise.all(tempDirectories.splice(0).map(directory =>
+      rm(directory, { force: true, recursive: true }),
+    ))
+  })
+
   it('colors terminal output when color mode is auto and the stream is a TTY', () => {
     const consoleSink = createConsoleSink()
     const logger = createElectronLogger({
@@ -124,5 +145,24 @@ describe('createElectronLogger', () => {
     expect(consoleSink.info).toHaveBeenCalledWith(
       '16:36:17 INFO  [desktop] Logs: /tmp/ecos/main.log',
     )
+  })
+
+  it('writes configured file logs to the launch session and latest files', async () => {
+    const directory = await createTempDirectory('ecos-logger-session-')
+    tempDirectories.push(directory)
+    const sessionFilePath = join(directory, 'logs', 'sessions', '20260512-223000-1234', 'main.log')
+    const latestFilePath = join(directory, 'logs', 'main.log')
+
+    configureElectronLoggerFile({
+      latestFilePath,
+      sessionFilePath,
+    })
+
+    electronLogger.info('[desktop] Launch message for %s', 'debugging')
+
+    const sessionContent = await readFile(sessionFilePath, 'utf8')
+    const latestContent = await readFile(latestFilePath, 'utf8')
+    expect(sessionContent).toContain('INFO [desktop] Launch message for debugging')
+    expect(latestContent).toBe(sessionContent)
   })
 })

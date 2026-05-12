@@ -6,7 +6,9 @@ import { configureGpuMode } from './gpuMode'
 import { registerIpc } from './registerIpc'
 import {
   ApiServerService,
+  getApiServerLatestLogFile,
   getApiServerLogFile,
+  getElectronLatestMainLogFile,
   getElectronMainLogFile,
 } from '../services/apiServerService'
 import { configureElectronLoggerFile, electronLogger } from '../services/logger'
@@ -51,9 +53,15 @@ configureGpuMode({
 })
 
 const mainLogFile = getElectronMainLogFile()
-configureElectronLoggerFile(mainLogFile)
+const mainLatestLogFile = getElectronLatestMainLogFile()
+configureElectronLoggerFile({
+  latestFilePath: mainLatestLogFile,
+  sessionFilePath: mainLogFile,
+})
 electronLogger.status('[desktop] Logs: %s', mainLogFile)
+electronLogger.status('[desktop] Latest logs: %s', mainLatestLogFile)
 electronLogger.status('[api] Logs: %s', getApiServerLogFile())
+electronLogger.status('[api] Latest logs: %s', getApiServerLatestLogFile())
 
 function getDesktopServices() {
   if (services) {

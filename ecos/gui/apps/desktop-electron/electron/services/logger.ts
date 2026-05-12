@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { format } from 'node:util'
 
@@ -27,6 +27,11 @@ export interface ElectronLoggerOptions {
   fileSink?: (line: string) => void
   isTty?: boolean | (() => boolean)
   now?: () => Date
+}
+
+export interface ElectronLoggerFileConfig {
+  latestFilePath?: string
+  sessionFilePath: string
 }
 
 const LOG_LEVELS: Record<LogLevelName, number> = {
@@ -225,11 +230,39 @@ export function createElectronLogger(options: ElectronLoggerOptions = {}): Elect
   }
 }
 
-export function configureElectronLoggerFile(filePath: string): void {
-  mkdirSync(dirname(filePath), { recursive: true })
-  activeFileSink = (line: string) => {
-    appendFileSync(filePath, `${line}\n`, 'utf8')
+function uniqueFilePaths(paths: string[]): string[] {
+  return [...new Set(paths)]
+}
+
+export function configureElectronLoggerFile(filePathOrConfig: string | ElectronLoggerFileConfig): void {
+  const sessionFilePath = typeof filePathOrConfig === 'string'
+    ? filePathOrConfig
+    : filePathOrConfig.sessionFilePath
+  const latestFilePath = typeof filePathOrConfig === 'string'
+    ? null
+    : filePathOrConfig.latestFilePath ?? null
+  const filePaths = uniqueFilePaths(
+    latestFilePath ? [sessionFilePath, latestFilePath] : [sessionFilePath],
+  )
+
+  for (const filePath of filePaths) {
+    mkdirSync(dirname(filePath), { recursive: true })
   }
+
+  if (latestFilePath) {
+    writeFileSync(sessionFilePath, '', 'utf8')
+    writeFileSync(latestFilePath, '', 'utf8')
+  }
+
+  activeFileSink = (line: string) => {
+    for (const filePath of filePaths) {
+      appendFileSync(filePath, `${line}\n`, 'utf8')
+    }
+  }
+}
+
+export function resetElectronLoggerFileForTest(): void {
+  activeFileSink = null
 }
 
 export const electronLogger = createElectronLogger({

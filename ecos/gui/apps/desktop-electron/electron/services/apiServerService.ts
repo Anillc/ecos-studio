@@ -53,12 +53,44 @@ function getLogsDirectory(): string {
   return join(app.getPath('userData'), 'logs')
 }
 
-export function getElectronMainLogFile(): string {
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function createLogSessionId(date = new Date(), pid = process.pid): string {
+  const year = date.getFullYear()
+  const month = padDatePart(date.getMonth() + 1)
+  const day = padDatePart(date.getDate())
+  const hours = padDatePart(date.getHours())
+  const minutes = padDatePart(date.getMinutes())
+  const seconds = padDatePart(date.getSeconds())
+  return `${year}${month}${day}-${hours}${minutes}${seconds}-${pid}`
+}
+
+const logSessionId = createLogSessionId()
+
+export function getLogSessionId(): string {
+  return logSessionId
+}
+
+function getLogSessionDirectory(): string {
+  return join(getLogsDirectory(), 'sessions', logSessionId)
+}
+
+export function getElectronLatestMainLogFile(): string {
   return join(getLogsDirectory(), 'main.log')
 }
 
-export function getApiServerLogFile(): string {
+export function getApiServerLatestLogFile(): string {
   return join(getLogsDirectory(), 'api-server.log')
+}
+
+export function getElectronMainLogFile(): string {
+  return join(getLogSessionDirectory(), 'main.log')
+}
+
+export function getApiServerLogFile(): string {
+  return join(getLogSessionDirectory(), 'api-server.log')
 }
 
 function getApiReadyTimeoutMs(): number {
@@ -110,6 +142,7 @@ function createApiServerEnv(token: string): NodeJS.ProcessEnv {
   const apiLogFile = getApiServerLogFile()
   return {
     ...process.env,
+    ECOS_API_LATEST_LOG_FILE: getApiServerLatestLogFile(),
     ECOS_API_LOG_FILE: apiLogFile,
     ECOS_API_LOG_LEVEL: getApiLogLevel(),
     ECOS_SERVER_INSTANCE_TOKEN: token,
