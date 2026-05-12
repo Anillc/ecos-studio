@@ -17,6 +17,10 @@ interface Props {
   renderMode?: 'image' | 'layout'
   /** 是否可切回矢量（已存在可复用的瓦片包） */
   canSwitchToLayoutMode?: boolean
+  /** 当前布局瓦片已命中磁盘缓存，可直接加载 */
+  tileCacheReady?: boolean
+  /** 外部上下文变化时重置「生成瓦片」确认弹窗，例如工作区步骤路由切换 */
+  tileGenerateConfirmResetKey?: string
   /** 矢量 ↔ 预览图切换中 */
   previewModeSwitchBusy?: boolean
 }
@@ -28,6 +32,8 @@ const props = withDefaults(defineProps<Props>(), {
   showPreviewModeToggle: false,
   renderMode: 'image',
   canSwitchToLayoutMode: false,
+  tileCacheReady: false,
+  tileGenerateConfirmResetKey: '',
   previewModeSwitchBusy: false,
 })
 
@@ -38,6 +44,7 @@ const emit = defineEmits<{
 }>()
 
 const toolbarTileBusy = computed(() => props.tileGenBusy || props.previewModeSwitchBusy)
+const showTileGenerateConfirm = ref(false)
 
 /**
  * 有步骤预览图时：只保留一个图标，合并「首次生成瓦片」与「预览图 ↔ 矢量版图」。
@@ -57,6 +64,7 @@ const unifiedTileTitle = computed(() => {
 
 function onUnifiedTileClick(): void {
   if (toolbarTileBusy.value) return
+  showTileGenerateConfirm.value = false
   if (props.renderMode === 'layout') {
     emit('previewModeChange', 'image')
     return
@@ -64,8 +72,27 @@ function onUnifiedTileClick(): void {
   if (props.canSwitchToLayoutMode) {
     emit('previewModeChange', 'layout')
   } else {
-    emit('generateTiles')
+    requestTileGeneration()
   }
+}
+
+function requestTileGeneration(): void {
+  if (toolbarTileBusy.value) return
+  if (props.tileCacheReady) {
+    emit('generateTiles')
+    return
+  }
+  showTileGenerateConfirm.value = true
+}
+
+function cancelTileGeneration(): void {
+  showTileGenerateConfirm.value = false
+}
+
+function confirmTileGeneration(): void {
+  if (toolbarTileBusy.value) return
+  showTileGenerateConfirm.value = false
+  emit('generateTiles')
 }
 
 const activeTool = ref('hand')
@@ -185,6 +212,24 @@ watch(() => props.editor, (editor) => {
     })
   }
 }, { immediate: true })
+
+watch(toolbarTileBusy, (busy) => {
+  if (busy) showTileGenerateConfirm.value = false
+})
+
+watch(
+  () => [props.renderMode, props.canSwitchToLayoutMode, props.showPreviewModeToggle] as const,
+  () => {
+    showTileGenerateConfirm.value = false
+  },
+)
+
+watch(
+  () => props.tileGenerateConfirmResetKey,
+  () => {
+    showTileGenerateConfirm.value = false
+  },
+)
 </script>
 
 <template>
@@ -201,39 +246,70 @@ watch(() => props.editor, (editor) => {
       <div v-if="showTileGenerate" class="w-px h-6 bg-(--border-color) mx-0.5" />
 
       <!-- 有预览图：单键合并生成与模式切换；无预览图：仅「生成瓦片」 -->
-      <button
-        v-if="showTileGenerate && showPreviewModeToggle"
-        type="button"
-        :disabled="toolbarTileBusy"
-        class="w-9 h-9 flex items-center justify-center rounded transition-all shrink-0 text-base disabled:opacity-50 disabled:cursor-wait disabled:text-(--text-secondary)"
-        :class="toolbarTileBusy
-          ? 'text-(--text-secondary)'
-          : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)'"
-        :title="unifiedTileTitle"
-        :aria-label="unifiedTileTitle"
-        @click="onUnifiedTileClick"
-      >
-        <i
-          class="text-base"
-          :class="[unifiedTileIconClass, { 'animate-pulse': tileGenBusy || previewModeSwitchBusy }]"
-        />
-      </button>
+      <div v-if="showTileGenerate" class="relative shrink-0">
+        <button
+          v-if="showPreviewModeToggle"
+          type="button"
+          :disabled="toolbarTileBusy"
+          class="w-9 h-9 flex items-center justify-center rounded transition-all shrink-0 text-base disabled:opacity-50 disabled:cursor-wait disabled:text-(--text-secondary)"
+          :class="toolbarTileBusy
+            ? 'text-(--text-secondary)'
+            : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)'"
+          :title="unifiedTileTitle"
+          :aria-label="unifiedTileTitle"
+          @click="onUnifiedTileClick"
+        >
+          <i
+            class="text-base"
+            :class="[unifiedTileIconClass, { 'animate-pulse': tileGenBusy || previewModeSwitchBusy }]"
+          />
+        </button>
 
-      <button
-        v-else-if="showTileGenerate"
-        type="button"
-        :disabled="toolbarTileBusy"
-        @click="emit('generateTiles')"
-        :class="[
-          toolbarTileBusy
-            ? 'opacity-50 cursor-wait text-(--text-secondary)'
-            : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)',
-          'w-9 h-9 flex items-center justify-center rounded transition-all shrink-0',
-        ]"
-        title="Rendering layout"
-      >
-        <i class="ri-grid-fill text-base" :class="{ 'animate-pulse': tileGenBusy }"></i>
-      </button>
+        <button
+          v-else
+          type="button"
+          :disabled="toolbarTileBusy"
+          @click="requestTileGeneration"
+          :class="[
+            toolbarTileBusy
+              ? 'opacity-50 cursor-wait text-(--text-secondary)'
+              : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)',
+            'w-9 h-9 flex items-center justify-center rounded transition-all shrink-0',
+          ]"
+          title="从布局生成并加载矢量瓦片"
+          aria-label="从布局生成并加载矢量瓦片"
+        >
+          <i class="ri-grid-fill text-base" :class="{ 'animate-pulse': tileGenBusy }"></i>
+        </button>
+
+        <div
+          v-if="showTileGenerateConfirm"
+          class="absolute left-0 top-[calc(100%+8px)] z-50 w-72 rounded-lg border border-(--border-color) bg-(--bg-primary) p-3 text-left shadow-xl"
+          role="dialog"
+          aria-label="Generate layout tiles?"
+        >
+          <div class="text-sm font-semibold text-(--text-primary)">Generate layout tiles?</div>
+          <div class="mt-1 text-xs leading-5 text-(--text-secondary)">
+            This can take a while and may write a large cache under .ecos/tile-cache.
+          </div>
+          <div class="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              class="rounded border border-(--border-color) px-2 py-1 text-xs text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
+              @click="cancelTileGeneration"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="rounded bg-(--accent-color) px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+              @click="confirmTileGeneration"
+            >
+              Generate
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="w-px h-6 bg-(--border-color)"></div>

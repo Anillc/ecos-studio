@@ -97,10 +97,25 @@ describe('layoutTilePrefetchStore', () => {
     ;({ useLayoutTilePrefetchStore } = await import('./layoutTilePrefetchStore'))
   })
 
+  it('keeps tile prefetch disabled by default to avoid generating caches on workspace entry', async () => {
+    const store = useLayoutTilePrefetchStore()
+
+    expect(store.prefetchSupported).toBe(false)
+    store.setProject('/project')
+    store.notifyNavigatedStep('route')
+    store.enqueuePrefetch([{ stepKey: 'route', layoutJsonRelative: 'route/output/layout.json' }])
+    await waitForQueueToSettle()
+
+    expect(mocks.runLayoutTileGenerationSingleFlight).not.toHaveBeenCalled()
+    expect(store.pendingQueue).toEqual([])
+    expect(store.stepStates).toEqual({})
+  })
+
   it('does not requeue a prefetch that already failed', async () => {
     mocks.runLayoutTileGenerationSingleFlight.mockRejectedValue(new Error('missing layout'))
     const store = useLayoutTilePrefetchStore()
 
+    store.setEnabled(true)
     expect(store.prefetchSupported).toBe(true)
     store.setProject('/project')
     expect(store.projectPath).toBe('/project')
@@ -124,6 +139,7 @@ describe('layoutTilePrefetchStore', () => {
       .mockResolvedValueOnce({ baseUrl: 'file:///tiles', outDir: '/tiles', fromCache: false })
     const store = useLayoutTilePrefetchStore()
 
+    store.setEnabled(true)
     store.setProject('/project')
     store.notifyNavigatedStep('route')
     store.enqueuePrefetch([{ stepKey: 'route', layoutJsonRelative: 'route/output/layout.json' }])
@@ -149,6 +165,7 @@ describe('layoutTilePrefetchStore', () => {
       .mockResolvedValueOnce({ baseUrl: 'file:///tiles', outDir: '/tiles', fromCache: false })
     const store = useLayoutTilePrefetchStore()
 
+    store.setEnabled(true)
     store.setProject('/project')
     store.notifyNavigatedStep('route')
     store.enqueuePrefetch([{ stepKey: 'route', layoutJsonRelative: 'route/output/layout.json' }])
@@ -174,6 +191,7 @@ describe('layoutTilePrefetchStore', () => {
       .mockResolvedValueOnce({ baseUrl: 'file:///tiles', outDir: '/tiles', fromCache: false })
     const store = useLayoutTilePrefetchStore()
 
+    store.setEnabled(true)
     store.setProject('/project')
     store.notifyNavigatedStep('route')
     store.enqueuePrefetch([{ stepKey: 'route', layoutJsonRelative: 'route/output/layout.json' }])

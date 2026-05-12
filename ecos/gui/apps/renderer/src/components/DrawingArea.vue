@@ -20,6 +20,7 @@ import { useLayoutState } from '@/composables/useLayoutState'
 import { isTauri } from '@/composables/useTauri'
 import {
   deriveDrcStepPathFromLayoutJsonRelative,
+  getLayoutTileGenerationStatus,
   pickDrcJsonPath,
   pickLayoutJsonPath,
   resolveLayoutJsonAbsolutePath,
@@ -49,6 +50,7 @@ const drcJsonRelativePath = ref<string | null>(null)
 const previewImageRelativePath = ref<string | null>(null)
 /** 最近一次成功加载的瓦片包（切换回矢量时复用，步骤切换时在 handleStageChange 中清空） */
 const lastSuccessfulTileBundle = ref<{ baseUrl: string, outDir?: string } | null>(null)
+const currentLayoutTileCacheReady = ref(false)
 const tileGenBusy = ref(false)
 /** 矢量 ↔ 预览图切换中（与生成瓦片并列禁用工具栏） */
 const previewModeSwitchBusy = ref(false)
@@ -236,6 +238,41 @@ function getStepEnumFromPath(path: string): StepEnum | undefined {
 function resetLoadingState(): void {
   layoutState.loadingState.value = 'idle'
   layoutState.loadingMessage.value = ''
+}
+
+async function refreshCurrentLayoutTileCacheStatus(): Promise<void> {
+  const projectPath = currentProject.value?.path
+  const rel = layoutJsonRelativePath.value
+  const stepKey = currentStepKey.value
+  currentLayoutTileCacheReady.value = false
+  if (!projectPath || !rel || !isTauri()) {
+    return
+  }
+
+  try {
+    const status = await getLayoutTileGenerationStatus({
+      projectPath,
+      layoutJsonRelative: rel,
+      stepKey,
+    })
+    if (
+      currentProject.value?.path !== projectPath
+      || layoutJsonRelativePath.value !== rel
+      || currentStepKey.value !== stepKey
+    ) {
+      return
+    }
+    currentLayoutTileCacheReady.value = status.fromCache
+  } catch {
+    if (
+      currentProject.value?.path !== projectPath
+      || layoutJsonRelativePath.value !== rel
+      || currentStepKey.value !== stepKey
+    ) {
+      return
+    }
+    currentLayoutTileCacheReady.value = false
+  }
 }
 
 const onEditorReady = (editorInstance: Editor) => {
@@ -549,6 +586,7 @@ const handleStageChange = async (stage: string) => {
       drcJsonRelativePath.value = pickDrcJsonPath(info)
         ?? deriveDrcStepPathFromLayoutJsonRelative(layoutJsonRelativePath.value ?? '')
         ?? null
+      void refreshCurrentLayoutTileCacheStatus()
 
       const imagePath = typeof info.image === 'string' && info.image.length > 0 ? info.image : null
       previewImageRelativePath.value = imagePath
@@ -574,6 +612,7 @@ const handleStageChange = async (stage: string) => {
     layoutJsonRelativePath.value = null
     drcJsonRelativePath.value = null
     previewImageRelativePath.value = null
+    currentLayoutTileCacheReady.value = false
     lastSuccessfulTileBundle.value = null
   } catch (error) {
     console.error('Failed to load stage results:', error)
@@ -582,6 +621,7 @@ const handleStageChange = async (stage: string) => {
     layoutJsonRelativePath.value = null
     drcJsonRelativePath.value = null
     previewImageRelativePath.value = null
+    currentLayoutTileCacheReady.value = false
     lastSuccessfulTileBundle.value = null
   }
 }
@@ -611,11 +651,13 @@ async function onGenerateTilesFromToolbar(): Promise<void> {
       layoutState.loadingMessage.value = 'Loading cached layout tiles...'
     }
     await loadTileLayout(baseUrl, outDir)
+    currentLayoutTileCacheReady.value = true
   } catch (err) {
     console.error('Tile generation failed:', err)
     layoutState.loadingState.value = 'error'
     layoutState.loadingMessage.value = String(err)
     cleanupLayout()
+    currentLayoutTileCacheReady.value = false
     lastSuccessfulTileBundle.value = null
   } finally {
     tileGenBusy.value = false
@@ -759,6 +801,8 @@ onUnmounted(() => {
       :show-preview-mode-toggle="showPreviewModeToggle"
       :render-mode="layoutState.renderMode.value"
       :can-switch-to-layout-mode="canSwitchToLayoutMode"
+      :tile-cache-ready="currentLayoutTileCacheReady"
+      :tile-generate-confirm-reset-key="route.path"
       :preview-mode-switch-busy="previewModeSwitchBusy"
       @toolChange="onToolChange"
       @generateTiles="onGenerateTilesFromToolbar"

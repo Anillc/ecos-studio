@@ -25,8 +25,8 @@ function findStepEnumForPath(pathSegment: string): StepEnum | undefined {
 }
 
 export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () => {
-  /** 默认开启；仅 `localStorage === '0'` 时关闭（无 UI，可控制台手动写） */
-  const enabled = ref(true)
+  /** 默认关闭；仅 `localStorage === '1'` 时自动预热（无 UI，可控制台手动写） */
+  const enabled = ref(false)
   const paused = ref(false)
   const projectPath = ref<string | null>(null)
   const stepStates = ref<Record<string, StepPrefetchState>>({})
@@ -55,7 +55,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
   const prefetchSupported = computed(() => canPrefetchRuntime() && enabled.value)
 
   try {
-    if (localStorage.getItem(STORAGE_KEY) === '0') enabled.value = false
+    if (localStorage.getItem(STORAGE_KEY) === '1') enabled.value = true
   } catch {
     /* ignore */
   }
