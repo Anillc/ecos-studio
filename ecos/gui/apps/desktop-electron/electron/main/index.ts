@@ -4,7 +4,12 @@ import { join } from 'node:path'
 import { createMainWindow } from './createMainWindow'
 import { configureGpuMode } from './gpuMode'
 import { registerIpc } from './registerIpc'
-import { ApiServerService } from '../services/apiServerService'
+import {
+  ApiServerService,
+  getApiServerLogFile,
+  getElectronMainLogFile,
+} from '../services/apiServerService'
+import { configureElectronLoggerFile, electronLogger } from '../services/logger'
 import { registerApplicationMenu } from '../services/menuService'
 import { ProjectScopeService } from '../services/projectScopeService'
 import { SettingsStore } from '../services/settingsStore'
@@ -44,6 +49,11 @@ configureGpuMode({
   isPackaged: app.isPackaged,
   platform: process.platform,
 })
+
+const mainLogFile = getElectronMainLogFile()
+configureElectronLoggerFile(mainLogFile)
+electronLogger.status('[desktop] Logs: %s', mainLogFile)
+electronLogger.status('[api] Logs: %s', getApiServerLogFile())
 
 function getDesktopServices() {
   if (services) {
@@ -93,7 +103,7 @@ async function launchMainWindow(): Promise<void> {
 }
 
 function handleLaunchError(error: unknown): void {
-  console.error('[desktop-electron] Failed to launch main window:', error)
+  electronLogger.error('[desktop] Failed to launch main window', error)
   app.quit()
 }
 

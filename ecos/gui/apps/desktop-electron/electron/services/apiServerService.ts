@@ -49,6 +49,18 @@ function getApiLogLevel(): string {
   return configuredLevel || 'warning'
 }
 
+function getLogsDirectory(): string {
+  return join(app.getPath('userData'), 'logs')
+}
+
+export function getElectronMainLogFile(): string {
+  return join(getLogsDirectory(), 'main.log')
+}
+
+export function getApiServerLogFile(): string {
+  return join(getLogsDirectory(), 'api-server.log')
+}
+
 function getApiReadyTimeoutMs(): number {
   const rawValue = process.env.ECOS_API_READY_TIMEOUT_SECS?.trim()
   if (!rawValue) {
@@ -76,6 +88,8 @@ function createApiServerArgs(port: number, extraArgs: string[] = []): string[] {
     String(port),
     ...extraArgs,
     '--disable-stdio-redirect',
+    '--log-file',
+    getApiServerLogFile(),
     '--log-level',
     getApiLogLevel(),
   ]
@@ -93,8 +107,10 @@ function createPythonServerArgs(
 }
 
 function createApiServerEnv(token: string): NodeJS.ProcessEnv {
+  const apiLogFile = getApiServerLogFile()
   return {
     ...process.env,
+    ECOS_API_LOG_FILE: apiLogFile,
     ECOS_API_LOG_LEVEL: getApiLogLevel(),
     ECOS_SERVER_INSTANCE_TOKEN: token,
   }

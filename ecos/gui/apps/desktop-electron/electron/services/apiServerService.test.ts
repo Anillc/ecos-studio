@@ -41,6 +41,7 @@ const {
   const spawn = vi.fn()
   const electronApp = {
     isPackaged: false,
+    getPath: vi.fn(() => '/tmp/ecos-user-data'),
     getVersion: vi.fn(() => '0.1.0-alpha.4'),
   }
   const createHash = vi.fn(() => {
@@ -171,6 +172,7 @@ describe('ApiServerService', () => {
     portAvailabilityQueue.splice(0)
     socketConnectQueue.splice(0)
     electronApp.isPackaged = false
+    electronApp.getPath.mockReturnValue('/tmp/ecos-user-data')
     electronApp.getVersion.mockReturnValue('0.1.0-alpha.4')
     process.env.ECOS_REUSE_API_SERVER = ''
     delete process.env.ECOS_API_LOG_LEVEL
@@ -342,16 +344,14 @@ describe('ApiServerService', () => {
     await service.start()
 
     expect(consoleInfoSpy).toHaveBeenCalledWith(
-      '[desktop-electron] Starting FastAPI server (%s mode) from %s on port %d',
-      'dev',
-      'python3',
-      8765,
+      expect.stringContaining(
+        '[desktop-electron] Starting FastAPI server (dev mode) from python3 on port 8765',
+      ),
     )
     expect(consoleInfoSpy).toHaveBeenCalledWith(
-      '[desktop-electron] FastAPI server ready on port %d after %d attempts (%.1fs)',
-      8765,
-      1,
-      expect.any(Number),
+      expect.stringContaining(
+        '[desktop-electron] FastAPI server ready on port 8765 after 1 attempts',
+      ),
     )
   })
 
@@ -376,10 +376,17 @@ describe('ApiServerService', () => {
 
     expect(spawn).toHaveBeenCalledWith(
       'python3',
-      expect.arrayContaining(['--disable-stdio-redirect', '--log-level', 'info']),
+      expect.arrayContaining([
+        '--disable-stdio-redirect',
+        '--log-file',
+        '/tmp/ecos-user-data/logs/api-server.log',
+        '--log-level',
+        'info',
+      ]),
       expect.objectContaining({
         env: expect.objectContaining({
           ECOS_API_LOG_LEVEL: 'info',
+          ECOS_API_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
           ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
         }),
       }),
@@ -467,6 +474,8 @@ describe('ApiServerService', () => {
         '--port',
         '8765',
         '--disable-stdio-redirect',
+        '--log-file',
+        '/tmp/ecos-user-data/logs/api-server.log',
         '--log-level',
         'warning',
       ],
@@ -474,6 +483,7 @@ describe('ApiServerService', () => {
         cwd: '/opt/ecos/resources/binaries',
         env: expect.objectContaining({
           CHIPCOMPILER_OSS_CAD_DIR: '/opt/ecos/resources/oss-cad-suite',
+          ECOS_API_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
           ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
         }),
       }),
@@ -522,6 +532,8 @@ describe('ApiServerService', () => {
         '--port',
         '8765',
         '--disable-stdio-redirect',
+        '--log-file',
+        '/tmp/ecos-user-data/logs/api-server.log',
         '--log-level',
         'warning',
       ],
@@ -529,6 +541,7 @@ describe('ApiServerService', () => {
         cwd: '/opt/ecos/resources/binaries/api-server-x86_64-unknown-linux-gnu',
         env: expect.objectContaining({
           CHIPCOMPILER_OSS_CAD_DIR: '/opt/ecos/resources/oss-cad-suite',
+          ECOS_API_LOG_FILE: '/tmp/ecos-user-data/logs/api-server.log',
           ECOS_SERVER_INSTANCE_TOKEN: 'deterministic-token',
         }),
       }),
