@@ -1,5 +1,5 @@
 <template>
-  <div class="home-view">
+  <div :class="['home-view', { 'layout-fullscreen-active': isLayoutFullscreen }]">
     <!-- 背景装饰 -->
     <div class="bg-grid"></div>
 
@@ -8,12 +8,14 @@
       class="dashboard-splitter"
       layout="vertical"
       :gutterSize="6"
+      @resizeend="onDashboardSplitterResizeEnd"
     >
       <!-- ================= Row 1: Chip Info | Runtime Monitoring ================= -->
       <SplitterPanel :size="26" :minSize="10" class="dashboard-row">
         <Splitter
           class="dashboard-row-splitter"
           :gutterSize="6"
+          @resizeend="onDashboardSplitterResizeEnd"
         >
           <SplitterPanel :size="45" :minSize="15" class="dashboard-cell">
       <section class="section-card chip-info-area">
@@ -96,6 +98,7 @@
         <Splitter
           class="dashboard-row-splitter"
           :gutterSize="6"
+          @resizeend="onDashboardSplitterResizeEnd"
         >
           <SplitterPanel :size="45" :minSize="15" class="dashboard-cell">
       <!-- ========== Row 2 Left+Center: Layout Preview ========== -->
@@ -166,6 +169,7 @@
         <Splitter
           class="dashboard-row-splitter"
           :gutterSize="6"
+          @resizeend="onDashboardSplitterResizeEnd"
         >
           <SplitterPanel :size="45" :minSize="15" class="dashboard-cell">
       <!-- ========== Row 3 Left: Flow step log ========== -->
@@ -561,6 +565,7 @@ import {
   reconcileSelectedFlowLogKey,
   toFlowLogListItems,
 } from './homeViewFlowLogSelection'
+import { ensureMonitorChartInstance } from './homeMonitorCharts'
 
 // 注册 ECharts 组件（按需引入）
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -863,6 +868,7 @@ const chartInitialized = new WeakSet<echarts.ECharts>()
 let resizeObserver: ResizeObserver | null = null
 /** ResizeObserver 合并多个 entry 到单次 rAF，避免同一帧里反复 init + resize */
 let pendingResizeRaf: number | null = null
+let pendingDashboardSettleRaf: number | null = null
 
 /** 预置配色盘 —— 按 key 出现顺序循环取色 */
 const COLOR_PALETTE = [
@@ -1117,11 +1123,14 @@ function initOrUpdateCharts() {
     // 跳过尺寸为 0 的元素，等待 ResizeObserver 回调再初始化
     if (!el.clientWidth || !el.clientHeight) continue
 
-    let instance = chartInstances.get(cfg.key)
-    if (!instance) {
-      instance = echarts.init(el, undefined, { renderer: 'canvas' })
-      chartInstances.set(cfg.key, instance)
-      bindChartLinkEvents(instance)
+    const { instance, created } = ensureMonitorChartInstance(
+      cfg.key,
+      el,
+      chartInstances,
+      (target) => echarts.init(target, undefined, { renderer: 'canvas' }),
+      bindChartLinkEvents,
+    )
+    if (created) {
       newInstanceCreated = true
     }
 
@@ -1157,6 +1166,20 @@ function resizeAllCharts() {
   for (const instance of chartInstances.values()) {
     instance.resize()
   }
+}
+
+function onDashboardSplitterResizeEnd() {
+  if (pendingDashboardSettleRaf !== null) {
+    cancelAnimationFrame(pendingDashboardSettleRaf)
+  }
+
+  pendingDashboardSettleRaf = requestAnimationFrame(() => {
+    pendingDashboardSettleRaf = requestAnimationFrame(() => {
+      pendingDashboardSettleRaf = null
+      if (monitorData.value) initOrUpdateCharts()
+      resizeAllCharts()
+    })
+  })
 }
 
 /**
@@ -1233,6 +1256,10 @@ onUnmounted(() => {
   if (pendingResizeRaf !== null) {
     cancelAnimationFrame(pendingResizeRaf)
     pendingResizeRaf = null
+  }
+  if (pendingDashboardSettleRaf !== null) {
+    cancelAnimationFrame(pendingDashboardSettleRaf)
+    pendingDashboardSettleRaf = null
   }
   document.removeEventListener('keydown', onFullscreenKeydown)
 })

@@ -336,14 +336,6 @@ export function useWorkspace() {
       const response = await loadWorkspaceApi(selectedPath)
       if (response.response === 'success') {
         const resolvedPath = normalizePath(response.data.directory || selectedPath)
-        if (currentProject.value) {
-          try {
-            await snapshotCurrentProject()
-          } catch (err) {
-            console.error('Failed to snapshot project data before switching:', err)
-          }
-        }
-
         const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
         if (!canonicalProjectRoot) {
           showToast({
@@ -353,6 +345,7 @@ export function useWorkspace() {
           })
           return false
         }
+
         const existingProject = recentProjects.value.find(
           p => normalizePath(p.path) === resolvedPath
         )
@@ -364,6 +357,14 @@ export function useWorkspace() {
           name: resolvedName,
           path: canonicalProjectRoot,
           lastOpened: new Date()
+        }
+
+        if (currentProject.value) {
+          try {
+            await snapshotCurrentProject()
+          } catch (err) {
+            console.error('Failed to snapshot project data before switching:', err)
+          }
         }
 
         currentProject.value = loadedProject
