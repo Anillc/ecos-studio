@@ -320,10 +320,6 @@ export function useWorkspace() {
   }
   const openProject = async (project?: Project) => {
     try {
-      if (currentProject.value) {
-        await closeProject()
-      }
-
       let selectedPath: string | null = null
 
       if (project) {
@@ -331,7 +327,7 @@ export function useWorkspace() {
       } else {
         // 1. 弹出文件夹选择对话框
         selectedPath = await pickDirectory('Select ECOS Studio Project Directory')
-        if (!selectedPath) return
+        if (!selectedPath) return false
       }
 
       if (!(await ensureApiReady())) return false
@@ -340,6 +336,14 @@ export function useWorkspace() {
       const response = await loadWorkspaceApi(selectedPath)
       if (response.response === 'success') {
         const resolvedPath = normalizePath(response.data.directory || selectedPath)
+        if (currentProject.value) {
+          try {
+            await snapshotCurrentProject()
+          } catch (err) {
+            console.error('Failed to snapshot project data before switching:', err)
+          }
+        }
+
         const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
         if (!canonicalProjectRoot) {
           showToast({
