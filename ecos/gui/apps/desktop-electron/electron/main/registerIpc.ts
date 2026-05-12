@@ -29,8 +29,20 @@ import {
   setWindowTitle,
   toggleMaximizeWindow,
 } from '../services/windowService'
+import { electronLogger } from '../services/logger'
 
 export type IpcMainLike = Pick<IpcMain, 'handle'>
+
+type IpcHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
+
+interface DesktopBridgeErrorResult {
+  error: {
+    code?: string
+    message: string
+    name: string
+  }
+  ok: false
+}
 
 export interface DesktopBridgeServices {
   appInfoService: {
@@ -93,6 +105,94 @@ function getEventWindow(event: IpcMainInvokeEvent): BrowserWindow {
   return targetWindow
 }
 
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === code
+  )
+}
+
+function readErrorPath(error: unknown): string | null {
+  if (
+    typeof error === 'object'
+    && error !== null
+    && 'path' in error
+    && typeof error.path === 'string'
+  ) {
+    return error.path
+  }
+
+  return null
+}
+
+function summarizeTileGenerationError(
+  request: TileGenerationRequest,
+  error: unknown,
+): string {
+  if (isNodeErrorWithCode(error, 'ENOENT')) {
+    const path = readErrorPath(error)
+    return path
+      ? `[tile] Missing layout JSON for step ${request.stepKey}: ${path}`
+      : `[tile] Missing layout JSON for step ${request.stepKey}`
+  }
+
+  return `[tile] Tile generation failed for step ${request.stepKey}`
+}
+
+function summarizeProjectBinaryReadError(path: string, error: unknown): string {
+  if (isNodeErrorWithCode(error, 'ENOENT')) {
+    const errorPath = readErrorPath(error) ?? path
+    return `[workspace] Missing project binary file: ${errorPath}`
+  }
+
+  return `[workspace] Failed to read project binary file: ${path}`
+}
+
+function serializeError(error: unknown): { code?: string; message: string; name: string } {
+  if (error instanceof Error) {
+    return {
+      code: typeof (error as NodeJS.ErrnoException).code === 'string'
+        ? (error as NodeJS.ErrnoException).code
+        : undefined,
+      message: error.message,
+      name: error.name,
+    }
+  }
+
+  return {
+    message: String(error),
+    name: 'Error',
+  }
+}
+
+function summarizeIpcError(channel: string, args: unknown[], error: unknown): string {
+  if (channel === desktopApiIpcChannels.tilesGenerate) {
+    return summarizeTileGenerationError(args[0] as TileGenerationRequest, error)
+  }
+
+  if (channel === desktopApiIpcChannels.workspaceReadProjectBinaryFile) {
+    return summarizeProjectBinaryReadError(String(args[0] ?? ''), error)
+  }
+
+  return `[ipc] Handler ${channel} failed`
+}
+
+function wrapIpcHandler(channel: string, handler: IpcHandler): IpcHandler {
+  return async (event, ...args): Promise<unknown | DesktopBridgeErrorResult> => {
+    try {
+      return await handler(event, ...args)
+    } catch (error) {
+      electronLogger.warn(summarizeIpcError(channel, args, error), error)
+      return {
+        error: serializeError(error),
+        ok: false,
+      }
+    }
+  }
+}
+
 async function pickDirectory(
   options?: DesktopDirectoryDialogOptions,
 ): Promise<string | null> {
@@ -128,6 +228,10 @@ export function registerIpc(
   target: IpcMainLike = ipcMain,
   services: DesktopBridgeServices,
 ): void {
+  const handle = (channel: string, handler: IpcHandler): void => {
+    target.handle(channel, wrapIpcHandler(channel, handler))
+  }
+
   const projectFileWatchSubscriptions = new Map<
     string,
     {
@@ -171,141 +275,143 @@ export function registerIpc(
     await services.workspaceService.unsubscribeProjectLogTail(subscriptionId)
   }
 
-  target.handle(desktopApiIpcChannels.appGetVersions, async () => {
+  handle(desktopApiIpcChannels.appGetVersions, async () => {
     return await services.appInfoService.getVersions()
   })
 
-  target.handle(desktopApiIpcChannels.windowMinimize, (event) => {
+  handle(desktopApiIpcChannels.windowMinimize, (event) => {
     minimizeWindow(getEventWindow(event))
   })
 
-  target.handle(desktopApiIpcChannels.windowToggleMaximize, (event) => {
+  handle(desktopApiIpcChannels.windowToggleMaximize, (event) => {
     toggleMaximizeWindow(getEventWindow(event))
   })
 
-  target.handle(desktopApiIpcChannels.windowClose, (event) => {
+  handle(desktopApiIpcChannels.windowClose, (event) => {
     closeWindow(getEventWindow(event))
   })
 
-  target.handle(desktopApiIpcChannels.windowConfirmClose, (event) => {
+  handle(desktopApiIpcChannels.windowConfirmClose, (event) => {
     confirmWindowClose(getEventWindow(event))
   })
 
-  target.handle(desktopApiIpcChannels.windowSetTitle, (event, title: string) => {
-    setWindowTitle(getEventWindow(event), title)
+  handle(desktopApiIpcChannels.windowSetTitle, (event, title) => {
+    setWindowTitle(getEventWindow(event), title as string)
   })
 
-  target.handle(desktopApiIpcChannels.windowIsMaximized, (event) => {
+  handle(desktopApiIpcChannels.windowIsMaximized, (event) => {
     return isWindowMaximized(getEventWindow(event))
   })
 
-  target.handle(desktopApiIpcChannels.settingsGet, async (_event, key: string) => {
-    return await services.settingsStore.get(key)
+  handle(desktopApiIpcChannels.settingsGet, async (_event, key) => {
+    return await services.settingsStore.get(key as string)
   })
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.settingsSet,
-    async (_event, key: string, value: DesktopSettingsValue) => {
-      await services.settingsStore.set(key, value)
+    async (_event, key, value) => {
+      await services.settingsStore.set(key as string, value as DesktopSettingsValue)
     },
   )
 
-  target.handle(desktopApiIpcChannels.settingsDelete, async (_event, key: string) => {
-    await services.settingsStore.delete(key)
+  handle(desktopApiIpcChannels.settingsDelete, async (_event, key) => {
+    await services.settingsStore.delete(key as string)
   })
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.dialogPickDirectory,
-    async (_event, options?: DesktopDirectoryDialogOptions) => {
-      return await pickDirectory(options)
+    async (_event, options) => {
+      return await pickDirectory(options as DesktopDirectoryDialogOptions | undefined)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.dialogPickFiles,
-    async (_event, options?: DesktopFileDialogOptions) => {
-      return await pickFiles(options)
+    async (_event, options) => {
+      return await pickFiles(options as DesktopFileDialogOptions | undefined)
     },
   )
 
-  target.handle(desktopApiIpcChannels.workspaceGetApiPort, async () => {
+  handle(desktopApiIpcChannels.workspaceGetApiPort, async () => {
     return await services.workspaceService.getApiPort()
   })
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceIsProjectDirectory,
-    async (_event, path: string) => {
-      return await services.workspaceService.isProjectDirectory(path)
+    async (_event, path) => {
+      return await services.workspaceService.isProjectDirectory(path as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceRegisterProjectRoot,
-    async (_event, path: string) => {
-      return await services.workspaceService.registerProjectRoot(path)
+    async (_event, path) => {
+      return await services.workspaceService.registerProjectRoot(path as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceClearProjectRoot,
     async () => {
       await services.workspaceService.clearProjectRoot()
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceRequestProjectPathAccess,
-    async (_event, path: string) => {
-      return await services.workspaceService.requestProjectPathAccess(path)
+    async (_event, path) => {
+      return await services.workspaceService.requestProjectPathAccess(path as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceReadProjectTextFile,
-    async (_event, path: string) => {
-      return await services.workspaceService.readProjectTextFile(path)
+    async (_event, path) => {
+      return await services.workspaceService.readProjectTextFile(path as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceReadOptionalProjectTextFile,
-    async (_event, path: string) => {
-      return await services.workspaceService.readOptionalProjectTextFile(path)
+    async (_event, path) => {
+      return await services.workspaceService.readOptionalProjectTextFile(path as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceReadProjectTextFileTail,
-    async (_event, path: string, maxChars: number) => {
-      return await services.workspaceService.readProjectTextFileTail(path, maxChars)
-    },
-  )
-
-  target.handle(
-    desktopApiIpcChannels.workspaceReadOptionalProjectTextFileTail,
-    async (_event, path: string, maxChars: number) => {
-      return await services.workspaceService.readOptionalProjectTextFileTail(path, maxChars)
-    },
-  )
-
-  target.handle(
-    desktopApiIpcChannels.workspaceReadOptionalProjectTextFileUpdate,
-    async (_event, path: string, fromOffsetBytes: number, maxChars: number) => {
-      return await services.workspaceService.readOptionalProjectTextFileUpdate(
-        path,
-        fromOffsetBytes,
-        maxChars,
+    async (_event, path, maxChars) => {
+      return await services.workspaceService.readProjectTextFileTail(
+        path as string,
+        maxChars as number,
       )
     },
   )
 
-  target.handle(
+  handle(
+    desktopApiIpcChannels.workspaceReadOptionalProjectTextFileTail,
+    async (_event, path, maxChars) => {
+      return await services.workspaceService.readOptionalProjectTextFileTail(
+        path as string,
+        maxChars as number,
+      )
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceReadOptionalProjectTextFileUpdate,
+    async (_event, path, fromOffsetBytes, maxChars) => {
+      return await services.workspaceService.readOptionalProjectTextFileUpdate(
+        path as string,
+        fromOffsetBytes as number,
+        maxChars as number,
+      )
+    },
+  )
+
+  handle(
     desktopApiIpcChannels.workspaceSubscribeProjectLogTail,
-    async (event, path: string, options: {
-      maxInitialChars?: number
-      maxChunkChars?: number
-      pollIntervalMs?: number
-    }) => {
+    async (event, path, options) => {
       const sender = event.sender
       const isSenderDestroyed = (): boolean =>
         typeof sender.isDestroyed === 'function' ? sender.isDestroyed() : false
@@ -316,8 +422,12 @@ export function registerIpc(
       }
 
       subscriptionId = await services.workspaceService.subscribeProjectLogTail(
-        path,
-        options,
+        path as string,
+        options as {
+          maxInitialChars?: number
+          maxChunkChars?: number
+          pollIntervalMs?: number
+        },
         (payload) => {
           if (isSenderDestroyed()) return
           if (typeof sender.send === 'function') {
@@ -341,30 +451,30 @@ export function registerIpc(
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceReadProjectBinaryFile,
-    async (_event, path: string) => {
-      return await services.workspaceService.readProjectBinaryFile(path)
+    async (_event, path) => {
+      return await services.workspaceService.readProjectBinaryFile(path as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceWriteProjectTextFile,
-    async (_event, path: string, content: string) => {
-      await services.workspaceService.writeProjectTextFile(path, content)
+    async (_event, path, content) => {
+      await services.workspaceService.writeProjectTextFile(path as string, content as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceScanPdkDirectory,
-    async (_event, path: string) => {
-      return await services.workspaceService.scanPdkDirectory(path)
+    async (_event, path) => {
+      return await services.workspaceService.scanPdkDirectory(path as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceWatchProjectFile,
-    async (event, path: string) => {
+    async (event, path) => {
       const sender = event.sender
       let subscriptionId: string | null = null
       const onDestroyed = (): void => {
@@ -372,7 +482,7 @@ export function registerIpc(
         void unwatchProjectFile(subscriptionId)
       }
 
-      subscriptionId = await services.workspaceService.watchProjectFile(path, (payload) => {
+      subscriptionId = await services.workspaceService.watchProjectFile(path as string, (payload) => {
         if (event.sender.isDestroyed()) return
         if (typeof event.sender.send === 'function') {
           event.sender.send(desktopApiEventChannels.workspaceFileChanged, payload)
@@ -394,28 +504,28 @@ export function registerIpc(
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceUnwatchProjectFile,
-    async (_event, subscriptionId: string) => {
-      await unwatchProjectFile(subscriptionId)
+    async (_event, subscriptionId) => {
+      await unwatchProjectFile(subscriptionId as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.workspaceUnsubscribeProjectLogTail,
-    async (_event, subscriptionId: string) => {
-      await unsubscribeProjectLogTail(subscriptionId)
+    async (_event, subscriptionId) => {
+      await unsubscribeProjectLogTail(subscriptionId as string)
     },
   )
 
-  target.handle(
+  handle(
     desktopApiIpcChannels.tilesGenerate,
-    async (_event, request: TileGenerationRequest) => {
-      return await services.tileService.generate(request)
+    async (_event, request) => {
+      return await services.tileService.generate(request as TileGenerationRequest)
     },
   )
 
-  target.handle(desktopApiIpcChannels.systemOpenExternal, async (_event, url: string) => {
-    await shell.openExternal(url)
+  handle(desktopApiIpcChannels.systemOpenExternal, async (_event, url) => {
+    await shell.openExternal(url as string)
   })
 }

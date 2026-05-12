@@ -23,6 +23,14 @@ vi.mock('electron', () => ({
   },
 }))
 
+const electronLogger = vi.hoisted(() => ({
+  warn: vi.fn(),
+}))
+
+vi.mock('../services/logger', () => ({
+  electronLogger,
+}))
+
 import { registerIpc } from './registerIpc'
 
 type RegisteredHandler = (event: { sender: unknown }, ...args: unknown[]) => unknown
@@ -88,6 +96,7 @@ function createWindowDouble(isMaximized = false) {
 describe('registerIpc', () => {
   beforeEach(() => {
     fromWebContents.mockReset()
+    electronLogger.warn.mockReset()
     openExternal.mockReset()
     showOpenDialog.mockReset()
   })
@@ -145,6 +154,28 @@ describe('registerIpc', () => {
     expect(handler).toBeDefined()
     await expect(handler?.({ sender: { id: 'web-contents' } })).resolves.toEqual(versions)
     expect(services.appInfoService.getVersions).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs unexpected handler errors and returns an IPC error result', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    const error = new Error('settings store is unavailable')
+    services.settingsStore.get.mockRejectedValue(error)
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.settingsGet)?.(event, 'recent_projects'),
+    ).resolves.toEqual({
+      error: {
+        message: 'settings store is unavailable',
+        name: 'Error',
+      },
+      ok: false,
+    })
+
+    expect(electronLogger.warn).toHaveBeenCalledWith(
+      '[ipc] Handler settings:get failed',
+      error,
+    )
   })
 
   it('looks up the event window and uses it for window controls', async () => {
@@ -435,6 +466,72 @@ describe('registerIpc', () => {
     })
 
     expect(services.tileService.generate).toHaveBeenCalledWith(request)
+  })
+
+  it('logs missing project binary files in a single normalized warning before returning an IPC error result', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    const path = '/tmp/project/place_dreamplace/output/minirv_place.png'
+    const error = Object.assign(
+      new Error(`ENOENT: no such file or directory, open '${path}'`),
+      {
+        code: 'ENOENT',
+        path,
+      },
+    )
+    services.workspaceService.readProjectBinaryFile.mockRejectedValue(error)
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceReadProjectBinaryFile)?.(event, path),
+    ).resolves.toEqual({
+      error: {
+        code: 'ENOENT',
+        message: `ENOENT: no such file or directory, open '${path}'`,
+        name: 'Error',
+      },
+      ok: false,
+    })
+
+    expect(electronLogger.warn).toHaveBeenCalledTimes(1)
+    expect(electronLogger.warn).toHaveBeenCalledWith(
+      `[workspace] Missing project binary file: ${path}`,
+      error,
+    )
+  })
+
+  it('logs tile generation failures in a single normalized warning before rethrowing', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    const error = Object.assign(
+      new Error("ENOENT: no such file or directory, realpath '/tmp/project/route.json'"),
+      {
+        code: 'ENOENT',
+        path: '/tmp/project/route.json',
+      },
+    )
+    services.tileService.generate.mockRejectedValue(error)
+    const request = {
+      projectPath: '/tmp/project',
+      layoutJsonRelative: 'route_ecc/output/minirv_route.json',
+      stepKey: 'route',
+    }
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.tilesGenerate)?.(event, request),
+    ).resolves.toEqual({
+      error: {
+        code: 'ENOENT',
+        message: "ENOENT: no such file or directory, realpath '/tmp/project/route.json'",
+        name: 'Error',
+      },
+      ok: false,
+    })
+
+    expect(electronLogger.warn).toHaveBeenCalledTimes(1)
+    expect(electronLogger.warn).toHaveBeenCalledWith(
+      '[tile] Missing layout JSON for step route: /tmp/project/route.json',
+      error,
+    )
   })
 
   it('sends project file change notifications to the requesting renderer', async () => {

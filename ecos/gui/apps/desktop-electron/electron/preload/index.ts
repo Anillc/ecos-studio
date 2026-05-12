@@ -13,6 +13,47 @@ import type {
   DesktopSettingsValue,
 } from '@ecos-studio/shared'
 
+function isMissingFileError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('ENOENT') || message.includes('no such file or directory')
+}
+
+function isTileGenerationErrorResult(
+  value: unknown,
+): value is { error: { code?: string; message: string; name: string }; ok: false } {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && 'ok' in value
+    && value.ok === false
+    && 'error' in value
+    && typeof value.error === 'object'
+    && value.error !== null
+    && 'message' in value.error
+    && typeof value.error.message === 'string'
+  )
+}
+
+function toErrorFromIpcResult(result: {
+  error: { code?: string; message: string; name: string }
+}): Error {
+  return Object.assign(new Error(result.error.message), {
+    code: result.error.code,
+    name: result.error.name,
+  })
+}
+
+async function invokeDesktop<T = unknown>(
+  channel: string,
+  ...args: unknown[]
+): Promise<T> {
+  const result = await ipcRenderer.invoke(channel, ...args)
+  if (isTileGenerationErrorResult(result)) {
+    throw toErrorFromIpcResult(result)
+  }
+  return result as T
+}
+
 function subscribeToDesktopEvent(
   channel: string,
   listener: (...args: unknown[]) => void,
@@ -26,15 +67,15 @@ function subscribeToDesktopEvent(
 
 const desktopApi: DesktopApi = {
   app: {
-    getVersions: () => ipcRenderer.invoke(desktopApiIpcChannels.appGetVersions),
+    getVersions: () => invokeDesktop(desktopApiIpcChannels.appGetVersions),
   },
   window: {
-    minimize: () => ipcRenderer.invoke(desktopApiIpcChannels.windowMinimize),
-    toggleMaximize: () => ipcRenderer.invoke(desktopApiIpcChannels.windowToggleMaximize),
-    close: () => ipcRenderer.invoke(desktopApiIpcChannels.windowClose),
-    confirmClose: () => ipcRenderer.invoke(desktopApiIpcChannels.windowConfirmClose),
-    setTitle: (title) => ipcRenderer.invoke(desktopApiIpcChannels.windowSetTitle, title),
-    isMaximized: () => ipcRenderer.invoke(desktopApiIpcChannels.windowIsMaximized),
+    minimize: () => invokeDesktop(desktopApiIpcChannels.windowMinimize),
+    toggleMaximize: () => invokeDesktop(desktopApiIpcChannels.windowToggleMaximize),
+    close: () => invokeDesktop(desktopApiIpcChannels.windowClose),
+    confirmClose: () => invokeDesktop(desktopApiIpcChannels.windowConfirmClose),
+    setTitle: (title) => invokeDesktop(desktopApiIpcChannels.windowSetTitle, title),
+    isMaximized: () => invokeDesktop(desktopApiIpcChannels.windowIsMaximized),
     onCloseRequested: (listener) =>
       subscribeToDesktopEvent(desktopApiEventChannels.windowCloseRequested, () => {
         listener()
@@ -61,44 +102,44 @@ const desktopApi: DesktopApi = {
       ),
   },
   system: {
-    openExternal: (url) => ipcRenderer.invoke(desktopApiIpcChannels.systemOpenExternal, url),
+    openExternal: (url) => invokeDesktop(desktopApiIpcChannels.systemOpenExternal, url),
   },
   settings: {
     get: <T extends DesktopSettingsValue = DesktopSettingsValue>(key: string) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.settingsGet, key) as Promise<T | null>,
-    set: (key, value) => ipcRenderer.invoke(desktopApiIpcChannels.settingsSet, key, value),
-    delete: (key) => ipcRenderer.invoke(desktopApiIpcChannels.settingsDelete, key),
+      invokeDesktop<T | null>(desktopApiIpcChannels.settingsGet, key),
+    set: (key, value) => invokeDesktop(desktopApiIpcChannels.settingsSet, key, value),
+    delete: (key) => invokeDesktop(desktopApiIpcChannels.settingsDelete, key),
   },
   dialog: {
     pickDirectory: (options?: DesktopDirectoryDialogOptions) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.dialogPickDirectory, options),
+      invokeDesktop(desktopApiIpcChannels.dialogPickDirectory, options),
     pickFiles: (options?: DesktopFileDialogOptions) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.dialogPickFiles, options),
+      invokeDesktop(desktopApiIpcChannels.dialogPickFiles, options),
   },
   workspace: {
-    getApiPort: () => ipcRenderer.invoke(desktopApiIpcChannels.workspaceGetApiPort),
+    getApiPort: () => invokeDesktop(desktopApiIpcChannels.workspaceGetApiPort),
     isProjectDirectory: (path) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceIsProjectDirectory, path),
+      invokeDesktop(desktopApiIpcChannels.workspaceIsProjectDirectory, path),
     registerProjectRoot: (path) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceRegisterProjectRoot, path),
+      invokeDesktop(desktopApiIpcChannels.workspaceRegisterProjectRoot, path),
     clearProjectRoot: () =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceClearProjectRoot),
+      invokeDesktop(desktopApiIpcChannels.workspaceClearProjectRoot),
     requestProjectPathAccess: (path) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceRequestProjectPathAccess, path),
+      invokeDesktop(desktopApiIpcChannels.workspaceRequestProjectPathAccess, path),
     readProjectTextFile: (path) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectTextFile, path),
+      invokeDesktop(desktopApiIpcChannels.workspaceReadProjectTextFile, path),
     readOptionalProjectTextFile: (path) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadOptionalProjectTextFile, path),
+      invokeDesktop(desktopApiIpcChannels.workspaceReadOptionalProjectTextFile, path),
     readProjectTextFileTail: (path, maxChars) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectTextFileTail, path, maxChars),
+      invokeDesktop(desktopApiIpcChannels.workspaceReadProjectTextFileTail, path, maxChars),
     readOptionalProjectTextFileTail: (path, maxChars) =>
-      ipcRenderer.invoke(
+      invokeDesktop(
         desktopApiIpcChannels.workspaceReadOptionalProjectTextFileTail,
         path,
         maxChars,
       ),
     readOptionalProjectTextFileUpdate: (path, fromOffsetBytes, maxChars) =>
-      ipcRenderer.invoke(
+      invokeDesktop(
         desktopApiIpcChannels.workspaceReadOptionalProjectTextFileUpdate,
         path,
         fromOffsetBytes,
@@ -121,15 +162,18 @@ const desktopApi: DesktopApi = {
 
       return () => {
         ipcRenderer.removeListener(desktopApiEventChannels.workspaceLogTail, eventListener)
-        void ipcRenderer.invoke(desktopApiIpcChannels.workspaceUnsubscribeProjectLogTail, subscriptionId)
+        void invokeDesktop(
+          desktopApiIpcChannels.workspaceUnsubscribeProjectLogTail,
+          subscriptionId,
+        )
       }
     },
     readProjectBinaryFile: (path) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceReadProjectBinaryFile, path),
+      invokeDesktop(desktopApiIpcChannels.workspaceReadProjectBinaryFile, path),
     writeProjectTextFile: (path, content) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceWriteProjectTextFile, path, content),
+      invokeDesktop(desktopApiIpcChannels.workspaceWriteProjectTextFile, path, content),
     scanPdkDirectory: (path) =>
-      ipcRenderer.invoke(desktopApiIpcChannels.workspaceScanPdkDirectory, path),
+      invokeDesktop(desktopApiIpcChannels.workspaceScanPdkDirectory, path),
     watchProjectFile: async (path, listener) => {
       const subscriptionId = await ipcRenderer.invoke(
         desktopApiIpcChannels.workspaceWatchProjectFile,
@@ -143,12 +187,21 @@ const desktopApi: DesktopApi = {
 
       return () => {
         ipcRenderer.removeListener(desktopApiEventChannels.workspaceFileChanged, eventListener)
-        void ipcRenderer.invoke(desktopApiIpcChannels.workspaceUnwatchProjectFile, subscriptionId)
+        void invokeDesktop(desktopApiIpcChannels.workspaceUnwatchProjectFile, subscriptionId)
       }
     },
   },
   tiles: {
-    generate: (request) => ipcRenderer.invoke(desktopApiIpcChannels.tilesGenerate, request),
+    generate: async (request) => {
+      try {
+        return await invokeDesktop(desktopApiIpcChannels.tilesGenerate, request)
+      } catch (error) {
+        if (isMissingFileError(error)) {
+          throw new Error(`Layout data is not available for step "${request.stepKey}" yet.`)
+        }
+        throw error
+      }
+    },
   },
 }
 
