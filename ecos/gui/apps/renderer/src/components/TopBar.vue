@@ -12,8 +12,8 @@
         @click="handleGoHome"
         class="home-btn"
         type="button"
-        title="回到首页"
-        aria-label="回到首页"
+        title="Back to Home"
+        aria-label="Back to Home"
       >
         <i class="ri-home-4-line"></i>
       </button>

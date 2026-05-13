@@ -21,7 +21,7 @@
       <section class="section-card chip-info-area">
         <div class="section-header">
           <div class="header-icon"><i class="ri-cpu-line"></i></div>
-          <h2>Chip Basic Info / Spec</h2>
+          <h2>Chip Basic Info</h2>
           <span class="header-badge" v-if="config.pdk">{{ config.pdk }}</span>
         </div>
         <div class="chip-info-content">
