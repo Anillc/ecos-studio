@@ -31,14 +31,17 @@
             </div>
           </div>
           <!-- SOC -->
-          <button type="button" @click="navigateToSoC"
-            class="group flex flex-col items-center justify-center py-8 bg-(--bg-secondary) rounded-xl border border-(--border-color) hover:border-(--accent-color) transition-all duration-200 hover:scale-[1.02] cursor-pointer hover:shadow-lg hover:shadow-(--accent-color)/5">
-            <div class="w-12 h-12 rounded-xl bg-(--bg-primary) flex items-center justify-center group-hover:bg-(--accent-color)/10 transition-colors mb-3">
-              <i class="ri-cpu-line text-2xl text-(--text-secondary) group-hover:text-(--accent-color) transition-colors"></i>
+          <div
+            class="group relative flex flex-col items-center justify-center py-8 bg-(--bg-secondary) rounded-xl border border-(--border-color) transition-all duration-200 opacity-50 cursor-default overflow-hidden">
+            <div class="w-12 h-12 rounded-xl bg-(--bg-primary) flex items-center justify-center mb-3">
+              <i class="ri-cpu-line text-2xl text-(--text-secondary)"></i>
             </div>
             <span class="text-sm font-medium text-(--text-primary) mb-1">SoC</span>
             <span class="text-xs text-(--text-secondary)">RetroSoC</span>
-          </button>
+            <div class="absolute inset-0 flex items-center justify-center bg-(--bg-primary)/60">
+              <span class="text-xs font-medium text-(--text-secondary) bg-(--bg-secondary) px-3 py-1 rounded-full border border-(--border-color)">Coming Soon</span>
+            </div>
+          </div>
           
           <!-- Backend Design -->
           <button @click="navigateToECC"
@@ -188,7 +191,6 @@ const lastProject = computed(() => {
   return recentProjects.value.length > 0 ? recentProjects.value[0] : null
 })
 
-const navigateToSoC = () => router.push('/soc')
 const navigateToECC = () => router.push('/ecc')
 const navigateToProjects = () => router.push('/projects')
 const handleNotReady = () => { /* placeholder */ }

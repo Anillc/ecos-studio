@@ -394,7 +394,7 @@ describe('ECOSView SoC entry card', () => {
     restoreDomGlobals()
   })
 
-  it('pushes /soc when the SoC button is clicked', async () => {
+  it('marks the SoC entry as coming soon without navigating', async () => {
     const vue = await loadVueRuntime()
     const ECOSView = loadECOSViewComponent(vue)
     const container = document.createElement('div')
@@ -404,14 +404,16 @@ describe('ECOSView SoC entry card', () => {
     app.mount(container as never)
     await vue.nextTick()
 
-    const socButton = Array.from(container.querySelectorAll('button')).find((button) => {
-      return button.textContent?.includes('SoC') && button.textContent?.includes('RetroSoC')
+    const socCard = Array.from(container.querySelectorAll('div')).find((element) => {
+      return element.textContent === 'SoCRetroSoCComing Soon'
     })
 
-    expect(socButton).toBeTruthy()
-    socButton?.click()
+    expect(socCard).toBeTruthy()
+    expect(socCard?.classList.contains('cursor-default')).toBe(true)
+    expect(socCard?.classList.contains('opacity-50')).toBe(true)
+    socCard?.click()
 
-    expect(push).toHaveBeenCalledWith('/soc')
+    expect(push).not.toHaveBeenCalled()
 
     app.unmount()
   })
