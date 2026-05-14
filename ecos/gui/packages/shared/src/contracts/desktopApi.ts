@@ -1,10 +1,21 @@
 import type { TileGenerationRequest, TileGenerationResult } from '../types/tile.ts'
 import type {
+  DesktopCommandEvent,
+  DesktopCommandRequest,
+  DesktopCommandResult,
+} from './desktopCommands.ts'
+import type {
   DesktopEventUnsubscribe,
   DesktopMenuEventId,
   DesktopProjectFileChangedEvent,
   DesktopProjectLogTailEvent,
 } from './desktopEvents.ts'
+import type {
+  DesktopShellDataEvent,
+  DesktopShellExitEvent,
+  DesktopShellSession,
+  DesktopShellSessionOptions,
+} from './desktopShell.ts'
 
 export type DesktopSettingsValue =
   | string
@@ -137,5 +148,17 @@ export interface DesktopApi {
   tiles: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
     getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
+  }
+  commands: {
+    execute(request: DesktopCommandRequest): Promise<DesktopCommandResult>
+    onEvent(listener: (event: DesktopCommandEvent) => void): DesktopEventUnsubscribe
+  }
+  shell: {
+    createSession(options: DesktopShellSessionOptions): Promise<DesktopShellSession>
+    write(sessionId: string, data: string): Promise<void>
+    resize(sessionId: string, cols: number, rows: number): Promise<void>
+    kill(sessionId: string): Promise<void>
+    onData(listener: (event: DesktopShellDataEvent) => void): DesktopEventUnsubscribe
+    onExit(listener: (event: DesktopShellExitEvent) => void): DesktopEventUnsubscribe
   }
 }

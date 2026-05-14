@@ -8,7 +8,11 @@
       <div class="app-content">
         <router-view />
       </div>
-      <StatusBar />
+      <ECOSTerminal :expanded="terminalExpanded" @collapse="terminalExpanded = false" />
+      <StatusBar
+        :terminal-expanded="terminalExpanded"
+        @toggle-terminal="terminalExpanded = !terminalExpanded"
+      />
     </div>
 
     <!-- 全局 Toast 通知 -->
@@ -54,6 +58,7 @@ import { getOptionalDesktopApi, hasDesktopApi, waitForDesktopApi } from '@/platf
 
 import TopBar from '@/components/TopBar.vue'
 import StatusBar from '@/components/StatusBar.vue'
+import ECOSTerminal from '@/components/ECOSTerminal.vue'
 import AboutDialog from '@/components/AboutDialog.vue'
 import Toast from 'primevue/toast'
 import NewProjectWizard from '@/components/NewProjectWizard.vue'
@@ -75,6 +80,7 @@ const documentationUrl =
 // ---- 新建工程向导 ----
 const showNewProjectWizard = ref(false)
 const showAboutDialog = ref(false)
+const terminalExpanded = ref(false)
 
 const handleWizardCreate = async (config: WorkspaceConfig) => {
   showNewProjectWizard.value = false
@@ -424,6 +430,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   max-width: 100vw;
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;

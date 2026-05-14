@@ -11,10 +11,13 @@ import {
   getElectronLatestMainLogFile,
   getElectronMainLogFile,
 } from '../services/apiServerService'
+import { ApiCommandAdapter } from '../services/apiCommandAdapter'
+import { CommandBusService } from '../services/commandBusService'
 import { configureElectronLoggerFile, electronLogger } from '../services/logger'
 import { registerApplicationMenu } from '../services/menuService'
 import { ProjectScopeService } from '../services/projectScopeService'
 import { SettingsStore } from '../services/settingsStore'
+import { ShellPtyService } from '../services/shellPtyService'
 import { TileService } from '../services/tileService'
 import { bindWindowEvents } from '../services/windowService'
 import { WorkspaceService } from '../services/workspaceService'
@@ -24,7 +27,9 @@ let isShuttingDown = false
 let services:
   | {
       apiServerService: ApiServerService
+      commandBusService: CommandBusService
       settingsStore: SettingsStore
+      shellService: ShellPtyService
       tileService: TileService
       workspaceService: WorkspaceService
     }
@@ -77,13 +82,22 @@ function getDesktopServices() {
     apiPortProvider: apiServerService,
     projectScopeProvider: projectScopeService,
   })
+  const commandAdapter = new ApiCommandAdapter({
+    portProvider: apiServerService,
+  })
+  const commandBusService = new CommandBusService({
+    adapter: commandAdapter,
+  })
+  const shellService = new ShellPtyService()
   const tileService = new TileService({
     projectRootProvider: projectScopeService,
   })
 
   services = {
     apiServerService,
+    commandBusService,
     settingsStore,
+    shellService,
     tileService,
     workspaceService,
   }
@@ -97,7 +111,9 @@ async function launchMainWindow(): Promise<void> {
   if (!ipcRegistered) {
     registerIpc(undefined, {
       appInfoService: desktopServices.apiServerService,
+      commandBusService: desktopServices.commandBusService,
       settingsStore: desktopServices.settingsStore,
+      shellService: desktopServices.shellService,
       tileService: desktopServices.tileService,
       workspaceService: desktopServices.workspaceService,
     })

@@ -19,6 +19,20 @@ export type {
   ScannedPdkDirectory,
   VersionInfo,
 } from './contracts/desktopApi.ts';
+export type {
+  DesktopCommandEvent,
+  DesktopCommandName,
+  DesktopCommandRequest,
+  DesktopCommandResponse,
+  DesktopCommandResult,
+  DesktopCommandSource,
+} from './contracts/desktopCommands.ts';
+export type {
+  DesktopShellDataEvent,
+  DesktopShellExitEvent,
+  DesktopShellSession,
+  DesktopShellSessionOptions,
+} from './contracts/desktopShell.ts';
 export {
   appMenuActionIds,
   desktopMenuEventIds,

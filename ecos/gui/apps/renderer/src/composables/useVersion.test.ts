@@ -79,6 +79,28 @@ function createDesktopBridge(getVersions: DesktopApi['app']['getVersions']) {
       generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
       getStatus: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
     },
+    commands: {
+      execute: async (request) => ({
+        cmd: request.cmd,
+        data: {},
+        message: [],
+        ok: true,
+        response: 'success',
+      }),
+      onEvent: () => () => undefined,
+    },
+    shell: {
+      createSession: async () => ({
+        pid: 0,
+        sessionId: 'test-shell',
+        shell: '/bin/bash',
+      }),
+      write: async () => undefined,
+      resize: async () => undefined,
+      kill: async () => undefined,
+      onData: () => () => undefined,
+      onExit: () => () => undefined,
+    },
   } satisfies DesktopApi
 }
 

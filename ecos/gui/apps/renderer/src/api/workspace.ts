@@ -4,6 +4,7 @@
 
 import { alovaInstance } from './client'
 import { CMDEnum } from './type'
+import { getOptionalDesktopApi } from '@/platform/desktop'
 
 // Types for API requests and responses
 export interface ProjectInfo {
@@ -67,6 +68,15 @@ export interface SetPdkRootRequest {
  * @param path - Full path to the project directory
  */
 export function loadWorkspaceApi(directory: string) {
+  const desktopApi = getOptionalDesktopApi()
+  if (desktopApi?.commands) {
+    return desktopApi.commands.execute({
+      cmd: 'load_workspace',
+      data: { directory },
+      source: 'button',
+    }) as unknown as Promise<WorkspaceResponse>
+  }
+
   return alovaInstance.Post<WorkspaceResponse>('/api/workspace/load_workspace', {
     cmd: CMDEnum.load_workspace,
     data: {
@@ -93,18 +103,28 @@ export function createWorkspaceApi(
     filelist?: string
   }
 ) {
+  const data = {
+    directory: options?.directory || '',
+    pdk: options?.pdk || '',
+    parameters: options.parameters || {},
+    origin_def: options.origin_def || '',
+    origin_verilog: options.origin_verilog || '',
+    rtl_list: options.rtl_list || [],
+    pdk_root: options.pdk_root || '',
+    filelist: options.filelist || ''
+  }
+  const desktopApi = getOptionalDesktopApi()
+  if (desktopApi?.commands) {
+    return desktopApi.commands.execute({
+      cmd: 'create_workspace',
+      data,
+      source: 'button',
+    }) as unknown as Promise<WorkspaceResponse>
+  }
+
   return alovaInstance.Post<WorkspaceResponse>('/api/workspace/create_workspace', {
     cmd: CMDEnum.create_workspace,
-    data: {
-      directory: options?.directory || '',
-      pdk: options?.pdk || '',
-      parameters: options.parameters || {},
-      origin_def: options.origin_def || '',
-      origin_verilog: options.origin_verilog || '',
-      rtl_list: options.rtl_list || [],
-      pdk_root: options.pdk_root || ''  ,
-      filelist: options.filelist || ''
-    }
+    data
   } as CreateWorkspaceRequest)
 }
 
@@ -112,12 +132,22 @@ export function setPdkRootApi(options: {
   pdk?: string
   pdk_root?: string
 }) {
+  const data = {
+    pdk: options?.pdk || '',
+    pdk_root: options?.pdk_root || '',
+  }
+  const desktopApi = getOptionalDesktopApi()
+  if (desktopApi?.commands) {
+    return desktopApi.commands.execute({
+      cmd: 'set_pdk_root',
+      data,
+      source: 'button',
+    }) as unknown as Promise<SetPdkRootResponse>
+  }
+
   return alovaInstance.Post<SetPdkRootResponse>('/api/workspace/set_pdk_root', {
     cmd: CMDEnum.set_pdk_root,
-    data: {
-      pdk: options?.pdk || '',
-      pdk_root: options?.pdk_root || '',
-    },
+    data,
   } as SetPdkRootRequest)
 }
 

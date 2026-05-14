@@ -5,12 +5,17 @@ import {
 } from '../../../../packages/shared/src/constants/ipcChannels.ts'
 import type {
   DesktopApi,
+  DesktopCommandEvent,
+  DesktopCommandRequest,
   DesktopDirectoryDialogOptions,
   DesktopFileDialogOptions,
   DesktopMenuEventId,
   DesktopProjectFileChangedEvent,
   DesktopProjectLogTailEvent,
   DesktopSettingsValue,
+  DesktopShellDataEvent,
+  DesktopShellExitEvent,
+  DesktopShellSessionOptions,
 } from '@ecos-studio/shared'
 
 function isMissingFileError(error: unknown): boolean {
@@ -212,6 +217,41 @@ const desktopApi: DesktopApi = {
         throw error
       }
     },
+  },
+  commands: {
+    execute: (request: DesktopCommandRequest) =>
+      invokeDesktop(desktopApiIpcChannels.commandsExecute, request),
+    onEvent: (listener) =>
+      subscribeToDesktopEvent(
+        desktopApiEventChannels.commandEvent,
+        (_event, payload: unknown) => {
+          listener(payload as DesktopCommandEvent)
+        },
+      ),
+  },
+  shell: {
+    createSession: (options: DesktopShellSessionOptions) =>
+      invokeDesktop(desktopApiIpcChannels.shellCreateSession, options),
+    write: (sessionId, data) =>
+      invokeDesktop(desktopApiIpcChannels.shellWrite, sessionId, data),
+    resize: (sessionId, cols, rows) =>
+      invokeDesktop(desktopApiIpcChannels.shellResize, sessionId, cols, rows),
+    kill: (sessionId) =>
+      invokeDesktop(desktopApiIpcChannels.shellKill, sessionId),
+    onData: (listener) =>
+      subscribeToDesktopEvent(
+        desktopApiEventChannels.shellData,
+        (_event, payload: unknown) => {
+          listener(payload as DesktopShellDataEvent)
+        },
+      ),
+    onExit: (listener) =>
+      subscribeToDesktopEvent(
+        desktopApiEventChannels.shellExit,
+        (_event, payload: unknown) => {
+          listener(payload as DesktopShellExitEvent)
+        },
+      ),
   },
 }
 

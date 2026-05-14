@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { desktopApiIpcChannels } from '@ecos-studio/shared'
+import { desktopApiEventChannels, desktopApiIpcChannels } from '@ecos-studio/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { fromWebContents, openExternal, showOpenDialog } = vi.hoisted(() => ({
@@ -69,6 +69,16 @@ function registerHandlers() {
     appInfoService: {
       getVersions: vi.fn(),
     },
+    commandBusService: {
+      execute: vi.fn(),
+      onEvent: vi.fn(),
+    },
+    shellService: {
+      createSession: vi.fn(),
+      kill: vi.fn(),
+      resize: vi.fn(),
+      write: vi.fn(),
+    },
   }
 
   registerIpc({
@@ -137,6 +147,11 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.tilesStatus,
       desktopApiIpcChannels.systemOpenExternal,
+      desktopApiIpcChannels.commandsExecute,
+      desktopApiIpcChannels.shellCreateSession,
+      desktopApiIpcChannels.shellWrite,
+      desktopApiIpcChannels.shellResize,
+      desktopApiIpcChannels.shellKill,
       desktopApiIpcChannels.appGetVersions,
     ].sort())
   })
@@ -494,6 +509,222 @@ describe('registerIpc', () => {
 
     expect(services.tileService.getStatus).toHaveBeenCalledWith(request)
     expect(services.tileService.generate).not.toHaveBeenCalled()
+  })
+
+  it('executes desktop commands through the command bus', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    const result = {
+      cmd: 'run_step',
+      data: { state: 'Success' },
+      message: ['ok'],
+      ok: true,
+      response: 'success',
+    }
+    services.commandBusService.execute.mockResolvedValue(result)
+    const request = {
+      cmd: 'run_step',
+      data: { step: 'place', rerun: false },
+      source: 'terminal',
+    }
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.commandsExecute)?.(event, request),
+    ).resolves.toEqual(result)
+
+    expect(services.commandBusService.execute).toHaveBeenCalledWith(
+      request,
+      expect.any(Function),
+    )
+  })
+
+  it('forwards command events to the requesting renderer when it is alive', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    const commandEvent = {
+      cmd: 'run_step',
+      jobId: 'job-1',
+      stream: 'system',
+      text: 'started',
+      type: 'started',
+    }
+    services.commandBusService.execute.mockImplementation(async (_request, listener) => {
+      listener(commandEvent)
+      return {
+        cmd: 'run_step',
+        data: {},
+        message: [],
+        ok: true,
+        response: 'success',
+      }
+    })
+    const request = {
+      cmd: 'run_step',
+      data: { step: 'place', rerun: false },
+      source: 'terminal',
+    }
+
+    await handlers.get(desktopApiIpcChannels.commandsExecute)?.({ sender }, request)
+
+    expect(sender.send).toHaveBeenCalledWith(
+      desktopApiEventChannels.commandEvent,
+      expect.objectContaining({ jobId: 'job-1', type: 'started' }),
+    )
+  })
+
+  it('does not send command events to destroyed renderer windows', async () => {
+    const { handlers, services } = registerHandlers()
+    const destroyedSender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => true),
+      send: vi.fn(),
+    })
+    services.commandBusService.execute.mockImplementation(async (_request, listener) => {
+      listener({
+        cmd: 'run_step',
+        jobId: 'job-1',
+        type: 'started',
+      })
+      return {
+        cmd: 'run_step',
+        data: {},
+        message: [],
+        ok: true,
+        response: 'success',
+      }
+    })
+
+    await handlers.get(desktopApiIpcChannels.commandsExecute)?.(
+      { sender: destroyedSender },
+      {
+        cmd: 'run_step',
+        data: { step: 'place', rerun: false },
+        source: 'terminal',
+      },
+    )
+
+    expect(destroyedSender.send).not.toHaveBeenCalled()
+  })
+
+  it('creates shell sessions and forwards shell output to the requesting renderer', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    const session = {
+      pid: 4242,
+      sessionId: 'shell-1',
+      shell: '/bin/zsh',
+    }
+    services.shellService.createSession.mockImplementation(async (_options, listener) => {
+      listener({
+        data: 'ready\r\n',
+        sessionId: 'shell-1',
+      })
+      listener({
+        exitCode: 0,
+        sessionId: 'shell-1',
+      })
+      return session
+    })
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.shellCreateSession)?.(
+        { sender },
+        { cols: 120, rows: 32 },
+      ),
+    ).resolves.toEqual(session)
+
+    expect(services.shellService.createSession).toHaveBeenCalledWith(
+      { cols: 120, rows: 32 },
+      expect.any(Function),
+    )
+    expect(sender.send).toHaveBeenCalledWith(
+      desktopApiEventChannels.shellData,
+      {
+        data: 'ready\r\n',
+        sessionId: 'shell-1',
+      },
+    )
+    expect(sender.send).toHaveBeenCalledWith(
+      desktopApiEventChannels.shellExit,
+      {
+        exitCode: 0,
+        sessionId: 'shell-1',
+      },
+    )
+    expect(sender.listenerCount('destroyed')).toBe(1)
+  })
+
+  it('does not forward shell events after the requesting renderer is destroyed', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => true),
+      send: vi.fn(),
+    })
+    services.shellService.createSession.mockImplementation(async (_options, listener) => {
+      listener({
+        data: 'hidden',
+        sessionId: 'shell-1',
+      })
+      return {
+        pid: 4242,
+        sessionId: 'shell-1',
+        shell: '/bin/zsh',
+      }
+    })
+
+    await handlers.get(desktopApiIpcChannels.shellCreateSession)?.(
+      { sender },
+      { cols: 80, rows: 24 },
+    )
+
+    expect(sender.send).not.toHaveBeenCalled()
+  })
+
+  it('kills shell sessions when the renderer is destroyed or closes them explicitly', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    services.shellService.createSession.mockResolvedValue({
+      pid: 4242,
+      sessionId: 'shell-1',
+      shell: '/bin/zsh',
+    })
+
+    await handlers.get(desktopApiIpcChannels.shellCreateSession)?.(
+      { sender },
+      { cols: 80, rows: 24 },
+    )
+    sender.emit('destroyed')
+
+    await vi.waitFor(() => {
+      expect(services.shellService.kill).toHaveBeenCalledWith('shell-1')
+    })
+
+    await handlers.get(desktopApiIpcChannels.shellKill)?.(
+      { sender },
+      'shell-1',
+    )
+
+    expect(services.shellService.kill).toHaveBeenCalledTimes(1)
+    expect(sender.listenerCount('destroyed')).toBe(0)
+  })
+
+  it('delegates shell writes and resizes to the shell service', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+
+    await handlers.get(desktopApiIpcChannels.shellWrite)?.(event, 'shell-1', 'pwd\r')
+    await handlers.get(desktopApiIpcChannels.shellResize)?.(event, 'shell-1', 100, 28)
+
+    expect(services.shellService.write).toHaveBeenCalledWith('shell-1', 'pwd\r')
+    expect(services.shellService.resize).toHaveBeenCalledWith('shell-1', 100, 28)
   })
 
   it('logs missing project binary files in a single normalized warning before returning an IPC error result', async () => {
