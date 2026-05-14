@@ -9,7 +9,7 @@ describe('ECOSTerminal', () => {
     expect(terminalSource).toContain("from '@xterm/addon-search'")
   })
 
-  it('starts as a node-pty shell terminal instead of ECOS command mode', () => {
+  it('starts as a node-pty shell terminal', () => {
     expect(terminalSource).toContain('startShellSession')
     expect(terminalSource).toContain("desktopApi.shell.createSession")
     expect(terminalSource).toContain("desktopApi.shell.write")
@@ -17,22 +17,19 @@ describe('ECOSTerminal', () => {
     expect(terminalSource).toContain("desktopApi.shell.kill")
     expect(terminalSource).toContain("desktopApi.shell.onData")
     expect(terminalSource).toContain("desktopApi.shell.onExit")
-    expect(terminalSource).not.toContain('parseEcosCommand')
-    expect(terminalSource).not.toContain('desktopApi.commands.execute')
+    expect(terminalSource).not.toContain('desktopApi.cli.execute')
   })
 
-  it('removes the ECOS/Shell mode toggle', () => {
+  it('does not expose a terminal mode toggle', () => {
     expect(terminalSource).not.toContain('terminalMode')
     expect(terminalSource).not.toContain('terminal-mode-toggle')
     expect(terminalSource).not.toContain('switchTerminalMode')
-    expect(terminalSource).not.toContain('ECOS command mode')
   })
 
   it('starts the shell when the terminal is first expanded', () => {
     expect(terminalSource).toMatch(
       /watch\(\s*\(\) => props\.expanded,[\s\S]*if \(expanded\) \{[\s\S]*await startShellSession\(\)/,
     )
-    expect(terminalSource).not.toContain("const prompt = 'ecos> '")
   })
 
   it('overlays the app content instead of taking flex layout space', () => {

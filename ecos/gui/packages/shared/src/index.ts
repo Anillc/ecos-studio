@@ -20,13 +20,13 @@ export type {
   VersionInfo,
 } from './contracts/desktopApi.ts';
 export type {
-  DesktopCommandEvent,
-  DesktopCommandName,
-  DesktopCommandRequest,
-  DesktopCommandResponse,
-  DesktopCommandResult,
-  DesktopCommandSource,
-} from './contracts/desktopCommands.ts';
+  DesktopCliCommandEvent,
+  DesktopCliCommandName,
+  DesktopCliCommandRequest,
+  DesktopCliCommandResponse,
+  DesktopCliCommandResult,
+  DesktopCliCommandSource,
+} from './contracts/desktopCli.ts';
 export type {
   DesktopShellDataEvent,
   DesktopShellExitEvent,

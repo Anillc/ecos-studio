@@ -5,8 +5,8 @@ import {
 } from '../../../../packages/shared/src/constants/ipcChannels.ts'
 import type {
   DesktopApi,
-  DesktopCommandEvent,
-  DesktopCommandRequest,
+  DesktopCliCommandEvent,
+  DesktopCliCommandRequest,
   DesktopDirectoryDialogOptions,
   DesktopFileDialogOptions,
   DesktopMenuEventId,
@@ -218,14 +218,14 @@ const desktopApi: DesktopApi = {
       }
     },
   },
-  commands: {
-    execute: (request: DesktopCommandRequest) =>
-      invokeDesktop(desktopApiIpcChannels.commandsExecute, request),
+  cli: {
+    execute: (request: DesktopCliCommandRequest) =>
+      invokeDesktop(desktopApiIpcChannels.cliExecute, request),
     onEvent: (listener) =>
       subscribeToDesktopEvent(
-        desktopApiEventChannels.commandEvent,
+        desktopApiEventChannels.cliEvent,
         (_event, payload: unknown) => {
-          listener(payload as DesktopCommandEvent)
+          listener(payload as DesktopCliCommandEvent)
         },
       ),
   },

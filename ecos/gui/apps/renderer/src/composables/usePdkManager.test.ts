@@ -91,7 +91,7 @@ const desktopBridge = {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
     getStatus: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
   },
-  commands: {
+  cli: {
     execute: async (request) => ({
       cmd: request.cmd,
       data: {},

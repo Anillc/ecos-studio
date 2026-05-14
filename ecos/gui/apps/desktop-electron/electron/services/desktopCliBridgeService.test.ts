@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { DesktopCommandResult } from '@ecos-studio/shared'
-import { CommandBusService } from './commandBusService'
+import type { DesktopCliCommandResult } from '@ecos-studio/shared'
+import { DesktopCliBridgeService } from './desktopCliBridgeService'
 
-function result(overrides: Partial<DesktopCommandResult> = {}): DesktopCommandResult {
+function result(overrides: Partial<DesktopCliCommandResult> = {}): DesktopCliCommandResult {
   return {
     cmd: 'run_step',
     data: {},
@@ -13,9 +13,9 @@ function result(overrides: Partial<DesktopCommandResult> = {}): DesktopCommandRe
   }
 }
 
-describe('CommandBusService', () => {
+describe('DesktopCliBridgeService', () => {
   it('rejects unknown command names', async () => {
-    const service = new CommandBusService({
+    const service = new DesktopCliBridgeService({
       adapter: { execute: vi.fn() },
     })
 
@@ -41,7 +41,7 @@ describe('CommandBusService', () => {
         response: 'success',
       })),
     }
-    const service = new CommandBusService({ adapter })
+    const service = new DesktopCliBridgeService({ adapter })
     service.onEvent(listener)
 
     await expect(service.execute({
@@ -69,9 +69,9 @@ describe('CommandBusService', () => {
 
   it('blocks overlapping long-running ECC commands in v1', async () => {
     let release!: () => void
-    const service = new CommandBusService({
+    const service = new DesktopCliBridgeService({
       adapter: {
-        execute: vi.fn(() => new Promise<DesktopCommandResult>((resolve) => {
+        execute: vi.fn(() => new Promise<DesktopCliCommandResult>((resolve) => {
           release = () => resolve(result({
             cmd: 'rtl2gds',
             data: {},
@@ -105,7 +105,7 @@ describe('CommandBusService', () => {
 
   it('emits failed events when the adapter throws', async () => {
     const listener = vi.fn()
-    const service = new CommandBusService({
+    const service = new DesktopCliBridgeService({
       adapter: {
         execute: vi.fn(async () => {
           throw new Error('adapter unavailable')

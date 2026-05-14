@@ -30,7 +30,7 @@ export const desktopApiIpcChannels = {
   workspaceUnwatchProjectFile: 'workspace:unwatch-project-file',
   tilesGenerate: 'tiles:generate',
   tilesStatus: 'tiles:status',
-  commandsExecute: 'commands:execute',
+  cliExecute: 'cli:execute',
   shellCreateSession: 'shell:create-session',
   shellWrite: 'shell:write',
   shellResize: 'shell:resize',
@@ -45,7 +45,7 @@ export const desktopApiEventChannels = {
   windowMaximizedChanged: 'window:maximized-changed',
   workspaceFileChanged: 'workspace:file-changed',
   workspaceLogTail: 'workspace:log-tail',
-  commandEvent: 'commands:event',
+  cliEvent: 'cli:event',
   shellData: 'shell:data',
   shellExit: 'shell:exit',
 } as const

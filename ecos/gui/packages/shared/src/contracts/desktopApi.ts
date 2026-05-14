@@ -1,9 +1,9 @@
 import type { TileGenerationRequest, TileGenerationResult } from '../types/tile.ts'
 import type {
-  DesktopCommandEvent,
-  DesktopCommandRequest,
-  DesktopCommandResult,
-} from './desktopCommands.ts'
+  DesktopCliCommandEvent,
+  DesktopCliCommandRequest,
+  DesktopCliCommandResult,
+} from './desktopCli.ts'
 import type {
   DesktopEventUnsubscribe,
   DesktopMenuEventId,
@@ -149,9 +149,9 @@ export interface DesktopApi {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
     getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
   }
-  commands: {
-    execute(request: DesktopCommandRequest): Promise<DesktopCommandResult>
-    onEvent(listener: (event: DesktopCommandEvent) => void): DesktopEventUnsubscribe
+  cli: {
+    execute(request: DesktopCliCommandRequest): Promise<DesktopCliCommandResult>
+    onEvent(listener: (event: DesktopCliCommandEvent) => void): DesktopEventUnsubscribe
   }
   shell: {
     createSession(options: DesktopShellSessionOptions): Promise<DesktopShellSession>

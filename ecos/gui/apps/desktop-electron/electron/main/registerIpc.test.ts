@@ -69,7 +69,7 @@ function registerHandlers() {
     appInfoService: {
       getVersions: vi.fn(),
     },
-    commandBusService: {
+    desktopCliBridgeService: {
       execute: vi.fn(),
       onEvent: vi.fn(),
     },
@@ -147,7 +147,7 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.tilesStatus,
       desktopApiIpcChannels.systemOpenExternal,
-      desktopApiIpcChannels.commandsExecute,
+      desktopApiIpcChannels.cliExecute,
       desktopApiIpcChannels.shellCreateSession,
       desktopApiIpcChannels.shellWrite,
       desktopApiIpcChannels.shellResize,
@@ -511,7 +511,7 @@ describe('registerIpc', () => {
     expect(services.tileService.generate).not.toHaveBeenCalled()
   })
 
-  it('executes desktop commands through the command bus', async () => {
+  it('executes desktop commands through the CLI Bridge', async () => {
     const { handlers, services } = registerHandlers()
     const event = { sender: { id: 'web-contents' } }
     const result = {
@@ -521,7 +521,7 @@ describe('registerIpc', () => {
       ok: true,
       response: 'success',
     }
-    services.commandBusService.execute.mockResolvedValue(result)
+    services.desktopCliBridgeService.execute.mockResolvedValue(result)
     const request = {
       cmd: 'run_step',
       data: { step: 'place', rerun: false },
@@ -529,10 +529,10 @@ describe('registerIpc', () => {
     }
 
     await expect(
-      handlers.get(desktopApiIpcChannels.commandsExecute)?.(event, request),
+      handlers.get(desktopApiIpcChannels.cliExecute)?.(event, request),
     ).resolves.toEqual(result)
 
-    expect(services.commandBusService.execute).toHaveBeenCalledWith(
+    expect(services.desktopCliBridgeService.execute).toHaveBeenCalledWith(
       request,
       expect.any(Function),
     )
@@ -544,15 +544,15 @@ describe('registerIpc', () => {
       isDestroyed: vi.fn(() => false),
       send: vi.fn(),
     })
-    const commandEvent = {
+    const cliEvent = {
       cmd: 'run_step',
       jobId: 'job-1',
       stream: 'system',
       text: 'started',
       type: 'started',
     }
-    services.commandBusService.execute.mockImplementation(async (_request, listener) => {
-      listener(commandEvent)
+    services.desktopCliBridgeService.execute.mockImplementation(async (_request, listener) => {
+      listener(cliEvent)
       return {
         cmd: 'run_step',
         data: {},
@@ -567,10 +567,10 @@ describe('registerIpc', () => {
       source: 'terminal',
     }
 
-    await handlers.get(desktopApiIpcChannels.commandsExecute)?.({ sender }, request)
+    await handlers.get(desktopApiIpcChannels.cliExecute)?.({ sender }, request)
 
     expect(sender.send).toHaveBeenCalledWith(
-      desktopApiEventChannels.commandEvent,
+      desktopApiEventChannels.cliEvent,
       expect.objectContaining({ jobId: 'job-1', type: 'started' }),
     )
   })
@@ -581,7 +581,7 @@ describe('registerIpc', () => {
       isDestroyed: vi.fn(() => true),
       send: vi.fn(),
     })
-    services.commandBusService.execute.mockImplementation(async (_request, listener) => {
+    services.desktopCliBridgeService.execute.mockImplementation(async (_request, listener) => {
       listener({
         cmd: 'run_step',
         jobId: 'job-1',
@@ -596,7 +596,7 @@ describe('registerIpc', () => {
       }
     })
 
-    await handlers.get(desktopApiIpcChannels.commandsExecute)?.(
+    await handlers.get(desktopApiIpcChannels.cliExecute)?.(
       { sender: destroyedSender },
       {
         cmd: 'run_step',

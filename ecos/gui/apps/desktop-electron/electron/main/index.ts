@@ -11,8 +11,8 @@ import {
   getElectronLatestMainLogFile,
   getElectronMainLogFile,
 } from '../services/apiServerService'
-import { ApiCommandAdapter } from '../services/apiCommandAdapter'
-import { CommandBusService } from '../services/commandBusService'
+import { ApiCliAdapter } from '../services/apiCliAdapter'
+import { DesktopCliBridgeService } from '../services/desktopCliBridgeService'
 import { configureElectronLoggerFile, electronLogger } from '../services/logger'
 import { registerApplicationMenu } from '../services/menuService'
 import { ProjectScopeService } from '../services/projectScopeService'
@@ -27,7 +27,7 @@ let isShuttingDown = false
 let services:
   | {
       apiServerService: ApiServerService
-      commandBusService: CommandBusService
+      desktopCliBridgeService: DesktopCliBridgeService
       settingsStore: SettingsStore
       shellService: ShellPtyService
       tileService: TileService
@@ -82,11 +82,11 @@ function getDesktopServices() {
     apiPortProvider: apiServerService,
     projectScopeProvider: projectScopeService,
   })
-  const commandAdapter = new ApiCommandAdapter({
+  const apiCliAdapter = new ApiCliAdapter({
     portProvider: apiServerService,
   })
-  const commandBusService = new CommandBusService({
-    adapter: commandAdapter,
+  const desktopCliBridgeService = new DesktopCliBridgeService({
+    adapter: apiCliAdapter,
   })
   const shellService = new ShellPtyService()
   const tileService = new TileService({
@@ -95,7 +95,7 @@ function getDesktopServices() {
 
   services = {
     apiServerService,
-    commandBusService,
+    desktopCliBridgeService,
     settingsStore,
     shellService,
     tileService,
@@ -111,7 +111,7 @@ async function launchMainWindow(): Promise<void> {
   if (!ipcRegistered) {
     registerIpc(undefined, {
       appInfoService: desktopServices.apiServerService,
-      commandBusService: desktopServices.commandBusService,
+      desktopCliBridgeService: desktopServices.desktopCliBridgeService,
       settingsStore: desktopServices.settingsStore,
       shellService: desktopServices.shellService,
       tileService: desktopServices.tileService,

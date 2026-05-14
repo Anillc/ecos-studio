@@ -1,12 +1,12 @@
 import type {
-  DesktopCommandName,
-  DesktopCommandRequest,
-  DesktopCommandResult,
+  DesktopCliCommandName,
+  DesktopCliCommandRequest,
+  DesktopCliCommandResult,
 } from '@ecos-studio/shared'
 
 const API_HOST = '127.0.0.1'
 
-const commandEndpointByName: Partial<Record<DesktopCommandName, string>> = {
+const cliEndpointByName: Partial<Record<DesktopCliCommandName, string>> = {
   create_workspace: '/api/workspace/create_workspace',
   get_info: '/api/workspace/get_info',
   home_page: '/api/workspace/get_home_page',
@@ -16,13 +16,13 @@ const commandEndpointByName: Partial<Record<DesktopCommandName, string>> = {
   set_pdk_root: '/api/workspace/set_pdk_root',
 }
 
-export interface ApiCommandPortProvider {
+export interface ApiCliPortProvider {
   getPort(): Promise<number>
 }
 
-export interface ApiCommandAdapterOptions {
+export interface ApiCliAdapterOptions {
   fetch?: typeof fetch
-  portProvider: ApiCommandPortProvider
+  portProvider: ApiCliPortProvider
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -42,9 +42,9 @@ function readMessage(value: unknown): string[] {
 }
 
 function normalizeResult(
-  request: DesktopCommandRequest,
+  request: DesktopCliCommandRequest,
   payload: unknown,
-): DesktopCommandResult {
+): DesktopCliCommandResult {
   const record = readRecord(payload)
   const response = record.response === 'success'
     || record.response === 'failed'
@@ -52,7 +52,7 @@ function normalizeResult(
     || record.response === 'warning'
     ? record.response
     : 'error'
-  const cmd = typeof record.cmd === 'string' ? record.cmd as DesktopCommandName : request.cmd
+  const cmd = typeof record.cmd === 'string' ? record.cmd as DesktopCliCommandName : request.cmd
 
   return {
     cmd,
@@ -64,9 +64,9 @@ function normalizeResult(
 }
 
 function createErrorResult(
-  request: DesktopCommandRequest,
+  request: DesktopCliCommandRequest,
   message: string,
-): DesktopCommandResult {
+): DesktopCliCommandResult {
   return {
     cmd: request.cmd,
     data: {},
@@ -76,17 +76,17 @@ function createErrorResult(
   }
 }
 
-export class ApiCommandAdapter {
+export class ApiCliAdapter {
   private readonly fetchImpl: typeof fetch
-  private readonly portProvider: ApiCommandPortProvider
+  private readonly portProvider: ApiCliPortProvider
 
-  constructor(options: ApiCommandAdapterOptions) {
+  constructor(options: ApiCliAdapterOptions) {
     this.fetchImpl = options.fetch ?? fetch
     this.portProvider = options.portProvider
   }
 
-  async execute(request: DesktopCommandRequest): Promise<DesktopCommandResult> {
-    const endpoint = commandEndpointByName[request.cmd]
+  async execute(request: DesktopCliCommandRequest): Promise<DesktopCliCommandResult> {
+    const endpoint = cliEndpointByName[request.cmd]
 
     if (!endpoint) {
       return createErrorResult(request, `Command "${request.cmd}" cannot be sent to the API adapter.`)

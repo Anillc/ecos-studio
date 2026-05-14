@@ -1,22 +1,22 @@
 import { randomUUID } from 'node:crypto'
 import type {
-  DesktopCommandEvent,
-  DesktopCommandName,
-  DesktopCommandRequest,
-  DesktopCommandResult,
+  DesktopCliCommandEvent,
+  DesktopCliCommandName,
+  DesktopCliCommandRequest,
+  DesktopCliCommandResult,
 } from '@ecos-studio/shared'
 
-export interface CommandAdapter {
-  execute(request: DesktopCommandRequest): Promise<DesktopCommandResult>
+export interface DesktopCliAdapter {
+  execute(request: DesktopCliCommandRequest): Promise<DesktopCliCommandResult>
 }
 
-export type CommandEventListener = (event: DesktopCommandEvent) => void
+export type DesktopCliEventListener = (event: DesktopCliCommandEvent) => void
 
-export interface CommandBusServiceOptions {
-  adapter: CommandAdapter
+export interface DesktopCliBridgeServiceOptions {
+  adapter: DesktopCliAdapter
 }
 
-const supportedCommands = new Set<DesktopCommandName>([
+const supportedCommands = new Set<DesktopCliCommandName>([
   'help',
   'clear',
   'load_workspace',
@@ -28,22 +28,22 @@ const supportedCommands = new Set<DesktopCommandName>([
   'home_page',
 ])
 
-const longRunningCommands = new Set<DesktopCommandName>([
+const longRunningCommands = new Set<DesktopCliCommandName>([
   'create_workspace',
   'load_workspace',
   'run_step',
   'rtl2gds',
 ])
 
-function isSupportedCommand(cmd: string): cmd is DesktopCommandName {
-  return supportedCommands.has(cmd as DesktopCommandName)
+function isSupportedCommand(cmd: string): cmd is DesktopCliCommandName {
+  return supportedCommands.has(cmd as DesktopCliCommandName)
 }
 
 function createResult(
-  cmd: DesktopCommandName,
-  response: DesktopCommandResult['response'],
+  cmd: DesktopCliCommandName,
+  response: DesktopCliCommandResult['response'],
   message: string[],
-): DesktopCommandResult {
+): DesktopCliCommandResult {
   return {
     cmd,
     data: {},
@@ -53,16 +53,16 @@ function createResult(
   }
 }
 
-export class CommandBusService {
-  private readonly adapter: CommandAdapter
+export class DesktopCliBridgeService {
+  private readonly adapter: DesktopCliAdapter
   private activeLongRunningJobId: string | null = null
-  private readonly listeners = new Set<CommandEventListener>()
+  private readonly listeners = new Set<DesktopCliEventListener>()
 
-  constructor(options: CommandBusServiceOptions) {
+  constructor(options: DesktopCliBridgeServiceOptions) {
     this.adapter = options.adapter
   }
 
-  onEvent(listener: CommandEventListener): () => void {
+  onEvent(listener: DesktopCliEventListener): () => void {
     this.listeners.add(listener)
 
     return () => {
@@ -70,7 +70,7 @@ export class CommandBusService {
     }
   }
 
-  private emit(event: DesktopCommandEvent, listener?: CommandEventListener): void {
+  private emit(event: DesktopCliCommandEvent, listener?: DesktopCliEventListener): void {
     listener?.(event)
     for (const registeredListener of this.listeners) {
       registeredListener(event)
@@ -78,12 +78,12 @@ export class CommandBusService {
   }
 
   async execute(
-    request: DesktopCommandRequest,
-    listener?: CommandEventListener,
-  ): Promise<DesktopCommandResult> {
+    request: DesktopCliCommandRequest,
+    listener?: DesktopCliEventListener,
+  ): Promise<DesktopCliCommandResult> {
     if (!isSupportedCommand(request.cmd)) {
       return {
-        cmd: request.cmd as DesktopCommandName,
+        cmd: request.cmd as DesktopCliCommandName,
         data: {},
         message: [`Unknown command: ${request.cmd}`],
         ok: false,

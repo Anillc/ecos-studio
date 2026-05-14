@@ -9,9 +9,9 @@ import {
 import {
   desktopApiEventChannels,
   desktopApiIpcChannels,
-  type DesktopCommandEvent,
-  type DesktopCommandRequest,
-  type DesktopCommandResult,
+  type DesktopCliCommandEvent,
+  type DesktopCliCommandRequest,
+  type DesktopCliCommandResult,
   type DesktopProjectFileChangedEvent,
   type DesktopProjectLogTailEvent,
   type DesktopDirectoryDialogOptions,
@@ -101,11 +101,11 @@ export interface DesktopBridgeServices {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
     getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
   }
-  commandBusService: {
+  desktopCliBridgeService: {
     execute(
-      request: DesktopCommandRequest,
-      listener?: (event: DesktopCommandEvent) => void,
-    ): Promise<DesktopCommandResult>
+      request: DesktopCliCommandRequest,
+      listener?: (event: DesktopCliCommandEvent) => void,
+    ): Promise<DesktopCliCommandResult>
   }
   shellService: {
     createSession(
@@ -577,18 +577,18 @@ export function registerIpc(
   )
 
   handle(
-    desktopApiIpcChannels.commandsExecute,
+    desktopApiIpcChannels.cliExecute,
     async (event, request) => {
       const sender = event.sender
       const isSenderDestroyed = (): boolean =>
         typeof sender.isDestroyed === 'function' ? sender.isDestroyed() : false
 
-      return await services.commandBusService.execute(
-        request as DesktopCommandRequest,
+      return await services.desktopCliBridgeService.execute(
+        request as DesktopCliCommandRequest,
         (payload) => {
           if (isSenderDestroyed()) return
           if (typeof sender.send === 'function') {
-            sender.send(desktopApiEventChannels.commandEvent, payload)
+            sender.send(desktopApiEventChannels.cliEvent, payload)
           }
         },
       )

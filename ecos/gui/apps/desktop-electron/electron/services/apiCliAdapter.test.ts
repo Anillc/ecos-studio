@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ApiCommandAdapter } from './apiCommandAdapter'
+import { ApiCliAdapter } from './apiCliAdapter'
 
-describe('ApiCommandAdapter', () => {
+describe('ApiCliAdapter', () => {
   it('maps run_step to the current FastAPI endpoint shape', async () => {
     const fetchMock = vi.fn(async () => ({
       json: async () => ({
@@ -13,7 +13,7 @@ describe('ApiCommandAdapter', () => {
       ok: true,
       status: 200,
     }))
-    const adapter = new ApiCommandAdapter({
+    const adapter = new ApiCliAdapter({
       fetch: fetchMock as unknown as typeof fetch,
       portProvider: { getPort: vi.fn(async () => 9123) },
     })
@@ -44,7 +44,7 @@ describe('ApiCommandAdapter', () => {
   })
 
   it('normalizes failed API responses', async () => {
-    const adapter = new ApiCommandAdapter({
+    const adapter = new ApiCliAdapter({
       fetch: vi.fn(async () => ({
         json: async () => ({
           cmd: 'rtl2gds',
@@ -71,7 +71,7 @@ describe('ApiCommandAdapter', () => {
   })
 
   it('normalizes network and HTTP errors', async () => {
-    const adapter = new ApiCommandAdapter({
+    const adapter = new ApiCliAdapter({
       fetch: vi.fn(async () => ({
         json: async () => ({ detail: 'bad request' }),
         ok: false,

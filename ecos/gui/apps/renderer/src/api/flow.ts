@@ -15,8 +15,8 @@ export interface GetInfoResponse {
 
 export function getInfoApi(request: RequestData<GetInfoRequest>) {
   const desktopApi = getOptionalDesktopApi()
-  if (desktopApi?.commands) {
-    return desktopApi.commands.execute({
+  if (desktopApi?.cli) {
+    return desktopApi.cli.execute({
       cmd: 'get_info',
       data: request.data as unknown as Record<string, unknown>,
       source: 'button',
@@ -38,8 +38,8 @@ export interface RTL2GDSResponse {
 
 export function rtl2gdsApi(request: RequestData<RTL2GDSRequest>) {
   const desktopApi = getOptionalDesktopApi()
-  if (desktopApi?.commands) {
-    return desktopApi.commands.execute({
+  if (desktopApi?.cli) {
+    return desktopApi.cli.execute({
       cmd: 'rtl2gds',
       data: request.data as unknown as Record<string, unknown>,
       source: 'button',
@@ -61,8 +61,8 @@ export interface RunStepResponse {
 
 export function runStepApi(request: RequestData<RunStepRequest>) {
   const desktopApi = getOptionalDesktopApi()
-  if (desktopApi?.commands) {
-    return desktopApi.commands.execute({
+  if (desktopApi?.cli) {
+    return desktopApi.cli.execute({
       cmd: 'run_step',
       data: request.data as unknown as Record<string, unknown>,
       source: 'button',
@@ -83,8 +83,8 @@ export interface HomePageResponse {
  */
 export function getHomePageApi() {
   const desktopApi = getOptionalDesktopApi()
-  if (desktopApi?.commands) {
-    return desktopApi.commands.execute({
+  if (desktopApi?.cli) {
+    return desktopApi.cli.execute({
       cmd: 'home_page',
       data: {},
       source: 'button',

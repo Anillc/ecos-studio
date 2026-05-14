@@ -69,8 +69,8 @@ export interface SetPdkRootRequest {
  */
 export function loadWorkspaceApi(directory: string) {
   const desktopApi = getOptionalDesktopApi()
-  if (desktopApi?.commands) {
-    return desktopApi.commands.execute({
+  if (desktopApi?.cli) {
+    return desktopApi.cli.execute({
       cmd: 'load_workspace',
       data: { directory },
       source: 'button',
@@ -114,8 +114,8 @@ export function createWorkspaceApi(
     filelist: options.filelist || ''
   }
   const desktopApi = getOptionalDesktopApi()
-  if (desktopApi?.commands) {
-    return desktopApi.commands.execute({
+  if (desktopApi?.cli) {
+    return desktopApi.cli.execute({
       cmd: 'create_workspace',
       data,
       source: 'button',
@@ -137,8 +137,8 @@ export function setPdkRootApi(options: {
     pdk_root: options?.pdk_root || '',
   }
   const desktopApi = getOptionalDesktopApi()
-  if (desktopApi?.commands) {
-    return desktopApi.commands.execute({
+  if (desktopApi?.cli) {
+    return desktopApi.cli.execute({
       cmd: 'set_pdk_root',
       data,
       source: 'button',
