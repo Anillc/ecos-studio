@@ -3,6 +3,7 @@
  */
 
 import { alovaInstance } from './client'
+import { toDesktopCliData } from './desktopPayload'
 import { CMDEnum } from './type'
 import { getOptionalDesktopApi } from '@/platform/desktop'
 
@@ -103,7 +104,7 @@ export function createWorkspaceApi(
     filelist?: string
   }
 ) {
-  const data = {
+  const data = toDesktopCliData({
     directory: options?.directory || '',
     pdk: options?.pdk || '',
     parameters: options.parameters || {},
@@ -112,7 +113,7 @@ export function createWorkspaceApi(
     rtl_list: options.rtl_list || [],
     pdk_root: options.pdk_root || '',
     filelist: options.filelist || ''
-  }
+  })
   const desktopApi = getOptionalDesktopApi()
   if (desktopApi?.cli) {
     return desktopApi.cli.execute({
@@ -132,10 +133,10 @@ export function setPdkRootApi(options: {
   pdk?: string
   pdk_root?: string
 }) {
-  const data = {
+  const data = toDesktopCliData({
     pdk: options?.pdk || '',
     pdk_root: options?.pdk_root || '',
-  }
+  })
   const desktopApi = getOptionalDesktopApi()
   if (desktopApi?.cli) {
     return desktopApi.cli.execute({

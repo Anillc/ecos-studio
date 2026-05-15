@@ -548,8 +548,8 @@ describe('registerIpc', () => {
       cmd: 'run_step',
       jobId: 'job-1',
       stream: 'system',
-      text: 'started',
-      type: 'started',
+      text: 'queued',
+      type: 'queued',
     }
     services.desktopCliBridgeService.execute.mockImplementation(async (_request, listener) => {
       listener(cliEvent)
@@ -571,7 +571,7 @@ describe('registerIpc', () => {
 
     expect(sender.send).toHaveBeenCalledWith(
       desktopApiEventChannels.cliEvent,
-      expect.objectContaining({ jobId: 'job-1', type: 'started' }),
+      expect.objectContaining({ jobId: 'job-1', type: 'queued' }),
     )
   })
 
@@ -585,7 +585,9 @@ describe('registerIpc', () => {
       listener({
         cmd: 'run_step',
         jobId: 'job-1',
-        type: 'started',
+        stream: 'stdout',
+        text: 'running',
+        type: 'stdout',
       })
       return {
         cmd: 'run_step',

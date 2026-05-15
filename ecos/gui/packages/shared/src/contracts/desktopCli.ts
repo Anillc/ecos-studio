@@ -9,9 +9,23 @@ export type DesktopCliCommandName =
   | 'get_info'
   | 'home_page'
 
-export type DesktopCliCommandSource = 'button' | 'terminal'
+export type DesktopCliCommandSource = 'button' | 'menu' | 'terminal' | 'test'
 
-export type DesktopCliCommandResponse = 'success' | 'failed' | 'error' | 'warning'
+export type DesktopCliCommandResponse =
+  | 'success'
+  | 'failed'
+  | 'error'
+  | 'warning'
+  | 'cancelled'
+
+export type DesktopCliCommandEventType =
+  | 'queued'
+  | 'started'
+  | 'stdout'
+  | 'stderr'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 
 export interface DesktopCliCommandRequest {
   cmd: DesktopCliCommandName
@@ -29,8 +43,8 @@ export interface DesktopCliCommandResult {
 
 export interface DesktopCliCommandEvent {
   jobId: string
-  type: 'started' | 'output' | 'completed' | 'failed'
   cmd: DesktopCliCommandName
+  type: DesktopCliCommandEventType
   stream?: 'stdout' | 'stderr' | 'system'
   text?: string
   result?: DesktopCliCommandResult

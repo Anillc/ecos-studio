@@ -30,7 +30,7 @@ describe('DesktopCliBridgeService', () => {
     })
   })
 
-  it('emits started and completed events around successful commands', async () => {
+  it('emits normalized runtime events around successful commands', async () => {
     const listener = vi.fn()
     const adapter = {
       execute: vi.fn(async () => result({
@@ -57,12 +57,20 @@ describe('DesktopCliBridgeService', () => {
     expect(listener).toHaveBeenNthCalledWith(1, expect.objectContaining({
       cmd: 'run_step',
       jobId: expect.any(String),
-      type: 'started',
+      stream: 'system',
+      type: 'queued',
     }))
     expect(listener).toHaveBeenNthCalledWith(2, expect.objectContaining({
       cmd: 'run_step',
       jobId: expect.any(String),
+      stream: 'system',
+      type: 'started',
+    }))
+    expect(listener).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      cmd: 'run_step',
+      jobId: expect.any(String),
       result: expect.objectContaining({ ok: true }),
+      stream: 'system',
       type: 'completed',
     }))
   })

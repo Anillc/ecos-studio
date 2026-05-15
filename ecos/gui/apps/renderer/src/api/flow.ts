@@ -1,4 +1,5 @@
 import { alovaInstance } from './client'
+import { toDesktopCliData } from './desktopPayload'
 import { CMDEnum, RequestData, ResponseData, StepEnum, InfoEnum, StateEnum } from './type';
 import { getOptionalDesktopApi } from '@/platform/desktop'
 
@@ -18,7 +19,7 @@ export function getInfoApi(request: RequestData<GetInfoRequest>) {
   if (desktopApi?.cli) {
     return desktopApi.cli.execute({
       cmd: 'get_info',
-      data: request.data as unknown as Record<string, unknown>,
+      data: toDesktopCliData(request.data as unknown as Record<string, unknown>),
       source: 'button',
     }) as unknown as Promise<ResponseData<GetInfoResponse>>
   }
@@ -41,7 +42,7 @@ export function rtl2gdsApi(request: RequestData<RTL2GDSRequest>) {
   if (desktopApi?.cli) {
     return desktopApi.cli.execute({
       cmd: 'rtl2gds',
-      data: request.data as unknown as Record<string, unknown>,
+      data: toDesktopCliData(request.data as unknown as Record<string, unknown>),
       source: 'button',
     }) as unknown as Promise<ResponseData<RTL2GDSResponse>>
   }
@@ -64,7 +65,7 @@ export function runStepApi(request: RequestData<RunStepRequest>) {
   if (desktopApi?.cli) {
     return desktopApi.cli.execute({
       cmd: 'run_step',
-      data: request.data as unknown as Record<string, unknown>,
+      data: toDesktopCliData(request.data as unknown as Record<string, unknown>),
       source: 'button',
     }) as unknown as Promise<ResponseData<RunStepResponse>>
   }
@@ -86,7 +87,7 @@ export function getHomePageApi() {
   if (desktopApi?.cli) {
     return desktopApi.cli.execute({
       cmd: 'home_page',
-      data: {},
+      data: toDesktopCliData({}),
       source: 'button',
     }) as unknown as Promise<ResponseData<HomePageResponse>>
   }

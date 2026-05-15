@@ -50,6 +50,7 @@ function normalizeResult(
     || record.response === 'failed'
     || record.response === 'error'
     || record.response === 'warning'
+    || record.response === 'cancelled'
     ? record.response
     : 'error'
   const cmd = typeof record.cmd === 'string' ? record.cmd as DesktopCliCommandName : request.cmd

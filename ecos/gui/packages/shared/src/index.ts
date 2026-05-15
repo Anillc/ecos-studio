@@ -21,6 +21,7 @@ export type {
 } from './contracts/desktopApi.ts';
 export type {
   DesktopCliCommandEvent,
+  DesktopCliCommandEventType,
   DesktopCliCommandName,
   DesktopCliCommandRequest,
   DesktopCliCommandResponse,
