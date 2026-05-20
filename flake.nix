@@ -6,7 +6,7 @@
     parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
-    ecc.url = "git+ssh://git@github.com/openecos-projects/ecc";
+    ecc.url = "github:openecos-projects/ecc";
     ecc.inputs.nixpkgs.follows = "nixpkgs";
   };
 
