@@ -60,7 +60,7 @@ describe('useSubflow runtime refresh', () => {
     testState.resolveWorkspaceStepInfoApi.mockReset()
 
     testState.resolveWorkspaceStepInfoApi.mockResolvedValue({
-      response: 'success',
+      response: 'available',
       info: {
         path: '/workspace/demo/Floorplan/subflow.json',
       },

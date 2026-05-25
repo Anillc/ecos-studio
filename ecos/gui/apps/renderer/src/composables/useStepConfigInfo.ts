@@ -120,11 +120,14 @@ export function useStepConfigInfo() {
       }
 
       if (response.response === 'missing') {
-        responseKind.value = 'warning'
         info.value = payload
-        if (payload && pickStepConfigPathFromInfo(payload)) {
+        const configPath = payload ? pickStepConfigPathFromInfo(payload) : undefined
+        if (payload && configPath) {
+          responseKind.value = 'warning'
           await loadStepConfigFileFromInfo(payload)
+          return
         }
+        responseKind.value = 'idle'
         return
       }
 
