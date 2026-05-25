@@ -127,6 +127,77 @@ describe('WorkspaceResourceService', () => {
     })
   })
 
+  it('exposes planned yosys resource keys in the index', async () => {
+    const root = await tempWorkspace()
+    await mkdir(join(root, 'home'), { recursive: true })
+    await writeJson(join(root, 'home', 'parameters.json'), {
+      Design: 'gcd',
+      'Top module': 'gcd',
+      PDK: 'ics55',
+    })
+    await writeJson(join(root, 'home', 'flow.json'), {
+      steps: [{ name: 'Synthesis', tool: 'yosys', state: 'Success', runtime: '', info: {} }],
+    })
+    await writeJson(join(root, 'home', 'home.json'), {})
+
+    const service = new WorkspaceResourceService({ projectScopeProvider: provider(root) })
+    const index = await service.getIndex()
+    const resources = index.flow.steps[0].resources
+
+    expect(resources.output.fixed_verilog).toMatchObject({
+      path: join(root, 'Synthesis_yosys', 'output', 'gcd_Synthesis_fixed.v'),
+      kind: 'output',
+    })
+    expect(resources.output.fixedVerilog).toBeUndefined()
+    expect(resources.feature.generic_stat).toMatchObject({
+      path: join(root, 'Synthesis_yosys', 'feature', 'Synthesis_generic_stat.json'),
+      kind: 'analysis',
+    })
+    expect(resources.feature.genericStat).toBeUndefined()
+  })
+
+  it('resolves yosys analysis from planned metrics, feature, and report paths', async () => {
+    const root = await tempWorkspace()
+    await mkdir(join(root, 'home'), { recursive: true })
+    await mkdir(join(root, 'Synthesis_yosys', 'analysis'), { recursive: true })
+    await mkdir(join(root, 'Synthesis_yosys', 'feature'), { recursive: true })
+    await mkdir(join(root, 'Synthesis_yosys', 'report'), { recursive: true })
+    await writeJson(join(root, 'home', 'parameters.json'), {
+      Design: 'gcd',
+      'Top module': 'gcd',
+      PDK: 'ics55',
+    })
+    await writeJson(join(root, 'home', 'flow.json'), {
+      steps: [{ name: 'Synthesis', tool: 'yosys', state: 'Success', runtime: '', info: {} }],
+    })
+    await writeJson(join(root, 'home', 'home.json'), {})
+    await writeFile(join(root, 'Synthesis_yosys', 'analysis', 'Synthesis_metrics.json'), '{}', 'utf8')
+    await writeFile(join(root, 'Synthesis_yosys', 'feature', 'Synthesis_stat.json'), '{}', 'utf8')
+    await writeFile(join(root, 'Synthesis_yosys', 'report', 'Synthesis_stat.json'), '{}', 'utf8')
+    await writeFile(join(root, 'Synthesis_yosys', 'report', 'Synthesis_check.rpt'), 'ok', 'utf8')
+
+    const service = new WorkspaceResourceService({ projectScopeProvider: provider(root) })
+    const result = await service.resolveStepInfo({ step: 'synthesis', id: 'analysis' })
+
+    expect(result).toMatchObject({
+      step: 'Synthesis',
+      id: 'analysis',
+      response: 'available',
+      info: {
+        metrics: join(root, 'Synthesis_yosys', 'analysis', 'Synthesis_metrics.json'),
+        'data summary': join(root, 'Synthesis_yosys', 'feature', 'Synthesis_stat.json'),
+        'step report': {
+          stat: join(root, 'Synthesis_yosys', 'report', 'Synthesis_stat.json'),
+          check: join(root, 'Synthesis_yosys', 'report', 'Synthesis_check.rpt'),
+        },
+      },
+      missing: [],
+    })
+    expect(result.info['data summary']).not.toBe(
+      join(root, 'Synthesis_yosys', 'analysis', 'Synthesis_summary.json'),
+    )
+  })
+
   it('marks the index missing when parameters or flow files are absent', async () => {
     const root = await tempWorkspace()
     await mkdir(join(root, 'home'), { recursive: true })

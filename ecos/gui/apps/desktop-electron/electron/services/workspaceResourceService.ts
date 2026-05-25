@@ -406,18 +406,17 @@ function addYosysResources(
   resources.output.dir = createFile(join(directory, 'output'), 'output')
   resources.output.def = createFile(join(directory, 'output', `${design}_${stepName}.def.gz`), 'output')
   resources.output.verilog = createFile(join(directory, 'output', `${design}_${stepName}.v`), 'output')
-  resources.output.fixedVerilog = createFile(join(directory, 'output', `${design}_${stepName}_fixed.v`), 'output')
+  resources.output.fixed_verilog = createFile(join(directory, 'output', `${design}_${stepName}_fixed.v`), 'output')
   resources.output.json = createFile(join(directory, 'output', `${design}_${stepName}.json`), 'layout-json')
   resources.output.report = createFile(join(directory, 'output', `${design}_${stepName}.rpt`), 'report')
   resources.output.image = createFile(join(directory, 'output', `${design}_${stepName}.png`), 'layout-image')
-  resources.feature.genericStat = createFile(join(directory, 'feature', `${stepName}_generic_stat.json`), 'analysis')
+  resources.feature.generic_stat = createFile(join(directory, 'feature', `${stepName}_generic_stat.json`), 'analysis')
   resources.feature.stat = createFile(join(directory, 'feature', `${stepName}_stat.json`), 'analysis')
   resources.report.stat = createFile(join(directory, 'report', `${stepName}_stat.json`), 'report')
   resources.report.check = createFile(join(directory, 'report', `${stepName}_check.rpt`), 'report')
   resources.log.file = createFile(join(directory, 'log', `${stepName}.log`), 'log')
   resources.script.main = createFile(join(directory, 'script', `${stepName}_main.tcl`), 'script')
   resources.analysis.metrics = createFile(join(directory, 'analysis', `${stepName}_metrics.json`), 'metrics')
-  resources.analysis.summary = createFile(join(directory, 'analysis', `${stepName}_summary.json`), 'analysis')
   resources.subflow.path = createFile(join(directory, 'subflow.json'), 'subflow')
   resources.checklist.path = createFile(join(directory, 'checklist.json'), 'checklist')
   resources.config.path = createFile(join(root, 'config', 'flow_config.json'), 'config')
@@ -512,8 +511,11 @@ function buildAnalysisInfo(step: WorkspaceStepResource): Record<string, unknown>
   if (tool === 'yosys') {
     return {
       metrics: step.resources.analysis.metrics?.path,
-      'data summary': step.resources.analysis.summary?.path,
-      'step report': nestedResourcePath(step.resources.report, 'stat'),
+      'data summary': step.resources.feature.stat?.path,
+      'step report': {
+        stat: nestedResourcePath(step.resources.report, 'stat'),
+        check: nestedResourcePath(step.resources.report, 'check'),
+      },
     }
   }
 
@@ -531,8 +533,9 @@ function analysisFiles(step: WorkspaceStepResource): WorkspaceResourceFile[] {
   if (tool === 'yosys') {
     return existingResourceRefs([
       step.resources.analysis.metrics,
-      step.resources.analysis.summary,
+      step.resources.feature.stat,
       nestedResource(step.resources.report, 'stat'),
+      nestedResource(step.resources.report, 'check'),
     ])
   }
 
