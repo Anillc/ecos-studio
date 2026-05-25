@@ -72,7 +72,7 @@ export class WorkspaceResourceService {
       }
 
       const step = index.flow.steps.find((candidate) =>
-        candidate.name.toLocaleLowerCase() === request.step.toLocaleLowerCase(),
+        candidate.name.toLowerCase() === request.step.toLowerCase(),
       )
       if (!step) {
         return {
@@ -81,7 +81,7 @@ export class WorkspaceResourceService {
           response: 'missing',
           info: {},
           missing: [],
-          message: [`Workspace step not found: ${request.step}`, ...statErrors],
+          message: [`Workspace step not found: ${request.step}`, ...index.messages],
         }
       }
 
@@ -183,14 +183,14 @@ export class WorkspaceResourceService {
     const tool = step.tool || 'unknown'
     const directory = join(root, `${step.name}_${tool}`)
     const resources = createEmptyBuckets()
-    const toolKey = tool.toLocaleLowerCase()
+    const toolKey = tool.toLowerCase()
 
     if (toolKey === 'yosys') {
       addYosysResources(resources, root, directory, design, step.name)
     } else if (toolKey === 'ecc') {
-      addEccLikeResources(resources, directory, design, topModule, step.name)
+      addEccLikeResources(resources, root, directory, design, topModule, step.name)
     } else if (toolKey === 'dreamplace') {
-      addEccLikeResources(resources, directory, design, topModule, step.name)
+      addEccLikeResources(resources, root, directory, design, topModule, step.name)
       resources.config.dreamplace = createFile(join(root, 'config', 'dreamplace.json'), 'config')
     } else {
       addUnknownResources(resources, directory, step.name)
@@ -327,7 +327,7 @@ export class WorkspaceResourceService {
       case 'config':
         return configFiles(step)
       case 'maps':
-        return step.resources.feature.map ? [step.resources.feature.map] : []
+        return step.resources.feature.map?.exists ? [step.resources.feature.map] : []
       case 'sta':
         return resourceRecordValues(step.resources.report.sta)
     }
@@ -355,6 +355,7 @@ function createEmptyBuckets(): StepFileBuckets {
 
 function addEccLikeResources(
   resources: StepFileBuckets,
+  root: string,
   directory: string,
   design: string,
   topModule: string,
@@ -393,7 +394,7 @@ function addEccLikeResources(
   resources.analysis.statis_csv = createFile(join(directory, 'analysis', `${stepName}_statis.csv`), 'analysis')
   resources.subflow.path = createFile(join(directory, 'subflow.json'), 'subflow')
   resources.checklist.path = createFile(join(directory, 'checklist.json'), 'checklist')
-  addEccConfigResources(resources, directory, stepName)
+  addEccConfigResources(resources, root, stepName)
 }
 
 function addYosysResources(
@@ -424,25 +425,60 @@ function addYosysResources(
 
 function addEccConfigResources(
   resources: StepFileBuckets,
-  directory: string,
+  root: string,
   stepName: string,
 ): void {
-  resources.config.dir = createFile(join(directory, 'config'), 'config')
-  resources.config.flow = createFile(join(directory, 'config', 'flow_config.json'), 'config')
-  resources.config.db = createFile(join(directory, 'config', 'db_default_config.json'), 'config')
-  resources.config.cts = createFile(join(directory, 'config', 'cts_default_config.json'), 'config')
-  resources.config.drc = createFile(join(directory, 'config', 'drc_default_config.json'), 'config')
-  resources.config.floorplan = createFile(join(directory, 'config', 'fp_default_config.json'), 'config')
-  resources.config.netlist_opt = createFile(join(directory, 'config', 'no_default_config_fixfanout.json'), 'config')
-  resources.config.placement = createFile(join(directory, 'config', 'pl_default_config.json'), 'config')
-  resources.config.pnp = createFile(join(directory, 'config', 'pnp_default_config.json'), 'config')
-  resources.config.routing = createFile(join(directory, 'config', 'rt_default_config.json'), 'config')
-  resources.config.timing_opt_drv = createFile(join(directory, 'config', 'to_default_config_drv.json'), 'config')
-  resources.config.timing_opt_hold = createFile(join(directory, 'config', 'to_default_config_hold.json'), 'config')
-  resources.config.timing_opt_setup = createFile(join(directory, 'config', 'to_default_config_setup.json'), 'config')
-  resources.config.legalization = createFile(join(directory, 'config', 'pl_default_config.json'), 'config')
-  resources.config.filler = createFile(join(directory, 'config', 'pl_default_config.json'), 'config')
-  resources.config.config = resources.config[stepName] ?? resources.config.flow
+  resources.config.dir = createFile(join(root, 'config'), 'config')
+  resources.config.flow = createFile(join(root, 'config', 'flow_config.json'), 'config')
+  resources.config.db = createFile(join(root, 'config', 'db_default_config.json'), 'config')
+  resources.config.cts = createFile(join(root, 'config', 'cts_default_config.json'), 'config')
+  resources.config.drc = createFile(join(root, 'config', 'drc_default_config.json'), 'config')
+  resources.config.floorplan = createFile(join(root, 'config', 'fp_default_config.json'), 'config')
+  resources.config.netlist_opt = createFile(join(root, 'config', 'no_default_config_fixfanout.json'), 'config')
+  resources.config.placement = createFile(join(root, 'config', 'pl_default_config.json'), 'config')
+  resources.config.pnp = createFile(join(root, 'config', 'pnp_default_config.json'), 'config')
+  resources.config.routing = createFile(join(root, 'config', 'rt_default_config.json'), 'config')
+  resources.config.rcx = createFile(join(root, 'config', 'rcx.json'), 'config')
+  resources.config.timing_opt_drv = createFile(join(root, 'config', 'to_default_config_drv.json'), 'config')
+  resources.config.timing_opt_hold = createFile(join(root, 'config', 'to_default_config_hold.json'), 'config')
+  resources.config.timing_opt_setup = createFile(join(root, 'config', 'to_default_config_setup.json'), 'config')
+  resources.config.legalization = createFile(join(root, 'config', 'pl_default_config.json'), 'config')
+  resources.config.filler = createFile(join(root, 'config', 'pl_default_config.json'), 'config')
+  resources.config.config = configResourceForEccStep(resources.config, stepName)
+}
+
+function configResourceForEccStep(
+  config: StepFileBuckets['config'],
+  stepName: string,
+): WorkspaceResourceFile {
+  switch (stepName.toLowerCase()) {
+    case 'floorplan':
+      return config.floorplan ?? config.flow
+    case 'place':
+      return config.placement ?? config.flow
+    case 'cts':
+      return config.cts ?? config.flow
+    case 'route':
+      return config.routing ?? config.flow
+    case 'drc':
+      return config.drc ?? config.flow
+    case 'fixfanout':
+      return config.netlist_opt ?? config.flow
+    case 'optdrv':
+      return config.timing_opt_drv ?? config.flow
+    case 'opthold':
+      return config.timing_opt_hold ?? config.flow
+    case 'optsetup':
+      return config.timing_opt_setup ?? config.flow
+    case 'pnp':
+      return config.pnp ?? config.flow
+    case 'rcx':
+      return config.rcx ?? config.flow
+    case 'db':
+      return config.db ?? config.flow
+    default:
+      return config.flow
+  }
 }
 
 function addUnknownResources(
@@ -507,7 +543,7 @@ function resolveIndexStatus(input: {
 }
 
 function buildAnalysisInfo(step: WorkspaceStepResource): Record<string, unknown> {
-  const tool = step.tool.toLocaleLowerCase()
+  const tool = step.tool.toLowerCase()
   if (tool === 'yosys') {
     return {
       metrics: step.resources.analysis.metrics?.path,
@@ -529,7 +565,7 @@ function buildAnalysisInfo(step: WorkspaceStepResource): Record<string, unknown>
 }
 
 function analysisFiles(step: WorkspaceStepResource): WorkspaceResourceFile[] {
-  const tool = step.tool.toLocaleLowerCase()
+  const tool = step.tool.toLowerCase()
   if (tool === 'yosys') {
     return existingResourceRefs([
       step.resources.analysis.metrics,
@@ -549,14 +585,14 @@ function analysisFiles(step: WorkspaceStepResource): WorkspaceResourceFile[] {
 }
 
 function buildConfigInfo(step: WorkspaceStepResource): Record<string, unknown> {
-  const tool = step.tool.toLocaleLowerCase()
+  const tool = step.tool.toLowerCase()
   if (tool === 'yosys') return { path: step.resources.config.path?.path }
   if (tool === 'dreamplace') return { config: step.resources.config.dreamplace?.path }
   return { config: step.resources.config.config?.path }
 }
 
 function configFiles(step: WorkspaceStepResource): WorkspaceResourceFile[] {
-  const tool = step.tool.toLocaleLowerCase()
+  const tool = step.tool.toLowerCase()
   if (tool === 'yosys') return existingResourceRefs([step.resources.config.path])
   if (tool === 'dreamplace') return existingResourceRefs([step.resources.config.dreamplace])
   return existingResourceRefs([step.resources.config.config])

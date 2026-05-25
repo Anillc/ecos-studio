@@ -24,6 +24,28 @@ async function writeJson(path: string, data: unknown): Promise<void> {
   await writeFile(path, JSON.stringify(data, null, 2), 'utf8')
 }
 
+async function writeWorkspace(
+  root: string,
+  steps: Array<{ name: string, tool: string, state?: string, runtime?: string, info?: Record<string, unknown> }>,
+): Promise<void> {
+  await mkdir(join(root, 'home'), { recursive: true })
+  await writeJson(join(root, 'home', 'parameters.json'), {
+    Design: 'gcd',
+    'Top module': 'gcd',
+    PDK: 'ics55',
+  })
+  await writeJson(join(root, 'home', 'flow.json'), {
+    steps: steps.map((step) => ({
+      name: step.name,
+      tool: step.tool,
+      state: step.state ?? 'Success',
+      runtime: step.runtime ?? '',
+      info: step.info ?? {},
+    })),
+  })
+  await writeJson(join(root, 'home', 'home.json'), {})
+}
+
 describe('WorkspaceResourceService', () => {
   afterEach(async () => {
     await Promise.all(
@@ -125,6 +147,63 @@ describe('WorkspaceResourceService', () => {
       info: { path: join(root, 'config', 'flow_config.json') },
       missing: [join(root, 'config', 'flow_config.json')],
     })
+  })
+
+  it.each([
+    ['place', 'pl_default_config.json'],
+    ['Floorplan', 'fp_default_config.json'],
+    ['optDrv', 'to_default_config_drv.json'],
+    ['CTS', 'cts_default_config.json'],
+  ])('maps ECC %s config to the workspace config directory', async (stepName, configFile) => {
+    const root = await tempWorkspace()
+    await writeWorkspace(root, [{ name: stepName, tool: 'ecc' }])
+    await mkdir(join(root, 'config'), { recursive: true })
+    await writeFile(join(root, 'config', configFile), '{}', 'utf8')
+
+    const service = new WorkspaceResourceService({ projectScopeProvider: provider(root) })
+    const result = await service.resolveStepInfo({ step: stepName.toLowerCase(), id: 'config' })
+
+    expect(result).toMatchObject({
+      step: stepName,
+      response: 'available',
+      info: { config: join(root, 'config', configFile) },
+      missing: [],
+    })
+  })
+
+  it('returns available empty maps info when the step map file does not exist', async () => {
+    const root = await tempWorkspace()
+    await writeWorkspace(root, [{ name: 'place', tool: 'ecc' }])
+
+    const service = new WorkspaceResourceService({ projectScopeProvider: provider(root) })
+    const result = await service.resolveStepInfo({ step: 'place', id: 'maps' })
+
+    expect(result).toMatchObject({
+      step: 'place',
+      id: 'maps',
+      response: 'available',
+      info: {},
+      missing: [],
+    })
+  })
+
+  it('includes index messages when a step is not found because flow and parameters are missing', async () => {
+    const root = await tempWorkspace()
+    await mkdir(join(root, 'home'), { recursive: true })
+
+    const service = new WorkspaceResourceService({ projectScopeProvider: provider(root) })
+    const result = await service.resolveStepInfo({ step: 'place', id: 'config' })
+
+    expect(result).toMatchObject({
+      response: 'missing',
+      info: {},
+      missing: [],
+    })
+    expect(result.message).toEqual(expect.arrayContaining([
+      `Workspace step not found: place`,
+      `Missing workspace parameters: ${join(root, 'home', 'parameters.json')}`,
+      `Missing workspace flow: ${join(root, 'home', 'flow.json')}`,
+    ]))
   })
 
   it('exposes planned yosys resource keys in the index', async () => {
