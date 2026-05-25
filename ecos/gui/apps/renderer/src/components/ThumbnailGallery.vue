@@ -99,8 +99,8 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessageStore } from '../stores/messageStore'
-import { getInfoApi } from '../api/flow'
-import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '../api/type'
+import { InfoEnum, StepEnum } from '../api/type'
+import { resolveWorkspaceStepInfoApi } from '../api/workspaceResources'
 import { useTauri } from '../composables/useTauri'
 import { useWorkspace } from '../composables/useWorkspace'
 import { requestProjectPathAccess } from '@/utils/projectFs'
@@ -325,22 +325,19 @@ async function fetchTabInfo(tabId: InfoEnum) {
   setTabError(null)
 
   try {
-    const response = await getInfoApi({
-      cmd: CMDEnum.get_info,
-      data: {
-        step: currentStep.value,
-        id: tabId
-      }
+    const response = await resolveWorkspaceStepInfoApi({
+      step: currentStep.value,
+      id: tabId
     })
 
-    console.log('getInfoApi response:', response)
+    console.log('workspace resource tab response:', response)
 
-    if (response.response !== ResponseEnum.success) {
+    if (response.response === 'error') {
       setTabError(response.message?.join(', ') || 'Failed to get info')
       return
     }
 
-    const infoObj = response.data?.info
+    const infoObj = response.info
     if (infoObj && typeof infoObj === 'object') {
       tabInfoCache.value[cacheKey] = infoObj as Record<string, unknown>
     }

@@ -1,8 +1,8 @@
 const testState = vi.hoisted(() => ({
   currentProject: null as import('vue').Ref<{ path: string } | null> | null,
-  getInfoApi: vi.fn(),
   readProjectTextFile: vi.fn(),
   resolveProjectPathAccess: vi.fn(async (path: string) => path),
+  resolveWorkspaceStepInfoApi: vi.fn(),
   route: {
     path: '/workspace/Floorplan',
   },
@@ -35,8 +35,8 @@ vi.mock('./useHomeData', () => ({
   convertRemoteToLocalPath: (path: string) => path,
 }))
 
-vi.mock('@/api/flow', () => ({
-  getInfoApi: testState.getInfoApi,
+vi.mock('@/api/workspaceResources', () => ({
+  resolveWorkspaceStepInfoApi: testState.resolveWorkspaceStepInfoApi,
 }))
 
 vi.mock('@/utils/projectFiles', () => ({
@@ -55,18 +55,19 @@ describe('useSubflow runtime refresh', () => {
     testState.route.path = '/workspace/floorplan'
     testState.runtimeEvents = ref([])
     testState.stepRefreshCounter = ref(0)
-    testState.getInfoApi.mockReset()
     testState.readProjectTextFile.mockReset()
     testState.resolveProjectPathAccess.mockClear()
+    testState.resolveWorkspaceStepInfoApi.mockReset()
 
-    testState.getInfoApi.mockResolvedValue({
+    testState.resolveWorkspaceStepInfoApi.mockResolvedValue({
       response: 'success',
-      data: {
-        info: {
-          path: '/workspace/demo/Floorplan/subflow.json',
-        },
+      info: {
+        path: '/workspace/demo/Floorplan/subflow.json',
       },
+      missing: [],
       message: [],
+      id: 'subflow',
+      step: 'Floorplan',
     })
     testState.readProjectTextFile.mockResolvedValue(JSON.stringify({
       path: '/workspace/demo/Floorplan/subflow.json',
@@ -86,14 +87,14 @@ describe('useSubflow runtime refresh', () => {
     useSubflow()
 
     await vi.waitFor(() => {
-      expect(testState.getInfoApi).toHaveBeenCalledTimes(1)
+      expect(testState.resolveWorkspaceStepInfoApi).toHaveBeenCalledTimes(1)
     })
 
     testState.stepRefreshCounter!.value += 1
     await nextTick()
 
     await vi.waitFor(() => {
-      expect(testState.getInfoApi).toHaveBeenCalledTimes(2)
+      expect(testState.resolveWorkspaceStepInfoApi).toHaveBeenCalledTimes(2)
     })
   })
 })

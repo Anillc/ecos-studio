@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getInfoApi } from '@/api/flow'
-import { CMDEnum, InfoEnum, ResponseEnum, StepEnum } from '@/api/type'
+import { InfoEnum, StepEnum } from '@/api/type'
+import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
 import { convertRemoteToLocalPath } from '@/composables/useHomeData'
 import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
@@ -46,33 +46,11 @@ function stableJsonSig(v: unknown): string {
   }
 }
 
-/** Extract `info` from get_info response. */
-function extractInfoPayload(response: unknown): Record<string, unknown> | null {
-  const r = response as Record<string, unknown> | null
-  if (!r || typeof r !== 'object') return null
-
-  const inner = r.data
-  const data =
-    inner && typeof inner === 'object' && !Array.isArray(inner)
-      ? (inner as Record<string, unknown>)
-      : null
-
-  const infoRaw = data?.info ?? r.info
-  if (infoRaw && typeof infoRaw === 'object' && !Array.isArray(infoRaw)) {
-    return infoRaw as Record<string, unknown>
-  }
-  return null
-}
-
-/** Resolved step config file path from `get_info` -> `data.info.config`. */
 function pickStepConfigPathFromInfo(data: Record<string, unknown>): string | undefined {
   const v = data.config
   return typeof v === 'string' && v.trim() ? v.trim() : undefined
 }
 
-/**
- * Fetch get_info/config and read `info.config` from disk as the step configuration file.
- */
 export function useStepConfigInfo() {
   const route = useRoute()
   const { isInTauri } = useTauri()
@@ -126,25 +104,22 @@ export function useStepConfigInfo() {
     clearFileState()
 
     try {
-      const response = await getInfoApi({
-        cmd: CMDEnum.get_info,
-        data: {
-          step: stepEnum,
-          id: InfoEnum.config,
-        },
+      const response = await resolveWorkspaceStepInfoApi({
+        step: stepEnum,
+        id: InfoEnum.config,
       })
       runtimeMessages.value = response.message ?? []
 
-      const payload = extractInfoPayload(response)
+      const payload = response.info
 
-      if (response.response === ResponseEnum.success) {
+      if (response.response === 'available') {
         responseKind.value = 'success'
         info.value = payload ?? {}
         await loadStepConfigFileFromInfo(info.value)
         return
       }
 
-      if (response.response === ResponseEnum.warning) {
+      if (response.response === 'missing') {
         responseKind.value = 'warning'
         info.value = payload
         if (payload && pickStepConfigPathFromInfo(payload)) {
@@ -153,7 +128,7 @@ export function useStepConfigInfo() {
         return
       }
 
-      responseKind.value = response.response === ResponseEnum.failed ? 'failed' : 'error'
+      responseKind.value = 'error'
       info.value = null
       error.value = (response.message && response.message[0]) || 'Failed to load step configuration'
     } catch (e) {

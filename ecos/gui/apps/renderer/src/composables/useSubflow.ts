@@ -5,8 +5,8 @@ import { useWorkspace } from './useWorkspace'
 import { convertRemoteToLocalPath } from './useHomeData'
 import { readProjectTextFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
-import { getInfoApi } from '@/api/flow'
-import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '@/api/type'
+import { InfoEnum, StepEnum } from '@/api/type'
+import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
 import type { ECCResponse } from '@/api/runtimeEvents'
 
 // ============ 类型定义 ============
@@ -170,24 +170,27 @@ export function useSubflow() {
     error.value = null
 
     try {
-      // 1. 调用 get_info runtime command 获取 subflow 文件路径
-      const response = await getInfoApi({
-        cmd: CMDEnum.get_info,
-        data: {
-          step: stepEnum,
-          id: InfoEnum.subflow
-        }
+      const response = await resolveWorkspaceStepInfoApi({
+        step: stepEnum,
+        id: InfoEnum.subflow
       })
 
-      console.log('get_info response:', response)
+      console.log('workspace subflow response:', response)
 
-      if (response.response !== ResponseEnum.success) {
-        console.warn('get_info failed:', response.message)
+      if (response.response === 'error') {
+        console.warn('workspace subflow resolver failed:', response.message)
+        subflowSteps.value = []
+        error.value = response.message[0] || 'Failed to resolve subflow path'
+        return
+      }
+
+      if (response.response === 'missing') {
+        console.warn('Subflow path is missing:', response.message)
         subflowSteps.value = []
         return
       }
 
-      const subflowPath = response.data?.info?.path
+      const subflowPath = typeof response.info?.path === 'string' ? response.info.path : ''
       if (!subflowPath) {
         console.warn('No subflow path in response')
         subflowSteps.value = []

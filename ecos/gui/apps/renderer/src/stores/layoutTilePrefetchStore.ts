@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { CMDEnum, InfoEnum, ResponseEnum, StepEnum } from '@/api/type'
-import { getInfoApi } from '@/api/flow'
+import { InfoEnum, StepEnum } from '@/api/type'
+import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
 import { isTauri } from '@/composables/useTauri'
 import { loadFlowRunStepKeysFromProject } from '@/composables/useFlowStages'
 import { pickLayoutJsonPath } from '@/composables/useLayoutTileGen'
@@ -37,7 +37,7 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
 
   /** flow.json 中的 run 步骤顺序 */
   const canonicalFlowStepKeys = ref<string[]>([])
-  /** stepKey → 布局 JSON 相对路径（get_info 探测得到） */
+  /** stepKey → 布局 JSON 相对路径（resource resolver 探测得到） */
   const layoutJsonByStep = ref<Record<string, string>>({})
   /** 当前路由对应的 step 段名（与 DrawingArea `currentStepKey` 一致） */
   const currentRouteStepKey = ref<string | null>(null)
@@ -157,12 +157,12 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
       const stepEnum = findStepEnumForPath(stepKey)
       if (!stepEnum) continue
       try {
-        const layoutResponse = await getInfoApi({
-          cmd: CMDEnum.get_info,
-          data: { step: stepEnum, id: InfoEnum.layout },
+        const layoutResponse = await resolveWorkspaceStepInfoApi({
+          step: stepEnum,
+          id: InfoEnum.layout,
         })
-        if (layoutResponse.response !== ResponseEnum.success || !layoutResponse.data?.info) continue
-        const rel = pickLayoutJsonPath(layoutResponse.data.info)
+        if (layoutResponse.response === 'error') continue
+        const rel = pickLayoutJsonPath(layoutResponse.info)
         if (!rel) continue
         setLayoutJsonForStep(stepKey, rel)
         schedulePrefetchQueue()

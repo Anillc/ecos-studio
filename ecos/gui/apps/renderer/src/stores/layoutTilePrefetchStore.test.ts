@@ -4,6 +4,7 @@ import type { useLayoutTilePrefetchStore as useLayoutTilePrefetchStoreType } fro
 
 const mocks = vi.hoisted(() => ({
   requestIdle: vi.fn<() => Promise<void>>(async () => undefined),
+  resolveWorkspaceStepInfoApi: vi.fn(),
   runLayoutTileGenerationSingleFlight: vi.fn(),
 }))
 
@@ -31,8 +32,9 @@ vi.mock('@/composables/useFlowStages', () => ({
   loadFlowRunStepKeysFromProject: vi.fn(async () => []),
 }))
 
-vi.mock('@/api/flow', () => ({
-  getInfoApi: vi.fn(),
+vi.mock('@/api/workspaceResources', () => ({
+  resolveWorkspaceStepInfoApi: (request: Parameters<typeof mocks.resolveWorkspaceStepInfoApi>[0]) =>
+    mocks.resolveWorkspaceStepInfoApi(request),
 }))
 
 function installLocalStorage(): void {
@@ -92,6 +94,7 @@ describe('layoutTilePrefetchStore', () => {
     setActivePinia(createPinia())
     installLocalStorage()
     mocks.requestIdle.mockClear()
+    mocks.resolveWorkspaceStepInfoApi.mockReset()
     mocks.runLayoutTileGenerationSingleFlight.mockReset()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     ;({ useLayoutTilePrefetchStore } = await import('./layoutTilePrefetchStore'))

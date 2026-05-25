@@ -30,8 +30,8 @@ import { requestProjectPathAccess } from '@/utils/projectFs'
 import { readOptionalProjectTextFile } from '@/utils/projectFiles'
 import { runLayoutTileGenerationSingleFlight } from '@/composables/layoutTilePipeline'
 import { useLayoutTilePrefetchStore } from '@/stores/layoutTilePrefetchStore'
-import { getInfoApi } from '@/api/flow'
-import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '@/api/type'
+import { InfoEnum, StepEnum } from '@/api/type'
+import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
 import { RULER_THICKNESS } from '@/applications/editor/core/rulerConfig'
 
 const route = useRoute()
@@ -42,9 +42,9 @@ const tilePrefetchStore = useLayoutTilePrefetchStore()
 
 const editor = shallowRef<Editor | null>(null)
 
-/** get_info(layout) 返回的布局 JSON 相对路径，供工具栏生成瓦片 */
+/** Resource resolver 返回的布局 JSON 相对路径，供工具栏生成瓦片 */
 const layoutJsonRelativePath = ref<string | null>(null)
-/** DRC 结果 JSON 相对路径：get_info 显式字段，或与布局同目录的 `drc.step.json` */
+/** DRC 结果 JSON 相对路径：resolver 显式字段，或与布局同目录的 `drc.step.json` */
 const drcJsonRelativePath = ref<string | null>(null)
 /** 当前步骤预览图相对路径（与 handleStageChange 中 info.image 一致），供「矢量 / 预览图」切换 */
 const previewImageRelativePath = ref<string | null>(null)
@@ -574,14 +574,13 @@ const handleStageChange = async (stage: string) => {
   }
 
   try {
-    // Try to load structured layout JSON first
-    const layoutResponse = await getInfoApi({
-      cmd: CMDEnum.get_info,
-      data: { step: stepEnum, id: InfoEnum.layout }
+    const layoutResponse = await resolveWorkspaceStepInfoApi({
+      step: stepEnum,
+      id: InfoEnum.layout,
     })
 
-    if (layoutResponse.response === ResponseEnum.success && layoutResponse.data?.info) {
-      const info = layoutResponse.data.info
+    if (layoutResponse.response === 'available' || layoutResponse.response === 'missing') {
+      const info = layoutResponse.info
       layoutJsonRelativePath.value = pickLayoutJsonPath(info)
       drcJsonRelativePath.value = pickDrcJsonPath(info)
         ?? deriveDrcStepPathFromLayoutJsonRelative(layoutJsonRelativePath.value ?? '')
@@ -632,7 +631,7 @@ async function onGenerateTilesFromToolbar(): Promise<void> {
   if (!projectPath || !rel) {
     layoutState.loadingState.value = 'error'
     layoutState.loadingMessage.value =
-      'Layout JSON path was not found. Check that get_info(layout) returns a json or info field for the current step.'
+      'Layout JSON path was not found for the current step.'
     return
   }
 
