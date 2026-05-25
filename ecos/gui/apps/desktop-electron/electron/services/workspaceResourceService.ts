@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   WorkspaceResourceFile,
@@ -29,6 +29,11 @@ interface FlowStepInput {
 interface IndexBuildResult {
   index: WorkspaceResourceIndex
   statErrors: string[]
+}
+
+interface StepInfoBuildResult {
+  info: Record<string, unknown>
+  errors: string[]
 }
 
 export class WorkspaceResourceService {
@@ -85,10 +90,12 @@ export class WorkspaceResourceService {
         }
       }
 
-      const info = this.buildStepInfoResponse(request.id, step)
+      const stepInfoResult = await this.buildStepInfoResponse(request.id, step)
+      const info = stepInfoResult.info
       const requiredFiles = this.requiredFilesForStepInfo(request.id, step)
       const missing = requiredFiles.filter((file) => !file.exists).map((file) => file.path)
-      const response = statErrors.length > 0 ? 'error' : missing.length > 0 ? 'missing' : 'available'
+      const messages = [...statErrors, ...stepInfoResult.errors]
+      const response = messages.length > 0 ? 'error' : missing.length > 0 ? 'missing' : 'available'
 
       return {
         step: step.name,
@@ -96,7 +103,7 @@ export class WorkspaceResourceService {
         response,
         info,
         missing,
-        message: statErrors,
+        message: messages,
       }
     } catch (error) {
       return {
@@ -269,37 +276,66 @@ export class WorkspaceResourceService {
     }
   }
 
-  private buildStepInfoResponse(
+  private async buildStepInfoResponse(
     id: WorkspaceStepInfoRequest['id'],
     step: WorkspaceStepResource,
-  ): Record<string, unknown> {
+  ): Promise<StepInfoBuildResult> {
     switch (id) {
       case 'layout':
-        return {
+        return stepInfo({
           image: step.resources.output.image?.path,
           json: step.resources.output.json?.path,
-        }
+        })
       case 'views':
-        return {
+        return stepInfo({
           image: step.resources.output.image?.path,
           json: step.resources.output.json?.path,
           metrics: step.resources.analysis.metrics?.path,
           information: {},
-        }
+        })
       case 'metrics':
-        return { metrics: step.resources.analysis.metrics?.path }
+        return stepInfo({ metrics: step.resources.analysis.metrics?.path })
       case 'subflow':
-        return { path: step.resources.subflow.path?.path }
+        return stepInfo({ path: step.resources.subflow.path?.path })
       case 'analysis':
-        return buildAnalysisInfo(step)
+        return stepInfo(buildAnalysisInfo(step))
       case 'checklist':
-        return { path: step.resources.checklist.path?.path }
+        return stepInfo({ path: step.resources.checklist.path?.path })
       case 'config':
-        return buildConfigInfo(step)
+        return stepInfo(buildConfigInfo(step))
       case 'maps':
-        return step.resources.feature.map?.exists ? { map: step.resources.feature.map.path } : {}
+        return await this.buildDensityMapInfo(step)
       case 'sta':
-        return { sta: nestedResourcePaths(step.resources.report.sta) }
+        return stepInfo({ sta: nestedResourcePaths(step.resources.report.sta) })
+    }
+  }
+
+  private async buildDensityMapInfo(step: WorkspaceStepResource): Promise<StepInfoBuildResult> {
+    const directory = join(step.directory, 'feature', 'density_map')
+
+    try {
+      const canonicalDirectory = await this.projectScopeProvider.requestProjectPathAccess(directory)
+      const entries = await readdir(canonicalDirectory, { withFileTypes: true })
+      const pngEntries = entries
+        .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.png'))
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+      return stepInfo(Object.fromEntries(
+        pngEntries.map((entry) => [
+          stripPngExtension(entry.name),
+          {
+            path: join(canonicalDirectory, entry.name),
+            info: [],
+          },
+        ]),
+      ))
+    } catch (error) {
+      if (isNodeErrorWithCode(error, 'ENOENT')) return stepInfo({})
+
+      return {
+        info: {},
+        errors: [formatErrorMessage(`Failed to read workspace density maps: ${directory}`, error)],
+      }
     }
   }
 
@@ -327,7 +363,7 @@ export class WorkspaceResourceService {
       case 'config':
         return configFiles(step)
       case 'maps':
-        return step.resources.feature.map?.exists ? [step.resources.feature.map] : []
+        return []
       case 'sta':
         return resourceRecordValues(step.resources.report.sta)
     }
@@ -589,6 +625,14 @@ function buildConfigInfo(step: WorkspaceStepResource): Record<string, unknown> {
   if (tool === 'yosys') return { path: step.resources.config.path?.path }
   if (tool === 'dreamplace') return { config: step.resources.config.dreamplace?.path }
   return { config: step.resources.config.config?.path }
+}
+
+function stepInfo(info: Record<string, unknown>): StepInfoBuildResult {
+  return { info, errors: [] }
+}
+
+function stripPngExtension(filename: string): string {
+  return filename.replace(/\.png$/i, '')
 }
 
 function configFiles(step: WorkspaceStepResource): WorkspaceResourceFile[] {

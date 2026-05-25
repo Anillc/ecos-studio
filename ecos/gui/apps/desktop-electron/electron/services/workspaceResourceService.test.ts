@@ -171,7 +171,7 @@ describe('WorkspaceResourceService', () => {
     })
   })
 
-  it('returns available empty maps info when the step map file does not exist', async () => {
+  it('returns available empty maps info when the density map directory does not exist', async () => {
     const root = await tempWorkspace()
     await writeWorkspace(root, [{ name: 'place', tool: 'ecc' }])
 
@@ -185,6 +185,37 @@ describe('WorkspaceResourceService', () => {
       info: {},
       missing: [],
     })
+  })
+
+  it('returns density map PNGs in the renderer map gallery shape', async () => {
+    const root = await tempWorkspace()
+    await writeWorkspace(root, [{ name: 'place', tool: 'ecc' }])
+    await mkdir(join(root, 'place_ecc', 'feature', 'density_map'), { recursive: true })
+    await writeFile(join(root, 'place_ecc', 'feature', 'density_map', 'cell_density.png'), 'png', 'utf8')
+    await writeFile(join(root, 'place_ecc', 'feature', 'density_map', 'rudy-horizontal.png'), 'png', 'utf8')
+    await writeFile(join(root, 'place_ecc', 'feature', 'density_map', 'notes.txt'), 'ignore', 'utf8')
+
+    const service = new WorkspaceResourceService({ projectScopeProvider: provider(root) })
+    const result = await service.resolveStepInfo({ step: 'place', id: 'maps' })
+
+    expect(result).toMatchObject({
+      step: 'place',
+      id: 'maps',
+      response: 'available',
+      info: {
+        cell_density: {
+          path: join(root, 'place_ecc', 'feature', 'density_map', 'cell_density.png'),
+          info: [],
+        },
+        'rudy-horizontal': {
+          path: join(root, 'place_ecc', 'feature', 'density_map', 'rudy-horizontal.png'),
+          info: [],
+        },
+      },
+      missing: [],
+    })
+    expect(result.info).not.toHaveProperty('notes')
+    expect(result.info).not.toHaveProperty('map')
   })
 
   it('includes index messages when a step is not found because flow and parameters are missing', async () => {
