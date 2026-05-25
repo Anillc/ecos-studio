@@ -27,6 +27,9 @@ import {
   type TileGenerationRequest,
   type TileGenerationResult,
   type VersionInfo,
+  type WorkspaceResourceIndex,
+  type WorkspaceStepInfoRequest,
+  type WorkspaceStepInfoResult,
 } from '@ecos-studio/shared'
 import {
   closeWindow,
@@ -99,6 +102,13 @@ export interface DesktopBridgeServices {
   tileService: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
     getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
+  }
+  workspaceResourceService: {
+    getIndex(): Promise<WorkspaceResourceIndex>
+    readHome(): Promise<Record<string, unknown> | null>
+    readFlow(): Promise<Record<string, unknown> | null>
+    readParameters(): Promise<Record<string, unknown> | null>
+    resolveStepInfo(request: WorkspaceStepInfoRequest): Promise<WorkspaceStepInfoResult>
   }
   desktopCliBridgeService: {
     execute(
@@ -568,6 +578,43 @@ export function registerIpc(
     desktopApiIpcChannels.tilesStatus,
     async (_event, request) => {
       return await services.tileService.getStatus(request as TileGenerationRequest)
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesGetIndex,
+    async () => {
+      return await services.workspaceResourceService.getIndex()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesReadHome,
+    async () => {
+      return await services.workspaceResourceService.readHome()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesReadFlow,
+    async () => {
+      return await services.workspaceResourceService.readFlow()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesReadParameters,
+    async () => {
+      return await services.workspaceResourceService.readParameters()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesResolveStepInfo,
+    async (_event, request) => {
+      return await services.workspaceResourceService.resolveStepInfo(
+        request as WorkspaceStepInfoRequest,
+      )
     },
   )
 

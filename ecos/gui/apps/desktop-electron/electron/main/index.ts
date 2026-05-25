@@ -19,6 +19,7 @@ import { SettingsStore } from '../services/settingsStore'
 import { ShellPtyService } from '../services/shellPtyService'
 import { TileService } from '../services/tileService'
 import { bindWindowEvents } from '../services/windowService'
+import { WorkspaceResourceService } from '../services/workspaceResourceService'
 import { WorkspaceService } from '../services/workspaceService'
 
 let ipcRegistered = false
@@ -29,6 +30,7 @@ let services:
       settingsStore: SettingsStore
       shellService: ShellPtyService
       tileService: TileService
+      workspaceResourceService: WorkspaceResourceService
       workspaceService: WorkspaceService
     }
   | null = null
@@ -87,6 +89,9 @@ function getDesktopServices() {
   const workspaceService = new WorkspaceService({
     projectScopeProvider: projectScopeService,
   })
+  const workspaceResourceService = new WorkspaceResourceService({
+    projectScopeProvider: projectScopeService,
+  })
   const desktopCliBridgeService = new DesktopCliBridgeService({
     adapter: new EccCliAdapter({
       env: runtimeEnv,
@@ -105,6 +110,7 @@ function getDesktopServices() {
     settingsStore,
     shellService,
     tileService,
+    workspaceResourceService,
     workspaceService,
   }
 
@@ -121,6 +127,7 @@ async function launchMainWindow(): Promise<void> {
       settingsStore: desktopServices.settingsStore,
       shellService: desktopServices.shellService,
       tileService: desktopServices.tileService,
+      workspaceResourceService: desktopServices.workspaceResourceService,
       workspaceService: desktopServices.workspaceService,
     })
     ipcRegistered = true

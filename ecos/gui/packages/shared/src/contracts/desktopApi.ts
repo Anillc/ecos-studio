@@ -1,5 +1,10 @@
 import type { TileGenerationRequest, TileGenerationResult } from '../types/tile.ts'
 import type {
+  WorkspaceResourceIndex,
+  WorkspaceStepInfoRequest,
+  WorkspaceStepInfoResult,
+} from '../types/workspaceResources.ts'
+import type {
   DesktopCliCommandEvent,
   DesktopCliCommandRequest,
   DesktopCliCommandResult,
@@ -149,6 +154,13 @@ export interface DesktopApi {
   tiles: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
     getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
+  }
+  workspaceResources: {
+    getIndex(): Promise<WorkspaceResourceIndex>
+    readHome(): Promise<Record<string, unknown> | null>
+    readFlow(): Promise<Record<string, unknown> | null>
+    readParameters(): Promise<Record<string, unknown> | null>
+    resolveStepInfo(request: WorkspaceStepInfoRequest): Promise<WorkspaceStepInfoResult>
   }
   cli: {
     execute(request: DesktopCliCommandRequest): Promise<DesktopCliCommandResult>

@@ -65,6 +65,13 @@ function registerHandlers() {
       generate: vi.fn(),
       getStatus: vi.fn(),
     },
+    workspaceResourceService: {
+      getIndex: vi.fn(),
+      readFlow: vi.fn(),
+      readHome: vi.fn(),
+      readParameters: vi.fn(),
+      resolveStepInfo: vi.fn(),
+    },
     appInfoService: {
       getVersions: vi.fn(),
     },
@@ -142,6 +149,11 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceScanPdkDirectory,
       desktopApiIpcChannels.workspaceWatchProjectFile,
       desktopApiIpcChannels.workspaceUnwatchProjectFile,
+      desktopApiIpcChannels.workspaceResourcesGetIndex,
+      desktopApiIpcChannels.workspaceResourcesReadHome,
+      desktopApiIpcChannels.workspaceResourcesReadFlow,
+      desktopApiIpcChannels.workspaceResourcesReadParameters,
+      desktopApiIpcChannels.workspaceResourcesResolveStepInfo,
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.tilesStatus,
       desktopApiIpcChannels.systemOpenExternal,
@@ -503,6 +515,72 @@ describe('registerIpc', () => {
 
     expect(services.tileService.getStatus).toHaveBeenCalledWith(request)
     expect(services.tileService.generate).not.toHaveBeenCalled()
+  })
+
+  it('delegates workspace resource calls to the resource service', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    const index = {
+      design: 'gcd',
+      flow: { steps: [] },
+      home: {
+        checklistJson: { exists: false, kind: 'checklist', path: '/tmp/project/home/checklist.json' },
+        flowJson: { exists: true, kind: 'flow', path: '/tmp/project/home/flow.json' },
+        homeJson: { exists: true, kind: 'home', path: '/tmp/project/home/home.json' },
+        parametersJson: { exists: true, kind: 'parameters', path: '/tmp/project/home/parameters.json' },
+      },
+      homeData: {},
+      messages: [],
+      parameters: {},
+      pdk: 'ics55',
+      root: '/tmp/project',
+      status: 'available',
+      topModule: 'gcd',
+    }
+    services.workspaceResourceService.getIndex.mockResolvedValue(index)
+    services.workspaceResourceService.readHome.mockResolvedValue({ flow: '/tmp/project/home/flow.json' })
+    services.workspaceResourceService.readFlow.mockResolvedValue({ steps: [] })
+    services.workspaceResourceService.readParameters.mockResolvedValue({ Design: 'gcd' })
+    services.workspaceResourceService.resolveStepInfo.mockResolvedValue({
+      id: 'layout',
+      info: {},
+      message: [],
+      missing: [],
+      response: 'available',
+      step: 'route',
+    })
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesGetIndex)?.(event),
+    ).resolves.toEqual(index)
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesReadHome)?.(event),
+    ).resolves.toEqual({ flow: '/tmp/project/home/flow.json' })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesReadFlow)?.(event),
+    ).resolves.toEqual({ steps: [] })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesReadParameters)?.(event),
+    ).resolves.toEqual({ Design: 'gcd' })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesResolveStepInfo)?.(
+        event,
+        { step: 'route', id: 'layout' },
+      ),
+    ).resolves.toMatchObject({
+      id: 'layout',
+      response: 'available',
+      step: 'route',
+    })
+
+    expect(services.workspaceResourceService.getIndex).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.readHome).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.readFlow).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.readParameters).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.resolveStepInfo).toHaveBeenCalledWith({
+      step: 'route',
+      id: 'layout',
+    })
   })
 
   it('executes desktop commands through the CLI Bridge', async () => {

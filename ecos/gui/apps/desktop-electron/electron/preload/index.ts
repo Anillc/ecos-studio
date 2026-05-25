@@ -16,6 +16,7 @@ import type {
   DesktopShellDataEvent,
   DesktopShellExitEvent,
   DesktopShellSessionOptions,
+  WorkspaceStepInfoRequest,
 } from '@ecos-studio/shared'
 
 function isMissingFileError(error: unknown): boolean {
@@ -216,6 +217,18 @@ const desktopApi: DesktopApi = {
         throw error
       }
     },
+  },
+  workspaceResources: {
+    getIndex: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesGetIndex),
+    readHome: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesReadHome),
+    readFlow: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesReadFlow),
+    readParameters: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesReadParameters),
+    resolveStepInfo: (request: WorkspaceStepInfoRequest) =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesResolveStepInfo, request),
   },
   cli: {
     execute: (request: DesktopCliCommandRequest) =>
