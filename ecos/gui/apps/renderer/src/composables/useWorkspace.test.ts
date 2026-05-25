@@ -7,6 +7,7 @@ const {
   createRuntimeEventClientMock,
   createWorkspaceApiMock,
   loadWorkspaceApiMock,
+  clearMessagesMock,
   settingsData,
   setDesktopWindowTitleMock,
   toastAddMock,
@@ -17,6 +18,7 @@ const {
   createRuntimeEventClientMock: vi.fn(),
   createWorkspaceApiMock: vi.fn(),
   loadWorkspaceApiMock: vi.fn(),
+  clearMessagesMock: vi.fn(),
   settingsData: new Map<string, unknown>(),
   setDesktopWindowTitleMock: vi.fn(),
   toastAddMock: vi.fn(),
@@ -54,6 +56,12 @@ vi.mock('@/api/runtimeEvents', () => ({
 
 vi.mock('./windowTitle', () => ({
   setDesktopWindowTitle: setDesktopWindowTitleMock,
+}))
+
+vi.mock('@/stores/messageStore', () => ({
+  useMessageStore: () => ({
+    clearMessages: clearMessagesMock,
+  }),
 }))
 
 import { useWorkspace } from './useWorkspace'
@@ -136,6 +144,7 @@ describe('useWorkspace openProject', () => {
     createRuntimeEventClientMock.mockReset()
     createWorkspaceApiMock.mockReset()
     loadWorkspaceApiMock.mockReset()
+    clearMessagesMock.mockReset()
     setDesktopWindowTitleMock.mockReset()
     toastAddMock.mockReset()
     waitForRuntimeReadyMock.mockReset()
@@ -205,6 +214,73 @@ describe('useWorkspace openProject', () => {
     expect(await workspace.openProject()).toBe(false)
     expect(workspace.currentProject.value?.path).toBe('/work/old')
     expect(settingsData.get('current_project_path')).toBe('/work/old')
+  })
+
+  it('clears chat messages only after a workspace opens successfully', async () => {
+    const workspace = useWorkspace()
+    const existingProject: Project = {
+      id: '/work/old',
+      name: 'old',
+      path: '/work/old',
+      lastOpened: new Date('2026-01-01T00:00:00.000Z'),
+    }
+
+    loadWorkspaceApiMock.mockResolvedValueOnce({
+      response: 'success',
+      data: {
+        directory: '/work/old',
+        workspace_id: '/work/old',
+      },
+    })
+
+    expect(await workspace.openProject(existingProject)).toBe(true)
+    expect(clearMessagesMock).toHaveBeenCalledTimes(1)
+
+    vi.mocked(desktopApi.dialog.pickDirectory).mockResolvedValueOnce('/work/bad')
+    loadWorkspaceApiMock.mockResolvedValueOnce({
+      response: 'error',
+      message: ['not an ECOS workspace'],
+      data: {},
+    })
+
+    expect(await workspace.openProject()).toBe(false)
+    expect(clearMessagesMock).toHaveBeenCalledTimes(1)
+
+    vi.mocked(desktopApi.dialog.pickDirectory).mockResolvedValueOnce('/work/new')
+    loadWorkspaceApiMock.mockResolvedValueOnce({
+      response: 'success',
+      data: {
+        directory: '/work/new',
+        workspace_id: '/work/new',
+      },
+    })
+
+    expect(await workspace.openProject()).toBe(true)
+    expect(clearMessagesMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('clears chat messages when the workspace closes', async () => {
+    const workspace = useWorkspace()
+    const project: Project = {
+      id: '/work/old',
+      name: 'old',
+      path: '/work/old',
+      lastOpened: new Date('2026-01-01T00:00:00.000Z'),
+    }
+
+    loadWorkspaceApiMock.mockResolvedValueOnce({
+      response: 'success',
+      data: {
+        directory: '/work/old',
+        workspace_id: '/work/old',
+      },
+    })
+
+    expect(await workspace.openProject(project)).toBe(true)
+
+    await workspace.closeProject()
+
+    expect(clearMessagesMock).toHaveBeenCalledTimes(2)
   })
 
   it('keeps the active workspace when the selected workspace fails to load', async () => {

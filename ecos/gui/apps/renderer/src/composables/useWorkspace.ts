@@ -8,6 +8,7 @@ import { loadWorkspaceApi, createWorkspaceApi, waitForRuntimeReady } from '../ap
 import * as runtimeEventApi from '../api/runtimeEvents'
 import type { RuntimeEventClient, ECCResponse } from '../api/runtimeEvents'
 import { setDesktopWindowTitle } from './windowTitle'
+import { useMessageStore } from '@/stores/messageStore'
 
 interface SerializedProject {
   id: string
@@ -91,6 +92,7 @@ async function updateWindowTitle(projectName?: string) {
 
 export function useWorkspace() {
   const router = useRouter()
+  const messageStore = useMessageStore()
   // 在组件 setup 上下文中初始化 Toast（仅初始化一次）
   if (!_toast && getCurrentInstance()) {
     _toast = useToast()
@@ -274,6 +276,7 @@ export function useWorkspace() {
                   ...restored,
                   path: canonicalProjectRoot
                 }
+                messageStore.clearMessages()
                 await updateWindowTitle(restored.name)
                 const workspaceId = response.data.workspace_id || response.data.directory
                 connectRuntimeEvents(workspaceId)
@@ -377,6 +380,7 @@ export function useWorkspace() {
         }
 
         currentProject.value = loadedProject
+        messageStore.clearMessages()
 
         // 持久化当前项目路径，以便 reload 后恢复
         await setSetting('current_project_path', normalizePath(loadedProject.path))
@@ -496,6 +500,7 @@ export function useWorkspace() {
         }
 
         currentProject.value = createdProject
+        messageStore.clearMessages()
 
         // 持久化当前项目路径，以便 reload 后恢复
         await setSetting('current_project_path', normalizePath(createdProject.path))
@@ -624,6 +629,7 @@ export function useWorkspace() {
     }
 
     currentProject.value = null
+    messageStore.clearMessages()
     disconnectRuntimeEvents()
     await clearProjectRoot()
     await deleteSetting('current_project_path')
