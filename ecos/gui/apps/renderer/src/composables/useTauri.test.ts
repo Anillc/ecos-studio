@@ -102,6 +102,36 @@ const desktopBridge = {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
     getStatus: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
   },
+  workspaceResources: {
+    getIndex: async () => ({
+      design: '',
+      flow: { steps: [] },
+      home: {
+        checklistJson: { exists: false, kind: 'checklist', path: '' },
+        flowJson: { exists: false, kind: 'flow', path: '' },
+        homeJson: { exists: false, kind: 'home', path: '' },
+        parametersJson: { exists: false, kind: 'parameters', path: '' },
+      },
+      homeData: null,
+      messages: [],
+      parameters: null,
+      pdk: '',
+      root: '',
+      status: 'missing',
+      topModule: '',
+    }),
+    readHome: async () => null,
+    readFlow: async () => null,
+    readParameters: async () => null,
+    resolveStepInfo: async (request) => ({
+      step: request.step,
+      id: request.id,
+      response: 'missing',
+      info: {},
+      missing: [],
+      message: [],
+    }),
+  },
   cli: {
     execute: async (request) => ({
       cmd: request.cmd,

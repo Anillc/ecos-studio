@@ -2,8 +2,7 @@ import { ref, shallowRef, watch, onUnmounted } from 'vue'
 import { useWorkspace } from './useWorkspace'
 import { useTauri } from './useTauri'
 import { flowExecutionActive } from './useFlowRunner'
-import { getHomePageApi } from '@/api/flow'
-import { ResponseEnum } from '@/api/type'
+import { readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
 import type { ECCResponse } from '@/api/runtimeEvents'
 import type { DesktopProjectLogTailEvent } from '@ecos-studio/shared'
 import {
@@ -464,22 +463,8 @@ export async function fetchSharedHomeData(
 
       if (isStale()) return null
 
-      // 通过桌面 CLI 获取 home.json 路径
-      const apiResponse = await getHomePageApi()
-      if (apiResponse.response !== ResponseEnum.success || !apiResponse.data?.path) {
-        console.warn('get_home_page runtime command failed:', apiResponse.message)
-        return null
-      }
-      if (isStale()) return null
-
-      // 读取 home.json
-      const localPath = convertRemoteToLocalPath(apiResponse.data.path, projectPath)
-      const resolvedHomePath = await resolvedPathMemo(localPath)
-      if (!resolvedHomePath) return null
-      console.log('Loading home.json from:', resolvedHomePath)
-
-      const content = await readProjectTextFile(resolvedHomePath)
-      const data: HomeData = JSON.parse(content)
+      const data = await readWorkspaceHomeResourceApi() as HomeData | null
+      if (!data) return null
 
       if (isStale()) return null
       sharedHomeData.value = data

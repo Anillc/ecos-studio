@@ -3,7 +3,8 @@ import { nextTick, ref, type Ref } from 'vue'
 
 const testState = vi.hoisted(() => ({
   currentProject: null as Ref<{ path: string } | null> | null,
-  fetchSharedHomeData: vi.fn(),
+  readWorkspaceHomeResourceApi: vi.fn(),
+  readWorkspaceFlowResourceApi: vi.fn(),
   readProjectTextFile: vi.fn(),
   resolveProjectPathAccess: vi.fn(async (path: string) => path),
   runtimeEvents: null as Ref<unknown[]> | null,
@@ -35,8 +36,12 @@ vi.mock('./useTauri', () => ({
   isTauri: () => true,
 }))
 
+vi.mock('@/api/workspaceResources', () => ({
+  readWorkspaceHomeResourceApi: testState.readWorkspaceHomeResourceApi,
+  readWorkspaceFlowResourceApi: testState.readWorkspaceFlowResourceApi,
+}))
+
 vi.mock('./useHomeData', () => ({
-  fetchSharedHomeData: testState.fetchSharedHomeData,
   convertRemoteToLocalPath: (path: string) => path,
 }))
 
@@ -74,14 +79,18 @@ describe('useFlowStages live project file watchers', () => {
     testState.stepRefreshCounter = ref(0)
     testState.projectFileWatchers.length = 0
 
-    testState.fetchSharedHomeData.mockReset()
+    testState.readWorkspaceHomeResourceApi.mockReset()
+    testState.readWorkspaceFlowResourceApi.mockReset()
     testState.readProjectTextFile.mockReset()
     testState.resolveProjectPathAccess.mockClear()
     testState.watchProjectFile.mockReset()
 
-    testState.fetchSharedHomeData.mockResolvedValue({
+    testState.readWorkspaceHomeResourceApi.mockResolvedValue({
       flow: '/workspace/a/home/flow.json',
     })
+    testState.readWorkspaceFlowResourceApi.mockImplementation(async () =>
+      JSON.parse(await testState.readProjectTextFile('/workspace/a/home/flow.json')),
+    )
     testState.watchProjectFile.mockImplementation(async (
       path: string,
       listener: (event: { subscriptionId: string; path: string; eventType: string }) => void,

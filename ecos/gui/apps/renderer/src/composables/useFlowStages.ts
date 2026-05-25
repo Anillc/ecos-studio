@@ -1,11 +1,12 @@
 import { ref, computed, getCurrentInstance, onUnmounted, watch } from 'vue'
 import { useWorkspace } from './useWorkspace'
 import { useTauri, isTauri } from './useTauri'
-import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
+import { convertRemoteToLocalPath } from './useHomeData'
 import { STEP_METADATA, getStepMetadata } from '@/api/type'
 import type { ECCResponse } from '@/api/runtimeEvents'
 import { readProjectTextFile, watchProjectFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
+import { readWorkspaceFlowResourceApi, readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
 
 // ============ 类型定义 ============
 
@@ -80,17 +81,8 @@ export async function loadFlowRunStepKeysFromProject(projectPath: string): Promi
     return fallbackRunStepKeys()
   }
   try {
-    const homeData = await fetchSharedHomeData(projectPath, true)
-    if (!homeData?.flow) {
-      return fallbackRunStepKeys()
-    }
-    const localFlowPath = convertRemoteToLocalPath(homeData.flow, projectPath)
-    const resolvedFlowPath = await resolveProjectPathAccess(localFlowPath)
-    if (!resolvedFlowPath) {
-      return fallbackRunStepKeys()
-    }
-    const fileContent = await readProjectTextFile(resolvedFlowPath)
-    const flowData: FlowData = JSON.parse(fileContent)
+    const flowData = await readWorkspaceFlowResourceApi() as FlowData | null
+    if (!flowData) return fallbackRunStepKeys()
     const stages = transformFlowData(flowData)
     return stages.map((s) => s.path)
   } catch (e) {
@@ -207,34 +199,12 @@ export function useFlowStages() {
     error.value = null
 
     try {
-      const projectPath = currentProject.value.path
-
-      // 通过共享缓存获取 home.json 数据（去重，不会重复请求）
-      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
-      if (!homeData) {
-        console.warn('Failed to get home data')
+      const flowData = await readWorkspaceFlowResourceApi() as FlowData | null
+      if (!flowData) {
+        console.warn('Failed to read flow data')
         dynamicFlowStages.value = []
         return
       }
-
-      const flowJsonPath = homeData.flow
-      if (!flowJsonPath) {
-        console.warn('No flow path found in home.json')
-        dynamicFlowStages.value = []
-        return
-      }
-
-      console.log('Got flow.json path from home.json:', flowJsonPath)
-
-      // 读取 flow.json
-      const localFlowPath = convertToLocalPath(flowJsonPath)
-      const resolvedFlowPath = await resolveProjectPathAccess(localFlowPath)
-      if (!resolvedFlowPath) {
-        dynamicFlowStages.value = []
-        return
-      }
-      const flowContent = await readProjectTextFile(resolvedFlowPath)
-      const flowData: FlowData = JSON.parse(flowContent)
 
       console.log('Loaded flow data:', flowData)
 
@@ -262,7 +232,7 @@ export function useFlowStages() {
 
     const sid = ++watchSession
     try {
-      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+      const homeData = await readWorkspaceHomeResourceApi() as { flow?: string } | null
       if (sid !== watchSession || currentProject.value?.path !== projectPath) return
       const flowJsonPath = homeData?.flow
       if (!flowJsonPath) return

@@ -6,7 +6,7 @@ const testState = vi.hoisted(() => ({
   flowExecutionActive: null as Ref<boolean> | null,
   runtimeEvents: null as Ref<unknown[]> | null,
   stepRefreshCounter: null as Ref<number> | null,
-  getHomePageApi: vi.fn(),
+  readWorkspaceHomeResourceApi: vi.fn(),
   readProjectBlobUrl: vi.fn(),
   readOptionalProjectTextFile: vi.fn(),
   readOptionalProjectTextFileTail: vi.fn(),
@@ -76,8 +76,8 @@ vi.mock('./useFlowRunner', () => ({
   flowExecutionActive: testState.flowExecutionActive,
 }))
 
-vi.mock('@/api/flow', () => ({
-  getHomePageApi: testState.getHomePageApi,
+vi.mock('@/api/workspaceResources', () => ({
+  readWorkspaceHomeResourceApi: testState.readWorkspaceHomeResourceApi,
 }))
 
 vi.mock('@/utils/projectFiles', () => ({
@@ -139,7 +139,7 @@ describe('useHomeData live project file watchers', () => {
     testState.logTailListeners.length = 0
     testState.projectFileWatchers.length = 0
 
-    testState.getHomePageApi.mockReset()
+    testState.readWorkspaceHomeResourceApi.mockReset()
     testState.readProjectBlobUrl.mockReset()
     testState.readOptionalProjectTextFile.mockReset()
     testState.readOptionalProjectTextFileTail.mockReset()
@@ -152,13 +152,10 @@ describe('useHomeData live project file watchers', () => {
     testState.triggerStepRefresh.mockReset()
     testState.subscribeProjectLogTail.mockReset()
 
-    testState.getHomePageApi.mockImplementation(async () => ({
-      response: 'success',
-      data: {
-        path: `${testState.currentProject!.value?.path ?? '/workspace/a'}/home/home.json`,
-      },
-      message: [],
-    }))
+    testState.readWorkspaceHomeResourceApi.mockImplementation(async () => {
+      const projectPath = testState.currentProject!.value?.path ?? '/workspace/a'
+      return JSON.parse(await testState.readProjectTextFile(`${projectPath}/home/home.json`))
+    })
     testState.requestProjectPathAccess.mockResolvedValue(true)
     testState.resolveProjectPathAccess.mockImplementation(async (path: string) => path)
     testState.subscribeProjectLogTail.mockImplementation(async (
