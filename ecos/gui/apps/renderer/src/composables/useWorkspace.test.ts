@@ -5,6 +5,7 @@ import type { Project } from '@/types'
 const {
   createSSEClientMock,
   createRuntimeEventClientMock,
+  createWorkspaceApiMock,
   loadWorkspaceApiMock,
   settingsData,
   setDesktopWindowTitleMock,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   createSSEClientMock: vi.fn(),
   createRuntimeEventClientMock: vi.fn(),
+  createWorkspaceApiMock: vi.fn(),
   loadWorkspaceApiMock: vi.fn(),
   settingsData: new Map<string, unknown>(),
   setDesktopWindowTitleMock: vi.fn(),
@@ -41,7 +43,7 @@ vi.mock('@/platform/desktop', () => ({
 
 vi.mock('@/api', () => ({
   loadWorkspaceApi: loadWorkspaceApiMock,
-  createWorkspaceApi: vi.fn(),
+  createWorkspaceApi: createWorkspaceApiMock,
   waitForRuntimeReady: waitForRuntimeReadyMock,
 }))
 
@@ -132,6 +134,7 @@ describe('useWorkspace openProject', () => {
 
     createSSEClientMock.mockReset()
     createRuntimeEventClientMock.mockReset()
+    createWorkspaceApiMock.mockReset()
     loadWorkspaceApiMock.mockReset()
     setDesktopWindowTitleMock.mockReset()
     toastAddMock.mockReset()
@@ -285,6 +288,48 @@ describe('useWorkspace openProject', () => {
 
     await expect(workspace.ensureApiReady()).resolves.toBe(false)
 
+    expect(workspace.runtimeBackendConnecting.value).toBe(false)
+  })
+
+  it('keeps the workspace loading overlay visible while a new workspace is being created', async () => {
+    const workspace = useWorkspace()
+    let resolveCreateWorkspace: ((value: unknown) => void) | undefined
+    createWorkspaceApiMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCreateWorkspace = resolve
+      })
+    )
+
+    const createPromise = workspace.newProject({
+      directory: '/work/new-project',
+      pdk: 'ics55',
+      pdk_root: '/pdk/ics55',
+      parameters: {
+        design: 'new_project',
+        top_module: 'top',
+        clock: 'clk',
+      },
+      origin_def: '',
+      origin_verilog: '',
+      rtl_list: [],
+    })
+
+    await vi.waitFor(() => {
+      expect(createWorkspaceApiMock).toHaveBeenCalled()
+    })
+
+    expect(workspace.runtimeBackendConnecting.value).toBe(true)
+
+    resolveCreateWorkspace?.({
+      response: 'success',
+      data: {
+        directory: '/work/new-project',
+        workspace_id: 'workspace-new-project',
+      },
+      message: [],
+    })
+
+    await expect(createPromise).resolves.toBe(true)
     expect(workspace.runtimeBackendConnecting.value).toBe(false)
   })
 

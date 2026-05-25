@@ -42,6 +42,8 @@ const stepRefreshCounter = ref(0)
 
 /** 准备工作区就绪时由 App 层显示全屏加载遮罩 */
 const runtimeBackendConnecting = ref(false)
+const runtimeBackendTitle = ref('Preparing your workspace')
+const runtimeBackendSubtitle = ref('First load or restoring your project may take a moment')
 
 // Toast 实例（在首次组件上下文调用时初始化）
 let _toast: ReturnType<typeof useToast> | null = null
@@ -118,8 +120,10 @@ export function useWorkspace() {
   /**
    * Wait until the desktop runtime bridge is available.
    */
-  const ensureApiReady = async (): Promise<boolean> => {
+  const ensureApiReady = async (options: { keepLoading?: boolean } = {}): Promise<boolean> => {
     runtimeBackendConnecting.value = true
+    runtimeBackendTitle.value = 'Preparing your workspace'
+    runtimeBackendSubtitle.value = 'First load or restoring your project may take a moment'
     try {
       await waitForRuntimeReady({ timeoutMs: 180_000 })
       return true
@@ -133,7 +137,9 @@ export function useWorkspace() {
       })
       return false
     } finally {
-      runtimeBackendConnecting.value = false
+      if (!options.keepLoading) {
+        runtimeBackendConnecting.value = false
+      }
     }
   }
 
@@ -404,6 +410,10 @@ export function useWorkspace() {
    */
   const newProject = async (config?: WorkspaceConfig) => {
     try {
+      runtimeBackendTitle.value = 'Creating your workspace'
+      runtimeBackendSubtitle.value = 'Writing project files and preparing the workspace view'
+      runtimeBackendConnecting.value = true
+
       if (currentProject.value) {
         await closeProject()
       }
@@ -421,7 +431,10 @@ export function useWorkspace() {
         selectedPath = result
       }
 
-      if (!(await ensureApiReady())) return false
+      if (!(await ensureApiReady({ keepLoading: true }))) return false
+
+      runtimeBackendTitle.value = 'Creating your workspace'
+      runtimeBackendSubtitle.value = 'Writing project files and preparing the workspace view'
 
       // 3. 通过桌面 CLI 创建项目（传递更多配置信息）
       // 将前端参数映射为后端期望的格式 (参考 ics55_parameter.json)
@@ -507,6 +520,8 @@ export function useWorkspace() {
       console.error('New project error:', error)
       showToast({ severity: 'error', summary: 'Failed to Create Project', detail: String(error) })
       return false
+    } finally {
+      runtimeBackendConnecting.value = false
     }
   }
 
@@ -742,6 +757,8 @@ export function useWorkspace() {
     triggerStepRefresh,
     // 准备工作区时的全屏遮罩（见 App.vue）
     runtimeBackendConnecting,
+    runtimeBackendTitle,
+    runtimeBackendSubtitle,
     ensureApiReady,
     // Toast
     showToast,

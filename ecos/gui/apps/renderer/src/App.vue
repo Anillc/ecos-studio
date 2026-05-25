@@ -40,8 +40,8 @@
         >
           <div class="runtime-backend-panel">
             <div class="runtime-backend-spinner" aria-hidden="true" />
-            <p class="runtime-backend-title">Preparing your workspace</p>
-            <p class="runtime-backend-sub">First load or restoring your project may take a moment</p>
+            <p class="runtime-backend-title">{{ runtimeBackendTitle }}</p>
+            <p class="runtime-backend-sub">{{ runtimeBackendSubtitle }}</p>
           </div>
         </div>
       </Transition>
@@ -74,7 +74,16 @@ const router = useRouter()
 const themeStore = useThemeStore()
 const route = useRoute()
 const isWelcome = computed(() => route.path === '/')
-const { loadRecentProjects, currentProject, openProject, newProject, closeProject, runtimeBackendConnecting } =
+const {
+  loadRecentProjects,
+  currentProject,
+  openProject,
+  newProject,
+  closeProject,
+  runtimeBackendConnecting,
+  runtimeBackendTitle,
+  runtimeBackendSubtitle,
+} =
   useWorkspace()
 const { loadPdks } = usePdkManager()
 const { loadVersions } = useVersion()
