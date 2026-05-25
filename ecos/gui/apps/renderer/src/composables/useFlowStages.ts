@@ -1,10 +1,10 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, getCurrentInstance, onUnmounted, watch } from 'vue'
 import { useWorkspace } from './useWorkspace'
 import { useTauri, isTauri } from './useTauri'
 import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
 import { STEP_METADATA, getStepMetadata } from '@/api/type'
-import type { ECCResponse } from '@/api/sse'
-import { readProjectTextFile } from '@/utils/projectFiles'
+import type { ECCResponse } from '@/api/runtimeEvents'
+import { readProjectTextFile, watchProjectFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 
 // ============ 类型定义 ============
@@ -119,6 +119,8 @@ export function useFlowStages() {
   const dynamicFlowStages = ref<FlowStage[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  let unwatchFlowJsonFile: (() => void) | null = null
+  let watchSession = 0
 
   // 合并后的完整流程步骤
   const flowStages = computed<FlowStage[]>(() => {
@@ -169,7 +171,7 @@ export function useFlowStages() {
 
   /**
    * 从 home.json 路径间接加载 flow stages
-   * 用于 SSE subflow 通知中的 home_page 路径
+   * 用于 runtime event payload 中的 home_page 路径
    */
   async function loadFlowStagesFromHomePath(homePath: string): Promise<void> {
     if (!isInTauri || !homePath) return
@@ -248,6 +250,42 @@ export function useFlowStages() {
     }
   }
 
+  function cleanupFlowJsonWatch(): void {
+    unwatchFlowJsonFile?.()
+    unwatchFlowJsonFile = null
+  }
+
+  async function startFlowJsonWatchForCurrentProject(): Promise<void> {
+    cleanupFlowJsonWatch()
+    const projectPath = currentProject.value?.path
+    if (!isInTauri || !projectPath) return
+
+    const sid = ++watchSession
+    try {
+      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+      if (sid !== watchSession || currentProject.value?.path !== projectPath) return
+      const flowJsonPath = homeData?.flow
+      if (!flowJsonPath) return
+
+      const localFlowPath = convertRemoteToLocalPath(flowJsonPath, projectPath)
+      const resolvedFlowPath = await resolveProjectPathAccess(localFlowPath)
+      if (sid !== watchSession || currentProject.value?.path !== projectPath) return
+      if (!resolvedFlowPath) return
+
+      const unwatch = await watchProjectFile(resolvedFlowPath, () => {
+        if (sid !== watchSession || currentProject.value?.path !== projectPath) return
+        void loadFlowStagesFromPath(resolvedFlowPath)
+      })
+      if (sid !== watchSession || currentProject.value?.path !== projectPath) {
+        unwatch?.()
+        return
+      }
+      unwatchFlowJsonFile = unwatch
+    } catch (err) {
+      console.warn('Failed to watch flow.json for stage updates:', err)
+    }
+  }
+
   /**
    * 乐观更新：将第一个非 Success 的 run 步骤设为 Ongoing
    * 在用户点击 Run RTL2GDS 时调用，立即反映运行状态
@@ -303,7 +341,10 @@ export function useFlowStages() {
     async (newPath) => {
       if (newPath) {
         await loadFlowStages()
+        await startFlowJsonWatchForCurrentProject()
       } else {
+        watchSession++
+        cleanupFlowJsonWatch()
         clearFlowStages()
       }
     },
@@ -318,15 +359,15 @@ export function useFlowStages() {
     },
   )
 
-  // 监听 SSE 通知，当收到 step/subflow 通知时自动刷新流程步骤
-  const { sseMessages } = useWorkspace()
+  // 监听 runtime event payload；只有明确携带路径的事件才直接刷新流程步骤。
+  const { runtimeEvents } = useWorkspace()
 
   watch(
-    () => sseMessages.value.length,
+    () => runtimeEvents.value.length,
     async (newLen, oldLen) => {
       if (newLen <= (oldLen ?? 0)) return
 
-      const latest: ECCResponse = sseMessages.value[newLen - 1]
+      const latest: ECCResponse = runtimeEvents.value[newLen - 1]
       if (!latest || latest.cmd !== 'notify') return
 
       const notifyId = latest.data?.id as string | undefined
@@ -334,9 +375,9 @@ export function useFlowStages() {
 
       if (notifyId === 'step') {
         const stepName = latest.data?.step as string | undefined
-        const stepPath = info?.step_path as string | undefined
+        const stepPath = (info?.step_path ?? latest.data?.step_path) as string | undefined
 
-        console.log('Received SSE step notification, step:', stepName, 'path:', stepPath)
+        console.log('Received runtime step event, step:', stepName, 'path:', stepPath)
         console.log('latest:', latest)
 
         // 乐观更新：先将对应步骤状态设为 Success，避免等待文件读取的延迟
@@ -357,13 +398,20 @@ export function useFlowStages() {
           await refreshFlowStages()
         }
       } else if (notifyId === 'subflow') {
-        const homePage = info?.home_page as string | undefined
+        const homePage = (info?.home_page ?? latest.data?.home_page) as string | undefined
         if (homePage) {
           await loadFlowStagesFromHomePath(homePage)
         }
       }
     }
   )
+
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      watchSession++
+      cleanupFlowJsonWatch()
+    })
+  }
 
   return {
     // 状态
