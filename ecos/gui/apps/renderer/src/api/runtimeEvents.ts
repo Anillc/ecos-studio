@@ -13,10 +13,7 @@ export type RuntimeNotifyType =
   | 'heartbeat'
   | 'message'
 
-export type NotifyType = RuntimeNotifyType
-
 export type RuntimeResponseType = 'success' | 'failed' | 'error' | 'warning' | 'cancelled'
-export type ResponseType = RuntimeResponseType
 
 export interface RuntimeEventResponse {
   cmd: string
@@ -31,10 +28,7 @@ export interface RuntimeEventResponse {
   message: string[]
 }
 
-export type ECCResponse = RuntimeEventResponse
-
 export type RuntimeEventHandler = (response: RuntimeEventResponse) => void
-export type SSEEventHandler = RuntimeEventHandler
 
 export interface RuntimeEventClientConfig {
   autoReconnect?: boolean
@@ -43,10 +37,7 @@ export interface RuntimeEventClientConfig {
   connectionTimeout?: number
 }
 
-export type SSEClientConfig = RuntimeEventClientConfig
-
 export type RuntimeEventClientState = 'disconnected' | 'connecting' | 'connected' | 'error'
-export type SSEClientState = RuntimeEventClientState
 
 export function createRuntimeEventClient(workspaceId: string, config: RuntimeEventClientConfig = {}) {
   void config
@@ -275,8 +266,4 @@ export function createRuntimeEventClient(workspaceId: string, config: RuntimeEve
   }
 }
 
-// Legacy compatibility aliases for callers that still import the old SSE names.
-export const createSSEClient = createRuntimeEventClient
-
 export type RuntimeEventClient = ReturnType<typeof createRuntimeEventClient>
-export type SSEClient = RuntimeEventClient

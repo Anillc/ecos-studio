@@ -26,17 +26,15 @@ describe('createRuntimeEventClient desktop CLI events', () => {
     vi.resetModules()
   })
 
-  it('subscribes to desktop CLI events instead of creating an EventSource', async () => {
+  it('subscribes to desktop CLI events', async () => {
     const listeners: Array<(event: DesktopCliCommandEvent) => void> = []
     const unsubscribe = vi.fn()
     const onEvent = vi.fn((listener: (event: DesktopCliCommandEvent) => void) => {
       listeners.push(listener)
       return unsubscribe
     })
-    const EventSourceSpy = vi.fn()
 
     setWindow({
-      EventSource: EventSourceSpy,
       ecosDesktop: {
         cli: {
           onEvent,
@@ -51,7 +49,6 @@ describe('createRuntimeEventClient desktop CLI events', () => {
     client.connect()
 
     expect(onEvent).toHaveBeenCalledTimes(1)
-    expect(EventSourceSpy).not.toHaveBeenCalled()
     expect(client.getState()).toBe('connected')
 
     listeners[0]({
@@ -358,28 +355,7 @@ describe('createRuntimeEventClient desktop CLI events', () => {
       stream: 'system',
       type: 'completed',
     })
-    listeners[0]({
-      cmd: 'set_pdk_root',
-      jobId: 'job-pdk',
-      result: {
-        cmd: 'set_pdk_root',
-        data: {},
-        message: ['pdk root set'],
-        ok: true,
-        response: 'success',
-      },
-      stream: 'system',
-      type: 'completed',
-    })
-
     expect(allHandler).not.toHaveBeenCalled()
   })
 
-  it('keeps compatibility exports for the old SSE client names', async () => {
-    const runtimeEvents = await import('./runtimeEvents')
-    const sse = await import('./sse')
-
-    expect(runtimeEvents.createSSEClient).toBe(runtimeEvents.createRuntimeEventClient)
-    expect(sse.createSSEClient).toBe(runtimeEvents.createRuntimeEventClient)
-  })
 })

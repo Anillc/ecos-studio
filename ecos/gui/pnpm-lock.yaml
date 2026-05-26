@@ -86,9 +86,6 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
-      alova:
-        specifier: ^3.4.1
-        version: 3.4.1
       echarts:
         specifier: ^6.0.0
         version: 6.0.0
@@ -175,9 +172,6 @@ packages:
 
   7zip-bin@5.2.0:
     resolution: {integrity: sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A==}
-
-  '@alova/shared@1.3.2':
-    resolution: {integrity: sha512-1XvDLWgYpVZ99MmLl1f3Fw4T6S6pPYk5afz5cwRVjuq8JXEGsDn9IygDKfvRyWqkqCBx7Jif07LIct1O+MVEow==}
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -1130,10 +1124,6 @@ packages:
 
   alien-signals@1.0.13:
     resolution: {integrity: sha512-OGj9yyTnJEttvzhTUWuscOvtqxq5vrhF7vL9oS0xJ2mK0ItPYP1/y+vCFebfxoEyAz0++1AIwJ5CMr+Fk3nDmg==}
-
-  alova@3.4.1:
-    resolution: {integrity: sha512-xGChKIiCHDqcMglF9RyuWAsk+ltwnja8Dp4MgRIRbUlhOi8XFiQnaoWwIQzJcODKeblmmiFAK7YrYnpskFZWLA==}
-    engines: {node: '>= 18.0.0'}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -2184,9 +2174,6 @@ packages:
   quickselect@3.0.0:
     resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
 
-  rate-limiter-flexible@5.0.5:
-    resolution: {integrity: sha512-+/dSQfo+3FYwYygUs/V2BBdwGa9nFtakDwKt4l0bnvNB53TNT++QSFewwHX9qXrZJuMe9j+TUaU21lm5ARgqdQ==}
-
   rbush@4.0.1:
     resolution: {integrity: sha512-IP0UpfeWQujYC8Jg162rMNc01Rf0gWMMAb2Uxus/Q0qOFw4lCcq6ZnQEZwUoJqWyUGJ9th7JjwI4yIWo+uvoAQ==}
 
@@ -2631,8 +2618,6 @@ packages:
 snapshots:
 
   7zip-bin@5.2.0: {}
-
-  '@alova/shared@1.3.2': {}
 
   '@babel/code-frame@7.29.0':
     dependencies:
@@ -3494,11 +3479,6 @@ snapshots:
       uri-js: 4.4.1
 
   alien-signals@1.0.13: {}
-
-  alova@3.4.1:
-    dependencies:
-      '@alova/shared': 1.3.2
-      rate-limiter-flexible: 5.0.5
 
   ansi-regex@5.0.1: {}
 
@@ -4636,8 +4616,6 @@ snapshots:
   quick-lru@5.1.1: {}
 
   quickselect@3.0.0: {}
-
-  rate-limiter-flexible@5.0.5: {}
 
   rbush@4.0.1:
     dependencies:

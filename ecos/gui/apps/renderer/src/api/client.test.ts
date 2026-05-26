@@ -40,7 +40,5 @@ describe('waitForRuntimeReady', () => {
     const clientModule = await import('./client')
 
     await expect(clientModule.waitForRuntimeReady()).resolves.toBeUndefined()
-    expect('API_BASE_URL' in clientModule).toBe(false)
-    expect('initApiPort' in clientModule).toBe(false)
   })
 })

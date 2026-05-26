@@ -13,12 +13,3 @@ export async function waitForRuntimeReady(
     timeoutMs: options?.timeoutMs,
   })
 }
-
-export const alovaInstance = {
-  Get: unsupportedHttpApi,
-  Post: unsupportedHttpApi,
-}
-
-function unsupportedHttpApi(): never {
-  throw new Error('Workspace and flow APIs require the ECOS desktop runtime.')
-}
