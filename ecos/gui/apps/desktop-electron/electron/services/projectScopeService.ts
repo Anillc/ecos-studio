@@ -2,7 +2,7 @@ import { readdir, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, win32 } from 'node:path'
 import type { PdkDetectedFiles, ScannedPdkDirectory } from '@ecos-studio/shared'
 
-const PROJECT_MARKER_FILES = ['home.json', 'flow.json', 'parameters.json']
+const REQUIRED_PROJECT_FILES = ['flow.json', 'parameters.json']
 const TOP_LEVEL_ENTRY_LIMIT = 20
 
 async function canonicalizeExistingPath(path: string): Promise<string> {
@@ -103,18 +103,18 @@ async function isProjectDirectoryCandidate(path: string): Promise<boolean> {
     return false
   }
 
-  const markerChecks = await Promise.all(
-    PROJECT_MARKER_FILES.map(async (markerFileName) => {
+  const requiredFileChecks = await Promise.all(
+    REQUIRED_PROJECT_FILES.map(async (fileName) => {
       try {
-        const markerStats = await stat(`${homeDirectory}/${markerFileName}`)
-        return markerStats.isFile()
+        const fileStats = await stat(`${homeDirectory}/${fileName}`)
+        return fileStats.isFile()
       } catch {
         return false
       }
     }),
   )
 
-  return markerChecks.some(Boolean)
+  return requiredFileChecks.every(Boolean)
 }
 
 function getPathLeafName(path: string): string | null {

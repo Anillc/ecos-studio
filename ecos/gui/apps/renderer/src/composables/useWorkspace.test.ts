@@ -152,6 +152,7 @@ describe('useWorkspace openProject', () => {
     settingsData.clear()
 
     desktopApi = createDesktopApiMock()
+    vi.mocked(desktopApi.workspace.isProjectDirectory).mockResolvedValue(true)
     waitForDesktopApiMock.mockResolvedValue(desktopApi)
     waitForRuntimeReadyMock.mockResolvedValue(undefined)
     onRuntimeEvent = undefined
@@ -214,6 +215,19 @@ describe('useWorkspace openProject', () => {
     expect(await workspace.openProject()).toBe(false)
     expect(workspace.currentProject.value?.path).toBe('/work/old')
     expect(settingsData.get('current_project_path')).toBe('/work/old')
+  })
+
+  it('stops before loading when the selected directory is not an ECOS workspace', async () => {
+    const workspace = useWorkspace()
+
+    vi.mocked(desktopApi.dialog.pickDirectory).mockResolvedValueOnce('/work/not-ecos')
+    vi.mocked(desktopApi.workspace.isProjectDirectory).mockResolvedValueOnce(false)
+
+    expect(await workspace.openProject()).toBe(false)
+    expect(loadWorkspaceApiMock).not.toHaveBeenCalled()
+    expect(waitForRuntimeReadyMock).not.toHaveBeenCalled()
+    expect(desktopApi.workspace.isProjectDirectory).toHaveBeenCalledWith('/work/not-ecos')
+    expect(workspace.currentProject.value).toBeNull()
   })
 
   it('clears chat messages only after a workspace opens successfully', async () => {
@@ -364,6 +378,44 @@ describe('useWorkspace openProject', () => {
 
     await expect(workspace.ensureApiReady()).resolves.toBe(false)
 
+    expect(workspace.runtimeBackendConnecting.value).toBe(false)
+  })
+
+  it('keeps the workspace loading overlay visible while an existing workspace is loading', async () => {
+    const workspace = useWorkspace()
+    let resolveLoadWorkspace: ((value: unknown) => void) | undefined
+    loadWorkspaceApiMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLoadWorkspace = resolve
+      })
+    )
+
+    const project: Project = {
+      id: '/work/demo',
+      name: 'demo',
+      path: '/work/demo',
+      lastOpened: new Date('2026-01-01T00:00:00.000Z'),
+    }
+
+    const openPromise = workspace.openProject(project)
+
+    await vi.waitFor(() => {
+      expect(loadWorkspaceApiMock).toHaveBeenCalledWith('/work/demo')
+    })
+
+    expect(workspace.runtimeBackendConnecting.value).toBe(true)
+    expect(workspace.runtimeBackendTitle.value).toBe('Loading your workspace')
+
+    resolveLoadWorkspace?.({
+      response: 'success',
+      data: {
+        directory: '/work/demo',
+        workspace_id: 'workspace-demo',
+      },
+      message: [],
+    })
+
+    await expect(openPromise).resolves.toBe(true)
     expect(workspace.runtimeBackendConnecting.value).toBe(false)
   })
 

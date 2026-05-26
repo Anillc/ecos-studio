@@ -73,4 +73,25 @@ describe('ProjectScopeService', () => {
       service.requestProjectPathAccess(join(root, 'Synthesis_yosys', 'log', 'Synthesis.log')),
     ).resolves.toBe(join(root, 'Synthesis_yosys', 'log', 'Synthesis.log'))
   })
+
+  it('recognizes a workspace only when required home files exist', async () => {
+    const root = await createTempDir('ecos-project-root-')
+    await mkdir(join(root, 'home'), { recursive: true })
+    await writeFile(join(root, 'home', 'flow.json'), '{"steps":[]}')
+    await writeFile(join(root, 'home', 'parameters.json'), '{"Design":"demo"}')
+
+    const service = new ProjectScopeService()
+
+    await expect(service.isProjectDirectory(root)).resolves.toBe(true)
+  })
+
+  it('rejects a directory with only one workspace marker file', async () => {
+    const root = await createTempDir('ecos-project-root-')
+    await mkdir(join(root, 'home'), { recursive: true })
+    await writeFile(join(root, 'home', 'flow.json'), '{"steps":[]}')
+
+    const service = new ProjectScopeService()
+
+    await expect(service.isProjectDirectory(root)).resolves.toBe(false)
+  })
 })

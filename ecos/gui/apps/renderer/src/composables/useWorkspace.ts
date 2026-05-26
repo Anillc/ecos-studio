@@ -342,7 +342,23 @@ export function useWorkspace() {
         if (!selectedPath) return false
       }
 
-      if (!(await ensureApiReady())) return false
+      if (!(await isProjectValid(selectedPath))) {
+        showToast({
+          severity: 'error',
+          summary: 'Not an ECOS Workspace',
+          detail: 'Please select a directory created by ECOS Studio.'
+        })
+        return false
+      }
+
+      runtimeBackendTitle.value = 'Loading your workspace'
+      runtimeBackendSubtitle.value = 'Opening project data and preparing the workspace view'
+      runtimeBackendConnecting.value = true
+
+      if (!(await ensureApiReady({ keepLoading: true }))) return false
+
+      runtimeBackendTitle.value = 'Loading your workspace'
+      runtimeBackendSubtitle.value = 'Opening project data and preparing the workspace view'
 
       // 3. 通过桌面 CLI 加载项目状态
       const response = await loadWorkspaceApi(selectedPath)
@@ -405,6 +421,8 @@ export function useWorkspace() {
       console.error('Open project error:', error)
       showToast({ severity: 'error', summary: 'Failed to Open Project', detail: String(error) })
       return false
+    } finally {
+      runtimeBackendConnecting.value = false
     }
   }
 
