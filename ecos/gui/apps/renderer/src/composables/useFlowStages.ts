@@ -1,6 +1,6 @@
 import { ref, computed, getCurrentInstance, onUnmounted, watch } from 'vue'
 import { useWorkspace } from './useWorkspace'
-import { useTauri, isTauri } from './useTauri'
+import { useDesktopRuntime, isDesktopRuntime } from './useDesktopRuntime'
 import { convertRemoteToLocalPath } from './useHomeData'
 import { STEP_METADATA, getStepMetadata } from '@/api/type'
 import type { ECCResponse } from '@/api/runtimeEvents'
@@ -77,7 +77,7 @@ function transformFlowData(flowData: FlowData): FlowStage[] {
  * 读取失败时回退为 STEP_METADATA 中 `group === 'run'` 的全集。
  */
 export async function loadFlowRunStepKeysFromProject(projectPath: string): Promise<string[]> {
-  if (!isTauri() || !projectPath) {
+  if (!isDesktopRuntime() || !projectPath) {
     return fallbackRunStepKeys()
   }
   try {
@@ -104,7 +104,7 @@ function fallbackRunStepKeys(): string[] {
  * 负责从 flow.json 加载流程步骤并管理状态
  */
 export function useFlowStages() {
-  const { isInTauri } = useTauri()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
   const { currentProject, stepRefreshCounter } = useWorkspace()
 
   // 动态加载的流程步骤
@@ -131,7 +131,7 @@ export function useFlowStages() {
    * 从指定的 flow.json 路径加载流程步骤
    */
   async function loadFlowStagesFromPath(flowJsonPath: string): Promise<void> {
-    if (!isInTauri || !flowJsonPath) {
+    if (!isDesktopRuntimeAvailable || !flowJsonPath) {
       console.warn('Cannot load flow.json: desktop bridge unavailable or path is empty')
       return
     }
@@ -166,7 +166,7 @@ export function useFlowStages() {
    * 用于 runtime event payload 中的 home_page 路径
    */
   async function loadFlowStagesFromHomePath(homePath: string): Promise<void> {
-    if (!isInTauri || !homePath) return
+    if (!isDesktopRuntimeAvailable || !homePath) return
 
     try {
       const localHomePath = convertToLocalPath(homePath)
@@ -189,7 +189,7 @@ export function useFlowStages() {
    * 通过共享缓存获取 home.json 数据（不重复调用 API），从中提取 flow 路径
    */
   async function loadFlowStages(): Promise<void> {
-    if (!isInTauri || !currentProject.value?.path) {
+    if (!isDesktopRuntimeAvailable || !currentProject.value?.path) {
       console.warn('Cannot load flow.json: desktop bridge unavailable or no project is open')
       dynamicFlowStages.value = []
       return
@@ -228,7 +228,7 @@ export function useFlowStages() {
   async function startFlowJsonWatchForCurrentProject(): Promise<void> {
     cleanupFlowJsonWatch()
     const projectPath = currentProject.value?.path
-    if (!isInTauri || !projectPath) return
+    if (!isDesktopRuntimeAvailable || !projectPath) return
 
     const sid = ++watchSession
     try {

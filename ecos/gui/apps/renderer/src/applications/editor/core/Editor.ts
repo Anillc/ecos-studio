@@ -140,7 +140,7 @@ export class Editor {
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
       // 不指定 preference，让 PixiJS 自动选择最佳渲染器
-      // Tauri 生产环境的 WebView 可能不支持 WebGPU
+      // desktop runtime 生产环境的 WebView 可能不支持 WebGPU
     })
 
     // 添加 canvas 到容器

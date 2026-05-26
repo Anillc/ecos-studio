@@ -101,7 +101,7 @@ import { useRoute } from 'vue-router'
 import { useMessageStore } from '../stores/messageStore'
 import { InfoEnum, StepEnum } from '../api/type'
 import { resolveWorkspaceStepInfoApi } from '../api/workspaceResources'
-import { useTauri } from '../composables/useTauri'
+import { useDesktopRuntime } from '../composables/useDesktopRuntime'
 import { useWorkspace } from '../composables/useWorkspace'
 import { requestProjectPathAccess } from '@/utils/projectFs'
 import { readProjectTextFile } from '@/utils/projectFiles'
@@ -110,7 +110,7 @@ import type { MapInfo as MapInfoType } from '../types'
 
 const route = useRoute()
 const messageStore = useMessageStore()
-const { isInTauri } = useTauri()
+const { isDesktopRuntimeAvailable } = useDesktopRuntime()
 const { currentProject, runtimeEvents, stepRefreshCounter } = useWorkspace()
 
 // Tabs 定义
@@ -370,7 +370,7 @@ async function handleKeyClick(key: string, value: unknown) {
 
     // 如果有 path，尝试读取文件
     if (path) {
-      if (!isInTauri) {
+      if (!isDesktopRuntimeAvailable) {
         content = `File path: ${path}\n(Readable only in the ECOS Studio desktop runtime)`
       } else {
         // 转换远程路径为本地路径

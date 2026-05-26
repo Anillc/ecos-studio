@@ -10,8 +10,8 @@ const mocks = vi.hoisted(() => ({
 
 let useLayoutTilePrefetchStore: typeof useLayoutTilePrefetchStoreType
 
-vi.mock('@/composables/useTauri', () => ({
-  isTauri: () => true,
+vi.mock('@/composables/useDesktopRuntime', () => ({
+  isDesktopRuntime: () => true,
 }))
 
 vi.mock('@/platform/desktop', () => ({

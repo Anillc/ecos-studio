@@ -35,7 +35,7 @@ export class GlobalLayerStore {
 
   get isLoaded(): boolean { return this._loaded }
 
-  /** 支持 HTTP(S) URL，或 Tauri 下已读入的 ArrayBuffer */
+  /** 支持 HTTP(S) URL，或 desktop runtime 下已读入的 ArrayBuffer */
   async load(source: string | ArrayBuffer): Promise<void> {
     if (source instanceof ArrayBuffer) {
       this.buf = source

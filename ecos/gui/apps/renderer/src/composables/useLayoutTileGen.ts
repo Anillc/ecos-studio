@@ -1,5 +1,5 @@
 import { resolveProjectFileAbsolutePath } from '@ecos-studio/shared'
-import { isTauri } from '@/composables/useTauri'
+import { isDesktopRuntime } from '@/composables/useDesktopRuntime'
 import { getDesktopApi } from '@/platform/desktop'
 
 /** 与 `runLayoutTileGeneration` 使用同一解析规则，供 single-flight 键与调用方复用 */
@@ -66,7 +66,7 @@ export async function runLayoutTileGeneration(params: {
   /** 与路由阶段一致，用于 `.ecos/tile-cache/layout/<stepKey>/` */
   stepKey: string
 }): Promise<{ baseUrl: string; outDir: string; fromCache: boolean }> {
-  if (!isTauri()) {
+  if (!isDesktopRuntime()) {
     throw new Error('瓦片生成仅可在 ECOS Studio 桌面应用中使用。')
   }
 
@@ -79,7 +79,7 @@ export async function getLayoutTileGenerationStatus(params: {
   /** 与路由阶段一致，用于 `.ecos/tile-cache/layout/<stepKey>/` */
   stepKey: string
 }): Promise<{ baseUrl: string; outDir: string; fromCache: boolean }> {
-  if (!isTauri()) {
+  if (!isDesktopRuntime()) {
     throw new Error('瓦片生成仅可在 ECOS Studio 桌面应用中使用。')
   }
 

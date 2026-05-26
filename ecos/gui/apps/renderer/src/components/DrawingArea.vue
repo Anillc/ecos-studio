@@ -17,7 +17,7 @@ import DrawingToolbar from './DrawingToolbar.vue'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useEDA } from '@/composables/useEDA'
 import { useLayoutState } from '@/composables/useLayoutState'
-import { isTauri } from '@/composables/useTauri'
+import { isDesktopRuntime } from '@/composables/useDesktopRuntime'
 import {
   deriveDrcStepPathFromLayoutJsonRelative,
   getLayoutTileGenerationStatus,
@@ -54,7 +54,7 @@ const currentLayoutTileCacheReady = ref(false)
 const tileGenBusy = ref(false)
 /** 矢量 ↔ 预览图切换中（与生成瓦片并列禁用工具栏） */
 const previewModeSwitchBusy = ref(false)
-const showTileGenerate = computed(() => isTauri())
+const showTileGenerate = computed(() => isDesktopRuntime())
 
 const showPreviewModeToggle = computed(() =>
   showTileGenerate.value
@@ -245,7 +245,7 @@ async function refreshCurrentLayoutTileCacheStatus(): Promise<void> {
   const rel = layoutJsonRelativePath.value
   const stepKey = currentStepKey.value
   currentLayoutTileCacheReady.value = false
-  if (!projectPath || !rel || !isTauri()) {
+  if (!projectPath || !rel || !isDesktopRuntime()) {
     return
   }
 
@@ -345,7 +345,7 @@ async function loadDrcViolationOverlayAfterTiles(_ed: Editor, dieWorldH: number)
   layoutState.drcOverlayReady.value = false
   layoutState.drcViolationCount.value = 0
   layoutState.drcViolations.value = []
-  if (!isTauri() || !drcViolationOverlay) return
+  if (!isDesktopRuntime() || !drcViolationOverlay) return
 
   const projectPath = currentProject.value?.path
   const drcRel = drcJsonRelativePath.value

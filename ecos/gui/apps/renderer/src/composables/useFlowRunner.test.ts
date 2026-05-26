@@ -2,17 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StateEnum, StepEnum } from '@/api/type'
 
 const {
-  ensureTauri,
+  ensureDesktopRuntime,
   ensureApiReady,
   showToast,
-  triggerStepRefresh,
   runStepApi,
   rtl2gdsApi,
 } = vi.hoisted(() => ({
-  ensureTauri: vi.fn(() => false),
+  ensureDesktopRuntime: vi.fn(() => false),
   ensureApiReady: vi.fn(() => Promise.resolve(true)),
   showToast: vi.fn(),
-  triggerStepRefresh: vi.fn(),
   runStepApi: vi.fn(),
   rtl2gdsApi: vi.fn(),
 }))
@@ -25,10 +23,10 @@ vi.mock('vue-router', () => ({
   }),
 }))
 
-vi.mock('./useTauri', () => ({
-  useTauri: () => ({
-    isInTauri: false,
-    ensureTauri,
+vi.mock('./useDesktopRuntime', () => ({
+  useDesktopRuntime: () => ({
+    isDesktopRuntimeAvailable: false,
+    ensureDesktopRuntime,
   }),
 }))
 
@@ -36,7 +34,6 @@ vi.mock('./useWorkspace', () => ({
   useWorkspace: () => ({
     ensureApiReady,
     showToast,
-    triggerStepRefresh,
   }),
 }))
 
@@ -49,12 +46,11 @@ import { flowExecutionActive, useFlowRunner } from './useFlowRunner'
 
 describe('useFlowRunner desktop-only guard', () => {
   beforeEach(() => {
-    ensureTauri.mockReset()
-    ensureTauri.mockReturnValue(false)
+    ensureDesktopRuntime.mockReset()
+    ensureDesktopRuntime.mockReturnValue(false)
     ensureApiReady.mockReset()
     ensureApiReady.mockResolvedValue(true)
     showToast.mockReset()
-    triggerStepRefresh.mockReset()
     runStepApi.mockReset()
     rtl2gdsApi.mockReset()
     flowExecutionActive.value = false
@@ -65,7 +61,7 @@ describe('useFlowRunner desktop-only guard', () => {
 
     const result = await runFlow()
 
-    expect(ensureTauri).toHaveBeenCalled()
+    expect(ensureDesktopRuntime).toHaveBeenCalled()
     expect(showToast).toHaveBeenCalledWith({
       severity: 'warn',
       summary: 'Desktop App Required',
@@ -74,7 +70,6 @@ describe('useFlowRunner desktop-only guard', () => {
     })
     expect(runStepApi).not.toHaveBeenCalled()
     expect(ensureApiReady).not.toHaveBeenCalled()
-    expect(triggerStepRefresh).not.toHaveBeenCalled()
     expect(result).toEqual({
       step: StepEnum.FLOORPLAN,
       state: StateEnum.Invalid,
@@ -86,7 +81,7 @@ describe('useFlowRunner desktop-only guard', () => {
 
     const result = await runAllFlow()
 
-    expect(ensureTauri).toHaveBeenCalled()
+    expect(ensureDesktopRuntime).toHaveBeenCalled()
     expect(showToast).toHaveBeenCalledWith({
       severity: 'warn',
       summary: 'Desktop App Required',
@@ -95,12 +90,11 @@ describe('useFlowRunner desktop-only guard', () => {
     })
     expect(rtl2gdsApi).not.toHaveBeenCalled()
     expect(ensureApiReady).not.toHaveBeenCalled()
-    expect(triggerStepRefresh).not.toHaveBeenCalled()
     expect(result).toBeNull()
   })
 
-  it('does not trigger a refresh after the full flow API returns because runtime events drive refresh', async () => {
-    ensureTauri.mockReturnValue(true)
+  it('resolves the full flow API result without directly refreshing resources', async () => {
+    ensureDesktopRuntime.mockReturnValue(true)
     rtl2gdsApi.mockResolvedValue({
       response: 'success',
       data: { rerun: false },
@@ -110,12 +104,10 @@ describe('useFlowRunner desktop-only guard', () => {
     const { runAllFlow } = useFlowRunner()
 
     await expect(runAllFlow()).resolves.toEqual({ rerun: false })
-
-    expect(triggerStepRefresh).not.toHaveBeenCalled()
   })
 
   it('does not mark the full flow running when the runtime bridge is unavailable', async () => {
-    ensureTauri.mockReturnValue(true)
+    ensureDesktopRuntime.mockReturnValue(true)
     ensureApiReady.mockResolvedValue(false)
 
     const { runAllFlow, isRunning } = useFlowRunner()
@@ -124,7 +116,6 @@ describe('useFlowRunner desktop-only guard', () => {
 
     expect(ensureApiReady).toHaveBeenCalledTimes(1)
     expect(rtl2gdsApi).not.toHaveBeenCalled()
-    expect(triggerStepRefresh).not.toHaveBeenCalled()
     expect(isRunning.value).toBe(false)
   })
 })

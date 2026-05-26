@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { InfoEnum, StepEnum } from '@/api/type'
 import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
-import { isTauri } from '@/composables/useTauri'
+import { isDesktopRuntime } from '@/composables/useDesktopRuntime'
 import { loadFlowRunStepKeysFromProject } from '@/composables/useFlowStages'
 import { pickLayoutJsonPath } from '@/composables/useLayoutTileGen'
 import {
@@ -15,9 +15,9 @@ const STORAGE_KEY = 'ecos.layoutTilePrefetch.enabled'
 
 export type StepPrefetchState = 'idle' | 'prefetching' | 'ready' | 'error'
 
-/** Tauri 下即可预热（含生产构建） */
+/** Desktop runtime 下即可预热（含生产构建） */
 function canPrefetchRuntime(): boolean {
-  return isTauri()
+  return isDesktopRuntime()
 }
 
 function findStepEnumForPath(pathSegment: string): StepEnum | undefined {

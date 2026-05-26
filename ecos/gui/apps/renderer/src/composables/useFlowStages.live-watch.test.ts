@@ -29,11 +29,11 @@ vi.mock('./useWorkspace', () => ({
   }),
 }))
 
-vi.mock('./useTauri', () => ({
-  useTauri: () => ({
-    isInTauri: true,
+vi.mock('./useDesktopRuntime', () => ({
+  useDesktopRuntime: () => ({
+    isDesktopRuntimeAvailable: true,
   }),
-  isTauri: () => true,
+  isDesktopRuntime: () => true,
 }))
 
 vi.mock('@/api/workspaceResources', () => ({

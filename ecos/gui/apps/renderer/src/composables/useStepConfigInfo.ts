@@ -5,7 +5,7 @@ import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
 import { convertRemoteToLocalPath } from '@/composables/useHomeData'
 import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
-import { useTauri } from '@/composables/useTauri'
+import { useDesktopRuntime } from '@/composables/useDesktopRuntime'
 import { useWorkspace } from '@/composables/useWorkspace'
 
 const stepEnumValues = Object.values(StepEnum)
@@ -53,7 +53,7 @@ function pickStepConfigPathFromInfo(data: Record<string, unknown>): string | und
 
 export function useStepConfigInfo() {
   const route = useRoute()
-  const { isInTauri } = useTauri()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
   const { currentProject } = useWorkspace()
 
   /** Must be true before first watch; otherwise the UI can hit the "has data" branch with nothing rendered. */
@@ -202,7 +202,7 @@ export function useStepConfigInfo() {
     const localPath = projectPath ? convertRemoteToLocalPath(rawPath, projectPath) : rawPath
     stepConfigPathResolved.value = localPath
 
-    if (!isInTauri) {
+    if (!isDesktopRuntimeAvailable) {
       stepConfigReadError.value =
         'Reading local config requires the ECOS Studio desktop runtime. Browser mode cannot access project files.'
       return
@@ -298,7 +298,7 @@ export function useStepConfigInfo() {
       stepConfigSaveError.value = 'No configuration file path resolved'
       return false
     }
-    if (!isInTauri) {
+    if (!isDesktopRuntimeAvailable) {
       stepConfigSaveError.value = 'Saving requires the ECOS Studio desktop runtime'
       return false
     }

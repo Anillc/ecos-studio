@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useTauri } from './useTauri'
+import { useDesktopRuntime } from './useDesktopRuntime'
 import { useWorkspace } from './useWorkspace'
 import { CMDEnum, StateEnum, StepEnum } from '@/api/type'
 import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
@@ -34,7 +34,7 @@ function clearTransientInteractionLocks() {
  * 本 Hook 只负责调用 CLI-backed runtime command 并等待结果。
  */
 export function useFlowRunner() {
-  const { ensureTauri } = useTauri()
+  const { ensureDesktopRuntime } = useDesktopRuntime()
   const { ensureApiReady, showToast } = useWorkspace()
   const route = useRoute()
 
@@ -76,9 +76,9 @@ export function useFlowRunner() {
       return null
     }
 
-    // 检查是否在 Tauri 环境中
-    if (!ensureTauri()) {
-      console.warn('Not running in Tauri environment, cannot execute Python script')
+    // 检查是否在 desktop runtime 环境中
+    if (!ensureDesktopRuntime()) {
+      console.warn('Not running in desktop runtime environment, cannot execute Python script')
       showDesktopRequiredToast()
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
@@ -147,9 +147,9 @@ export function useFlowRunner() {
    * 前端通过 useWorkspace 中已建立的 runtime event 连接实时接收。
    */
   async function runAllFlow(): Promise<any | null> {
-    // 检查是否在 Tauri 环境中
-    if (!ensureTauri()) {
-      console.warn('Not running in Tauri environment, cannot execute Python script')
+    // 检查是否在 desktop runtime 环境中
+    if (!ensureDesktopRuntime()) {
+      console.warn('Not running in desktop runtime environment, cannot execute Python script')
       showDesktopRequiredToast()
       return null
     }

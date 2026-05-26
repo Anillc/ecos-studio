@@ -44,7 +44,7 @@ export class CellDefStore {
     return this.buf !== null
   }
 
-  /** 支持 HTTP(S) URL，或 Tauri 下已读入的 ArrayBuffer（避免 asset:// 无法用 fetch） */
+  /** 支持 HTTP(S) URL，或 desktop runtime 下已读入的 ArrayBuffer（避免 asset:// 无法用 fetch） */
   async load(source: string | ArrayBuffer): Promise<void> {
     if (source instanceof ArrayBuffer) {
       this.buf = source

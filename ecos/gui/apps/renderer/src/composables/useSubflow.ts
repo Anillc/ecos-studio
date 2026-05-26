@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useTauri } from './useTauri'
+import { useDesktopRuntime } from './useDesktopRuntime'
 import { useWorkspace } from './useWorkspace'
 import { convertRemoteToLocalPath } from './useHomeData'
 import { readProjectTextFile } from '@/utils/projectFiles'
@@ -112,7 +112,7 @@ function parseTimeString(timeStr: string): number {
  * 负责获取和管理当前步骤的子流程信息
  */
 export function useSubflow() {
-  const { isInTauri } = useTauri()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
   const { runtimeEvents, currentProject, stepRefreshCounter } = useWorkspace()
   const route = useRoute()
 
@@ -198,7 +198,7 @@ export function useSubflow() {
       }
 
       // 2. 使用桌面桥接读取 JSON 文件
-      if (!isInTauri) {
+      if (!isDesktopRuntimeAvailable) {
         console.warn('Desktop bridge unavailable, cannot read local file')
         return
       }
@@ -234,7 +234,7 @@ export function useSubflow() {
    * 用于 runtime event 推送的 subflow_path
    */
   async function loadSubflowFromPath(subflowPath: string): Promise<void> {
-    if (!isInTauri || !subflowPath) {
+    if (!isDesktopRuntimeAvailable || !subflowPath) {
       console.warn('Cannot load subflow: desktop bridge unavailable or path is empty')
       return
     }

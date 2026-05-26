@@ -1,6 +1,6 @@
 import { ref, reactive, watch, computed } from 'vue'
 import { useWorkspace } from './useWorkspace'
-import { useTauri } from './useTauri'
+import { useDesktopRuntime } from './useDesktopRuntime'
 import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
@@ -230,7 +230,7 @@ export function transformConfigToParameters(config: ConfigData): ParametersData 
  * 负责从 parameters.json 加载配置参数并管理状态
  */
 export function useParameters() {
-  const { isInTauri } = useTauri()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
   const { currentProject, runtimeEvents, stepRefreshCounter } = useWorkspace()
 
   const config = reactive<ConfigData>(getDefaultConfig())
@@ -255,7 +255,7 @@ export function useParameters() {
   }
 
   async function loadParameters(): Promise<void> {
-    if (!isInTauri || !currentProject.value?.path) {
+    if (!isDesktopRuntimeAvailable || !currentProject.value?.path) {
       console.warn('Cannot load parameters: desktop bridge unavailable or no project is open')
       resetParametersState()
       return
@@ -268,7 +268,7 @@ export function useParameters() {
     try {
       const projectPath = currentProject.value.path
 
-      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+      const homeData = await fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable)
       if (!homeData) {
         console.warn('Failed to get home data')
         resetParametersState()
@@ -313,7 +313,7 @@ export function useParameters() {
   }
 
   async function saveParameters(): Promise<boolean> {
-    if (!isInTauri || !currentProject.value?.path) {
+    if (!isDesktopRuntimeAvailable || !currentProject.value?.path) {
       console.warn('Cannot save parameters: desktop bridge unavailable or no project is open')
       return false
     }

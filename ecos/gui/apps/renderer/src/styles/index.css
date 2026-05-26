@@ -114,7 +114,7 @@ body.window-maximized #app {
   -webkit-app-region: no-drag;
 }
 
-/* Tauri 性能优化 */
+/* desktop runtime 性能优化 */
 * {
   /* 启用硬件加速 */
   -webkit-font-smoothing: antialiased;

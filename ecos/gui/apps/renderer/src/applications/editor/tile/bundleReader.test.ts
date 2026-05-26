@@ -7,7 +7,7 @@ import {
 } from './bundleReader'
 
 describe('joinBundleLocalPath', () => {
-  it('joins bundle-root-relative paths without Tauri path helpers', () => {
+  it('joins bundle-root-relative paths without desktop runtime path helpers', () => {
     expect(
       joinBundleLocalPath(
         '/tmp/project/.ecos/tile-cache/layout/route',

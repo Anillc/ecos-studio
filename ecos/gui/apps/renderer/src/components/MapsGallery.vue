@@ -62,7 +62,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
-import { useTauri } from '../composables/useTauri'
+import { useDesktopRuntime } from '../composables/useDesktopRuntime'
 import { useWorkspace } from '../composables/useWorkspace'
 import { useMessageStore } from '../stores/messageStore'
 import { readProjectBlobUrl } from '@/utils/projectFiles'
@@ -84,7 +84,7 @@ const emit = defineEmits<{
   (e: 'select', key: string, item: MapInfo, blobUrl: string): void
 }>()
 
-const { isInTauri } = useTauri()
+const { isDesktopRuntimeAvailable } = useDesktopRuntime()
 const { currentProject } = useWorkspace()
 const messageStore = useMessageStore()
 
@@ -148,7 +148,7 @@ async function loadImage(key: string, path: string): Promise<void> {
   errorImages.value[key] = false
 
   try {
-    if (!isInTauri) {
+    if (!isDesktopRuntimeAvailable) {
       // 开发模式下使用占位图
       imageUrls.value[key] = `https://placehold.co/200x200/1a1a2e/16a085?text=${encodeURIComponent(key.slice(0, 10))}`
       loadingImages.value[key] = false

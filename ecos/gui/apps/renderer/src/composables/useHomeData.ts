@@ -1,6 +1,6 @@
 import { ref, shallowRef, watch, onUnmounted } from 'vue'
 import { useWorkspace } from './useWorkspace'
-import { useTauri } from './useTauri'
+import { useDesktopRuntime } from './useDesktopRuntime'
 import { flowExecutionActive } from './useFlowRunner'
 import { readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
 import type { ECCResponse } from '@/api/runtimeEvents'
@@ -514,7 +514,7 @@ export function resetSharedHomeDataProjectState() {
  * 负责从 home.json 加载监控数据、checklist、layout 图片
  */
 export function useHomeData() {
-  const { isInTauri } = useTauri()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
   const { currentProject, stepRefreshCounter, triggerStepRefresh } = useWorkspace()
 
   // 响应式数据全部走模块级——HomeView remount 时直接复用上一次加载结果，
@@ -1072,7 +1072,7 @@ export function useHomeData() {
     if (!projectPath || currentProject.value?.path !== projectPath) return
     let flowRemote = sharedHomeData.value?.flow
     if (!flowRemote) {
-      const h = await fetchSharedHomeData(projectPath, isInTauri)
+      const h = await fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable)
       if (sid !== liveSession || currentProject.value?.path !== projectPath) return
       flowRemote = h?.flow ?? ''
     }
@@ -1124,7 +1124,7 @@ export function useHomeData() {
       return false
     }
 
-    if (!isInTauri) return false
+    if (!isDesktopRuntimeAvailable) return false
 
     const key = flowLogSegmentKey(segment)
     if (flowLogContentState.value[key]) return true
@@ -1183,7 +1183,7 @@ export function useHomeData() {
    *     避免同一项目内跑多次 flow 之后缓存无上限累积。
    */
   async function loadAllFlowStepLogsFromFlowPath(flowPathRemote: string): Promise<void> {
-    if (!isInTauri || !flowPathRemote) {
+    if (!isDesktopRuntimeAvailable || !flowPathRemote) {
       flowLogSegments.value = []
       flowLogLoading.value = false
       return
@@ -1248,8 +1248,8 @@ export function useHomeData() {
    */
   async function ensureFlowLogsLoaded(): Promise<void> {
     let flowPath = sharedHomeData.value?.flow
-    if (!flowPath && isInTauri && currentProject.value?.path) {
-      const homeData = await fetchSharedHomeData(currentProject.value.path, isInTauri)
+    if (!flowPath && isDesktopRuntimeAvailable && currentProject.value?.path) {
+      const homeData = await fetchSharedHomeData(currentProject.value.path, isDesktopRuntimeAvailable)
       flowPath = homeData?.flow ?? ''
     }
     if (flowPath) {
@@ -1264,7 +1264,7 @@ export function useHomeData() {
    * 返回：true = 成功加载完整内容；false = 文件丢失 / 读取失败 / 目标 segment 已不存在
    */
   async function expandFlowLogSegment(segment: FlowLogSegment): Promise<boolean> {
-    if (!isInTauri) return false
+    if (!isDesktopRuntimeAvailable) return false
     const logPath = segment.logPath
     if (!logPath) return false
 
@@ -1323,7 +1323,7 @@ export function useHomeData() {
    * 使用共享缓存避免重复 runtime 调用
    */
   async function loadHomeData(): Promise<void> {
-    if (!isInTauri || !currentProject.value?.path) {
+    if (!isDesktopRuntimeAvailable || !currentProject.value?.path) {
       console.warn('Cannot load home.json: desktop bridge unavailable or no project is open')
       clearHomeData()
       return
@@ -1337,7 +1337,7 @@ export function useHomeData() {
       // home.json（fetchSharedHomeData 内部会在项目路径变化时自动失效）。
       // 有更新时由 runtime event → loadHomeDataFromPath 覆盖缓存，不需要每次
       // mount 都重请求后端再重读整个 home.json。
-      const homeData = await fetchSharedHomeData(currentProject.value.path, isInTauri)
+      const homeData = await fetchSharedHomeData(currentProject.value.path, isDesktopRuntimeAvailable)
       if (!homeData) {
         console.warn('Failed to get home data from shared cache')
         clearHomeData()
@@ -1363,7 +1363,7 @@ export function useHomeData() {
    * 用于 runtime event 推送的 home_page 路径
    */
   async function loadHomeDataFromPath(homePath: string): Promise<void> {
-    if (!isInTauri || !homePath) {
+    if (!isDesktopRuntimeAvailable || !homePath) {
       console.warn('Cannot load home data: desktop bridge unavailable or path is empty')
       return
     }
@@ -1467,7 +1467,7 @@ export function useHomeData() {
   }
 
   async function startFlowLogLiveWatchForCurrentProject(): Promise<void> {
-    if (!isInTauri || !flowExecutionActive.value) return
+    if (!isDesktopRuntimeAvailable || !flowExecutionActive.value) return
     const projectPath = currentProject.value?.path
     if (!projectPath) return
 
@@ -1476,7 +1476,7 @@ export function useHomeData() {
     cleanupFlowLogLiveWatch()
     liveProjectPath = projectPath
 
-    const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+    const homeData = await fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable)
     if (sid !== liveSession || currentProject.value?.path !== projectPath) return
 
     const flowRemote = homeData?.flow ?? ''
@@ -1523,7 +1523,7 @@ export function useHomeData() {
   watch(
     flowExecutionActive,
     async (active) => {
-      if (!isInTauri) return
+      if (!isDesktopRuntimeAvailable) return
       if (!active) {
         liveSession++
         cleanupFlowLogLiveWatch()

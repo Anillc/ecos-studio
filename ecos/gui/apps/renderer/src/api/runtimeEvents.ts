@@ -267,3 +267,5 @@ export function createRuntimeEventClient(workspaceId: string, config: RuntimeEve
 }
 
 export type RuntimeEventClient = ReturnType<typeof createRuntimeEventClient>
+export type ECCResponse = RuntimeEventResponse
+export const createSSEClient = createRuntimeEventClient
