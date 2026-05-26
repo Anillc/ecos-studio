@@ -8,7 +8,17 @@ const testState = vi.hoisted(() => ({
   readProjectTextFile: vi.fn(),
   resolveProjectPathAccess: vi.fn(async (path: string) => path),
   runtimeEvents: null as Ref<unknown[]> | null,
-  stepRefreshCounter: null as Ref<number> | null,
+  resourceVersions: null as Ref<{
+    home: number
+    flow: number
+    parameters: number
+    step: number
+    'step-config': number
+    maps: number
+    logs: number
+    tiles: number
+    all: number
+  }> | null,
   watchProjectFile: vi.fn(),
   projectFileWatchers: [] as Array<{
     listener: (event: {
@@ -25,7 +35,7 @@ vi.mock('./useWorkspace', () => ({
   useWorkspace: () => ({
     currentProject: testState.currentProject,
     runtimeEvents: testState.runtimeEvents,
-    stepRefreshCounter: testState.stepRefreshCounter,
+    resourceVersions: testState.resourceVersions,
   }),
 }))
 
@@ -59,6 +69,18 @@ async function importFreshFlowStagesModule() {
   return await import('./useFlowStages')
 }
 
+async function startLifecycleSession(projectRoot: string) {
+  const { useWorkspaceLifecycle } = await import('./useWorkspaceLifecycle')
+  const lifecycle = useWorkspaceLifecycle()
+  lifecycle.closeSession()
+  const session = lifecycle.beginSession({
+    workspaceId: projectRoot,
+    projectRoot,
+  })
+  lifecycle.activateSession(session.sessionId)
+  return lifecycle
+}
+
 function flowJsonFor(states: Record<string, string>) {
   return JSON.stringify({
     steps: Object.entries(states).map(([name, state]) => ({
@@ -76,7 +98,17 @@ describe('useFlowStages live project file watchers', () => {
   beforeEach(() => {
     testState.currentProject = ref({ path: '/workspace/a' })
     testState.runtimeEvents = ref([])
-    testState.stepRefreshCounter = ref(0)
+    testState.resourceVersions = ref({
+      home: 0,
+      flow: 0,
+      parameters: 0,
+      step: 0,
+      'step-config': 0,
+      maps: 0,
+      logs: 0,
+      tiles: 0,
+      all: 0,
+    })
     testState.projectFileWatchers.length = 0
 
     testState.readWorkspaceHomeResourceApi.mockReset()
@@ -102,6 +134,8 @@ describe('useFlowStages live project file watchers', () => {
   })
 
   it('refreshes flow stage states when home/flow.json changes', async () => {
+    const { useFlowStages } = await importFreshFlowStagesModule()
+    await startLifecycleSession('/workspace/a')
     let states = {
       Synthesis: 'Ongoing',
       Floorplan: 'Unstart',
@@ -111,7 +145,6 @@ describe('useFlowStages live project file watchers', () => {
       return '{}'
     })
 
-    const { useFlowStages } = await importFreshFlowStagesModule()
     const flow = useFlowStages()
     const findStageState = (path: string) =>
       flow.dynamicFlowStages.value.find((stage) => stage.path.toLowerCase() === path)?.state
@@ -140,5 +173,59 @@ describe('useFlowStages live project file watchers', () => {
       expect(findStageState('synthesis')).toBe('Success')
       expect(findStageState('floorplan')).toBe('Ongoing')
     })
+  })
+
+  it('does not let a stale flow read from a previous session replace current stages', async () => {
+    const { useFlowStages } = await importFreshFlowStagesModule()
+    await startLifecycleSession('/workspace/a')
+    let resolveFirstFlow: ((value: unknown) => void) | undefined
+    testState.readWorkspaceFlowResourceApi
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveFirstFlow = resolve
+      }))
+      .mockResolvedValueOnce(JSON.parse(flowJsonFor({
+        Floorplan: 'Ongoing',
+      })))
+    testState.readProjectTextFile.mockResolvedValue('{}')
+
+    const flow = useFlowStages()
+
+    await vi.waitFor(() => {
+      expect(testState.readWorkspaceFlowResourceApi).toHaveBeenCalledTimes(1)
+    })
+
+    await startLifecycleSession('/workspace/b')
+    testState.currentProject!.value = { path: '/workspace/b' }
+
+    await vi.waitFor(() => {
+      expect(flow.dynamicFlowStages.value.map((stage) => stage.path.toLowerCase())).toContain('floorplan')
+    })
+
+    resolveFirstFlow?.(JSON.parse(flowJsonFor({
+      Synthesis: 'Success',
+    })))
+    await nextTick()
+
+    expect(flow.dynamicFlowStages.value.map((stage) => stage.path.toLowerCase())).toContain('floorplan')
+    expect(flow.dynamicFlowStages.value.map((stage) => stage.path.toLowerCase())).not.toContain('synthesis')
+  })
+
+  it('registers the flow.json watcher with the active lifecycle cleanup', async () => {
+    const { useFlowStages } = await importFreshFlowStagesModule()
+    const lifecycle = await startLifecycleSession('/workspace/a')
+    testState.readProjectTextFile.mockResolvedValue(flowJsonFor({
+      Synthesis: 'Ongoing',
+    }))
+
+    useFlowStages()
+
+    await vi.waitFor(() => {
+      expect(testState.projectFileWatchers).toHaveLength(1)
+    })
+
+    const flowWatch = testState.projectFileWatchers[0]
+    lifecycle.closeSession()
+
+    expect(flowWatch!.unwatch).toHaveBeenCalledTimes(1)
   })
 })

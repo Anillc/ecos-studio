@@ -4,6 +4,7 @@ import { useDesktopRuntime } from './useDesktopRuntime'
 import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
+import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
 
 // ============ 类型定义 ============
 // 与 ecc/chipcompiler/data/parameter.py 中 ICS55_PARAMETERS_TEMPLATE 及 workspace 写入的 PDK Root 对齐
@@ -231,7 +232,8 @@ export function transformConfigToParameters(config: ConfigData): ParametersData 
  */
 export function useParameters() {
   const { isDesktopRuntimeAvailable } = useDesktopRuntime()
-  const { currentProject, runtimeEvents, stepRefreshCounter } = useWorkspace()
+  const { currentProject, resourceVersions } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
 
   const config = reactive<ConfigData>(getDefaultConfig())
   const isLoading = ref(false)
@@ -261,14 +263,18 @@ export function useParameters() {
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
     isLoading.value = true
     error.value = null
     resolvedParametersPath = ''
 
     try {
       const projectPath = currentProject.value.path
-
-      const homeData = await fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable)
+      const homeData = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable),
+      )
+      if (homeData === undefined && !workspaceLifecycle.isCurrentSession(sessionId)) return
       if (!homeData) {
         console.warn('Failed to get home data')
         resetParametersState()
@@ -282,14 +288,23 @@ export function useParameters() {
       }
 
       const parametersPath = convertToLocalPath(homeData.parameters)
-      const resolvedPath = await resolveProjectPathAccess(parametersPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(parametersPath),
+      )
+      if (resolvedPath === undefined && !workspaceLifecycle.isCurrentSession(sessionId)) return
       console.log('Loading parameters from:', resolvedPath ?? parametersPath)
       if (!resolvedPath) {
         resetParametersState()
         return
       }
 
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (fileContent === undefined && !workspaceLifecycle.isCurrentSession(sessionId)) return
+      if (fileContent === undefined) return
       const parametersData = parseParametersData(fileContent)
 
       console.log('Loaded parameters data:', parametersData)
@@ -304,11 +319,14 @@ export function useParameters() {
 
       console.log('Parameters loaded:', config)
     } catch (err) {
+      if (!workspaceLifecycle.isCurrentSession(sessionId)) return
       console.error('Failed to load parameters:', err)
       error.value = err instanceof Error ? err.message : String(err)
       resetParametersState()
     } finally {
-      isLoading.value = false
+      if (workspaceLifecycle.isCurrentSession(sessionId)) {
+        isLoading.value = false
+      }
     }
   }
 
@@ -392,23 +410,15 @@ export function useParameters() {
   )
 
   watch(
-    () => runtimeEvents.value.length,
-    async (newLen, oldLen) => {
-      if (newLen <= (oldLen ?? 0)) return
-
-      const latest = runtimeEvents.value[newLen - 1]
-      if (!latest || latest.cmd !== 'notify') return
-
-      const info = latest.data?.info as Record<string, unknown> | undefined
-      if (!info?.home_page && !latest.data?.home_page) return
-
+    () => [
+      resourceVersions.value.parameters,
+      resourceVersions.value.home,
+      resourceVersions.value.all,
+    ],
+    async () => {
       await reloadParametersIfClean()
-    }
+    },
   )
-
-  watch(stepRefreshCounter, async () => {
-    await reloadParametersIfClean()
-  })
 
   const layerOptions = computed(() => {
     return ROUTING_LAYER_ORDER.map(layer => ({ label: layer, value: layer }))

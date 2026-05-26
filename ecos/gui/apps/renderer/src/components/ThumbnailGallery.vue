@@ -111,7 +111,7 @@ import type { MapInfo as MapInfoType } from '../types'
 const route = useRoute()
 const messageStore = useMessageStore()
 const { isDesktopRuntimeAvailable } = useDesktopRuntime()
-const { currentProject, runtimeEvents, stepRefreshCounter } = useWorkspace()
+const { currentProject, runtimeEvents, resourceVersions } = useWorkspace()
 
 // Tabs 定义
 const tabs = [
@@ -506,8 +506,15 @@ watch(
   }
 )
 
-// CLI 运行命令完成后的兜底刷新信号。
-watch(stepRefreshCounter, async () => {
+// Workspace resource invalidation fallback after CLI lifecycle events.
+watch(
+  () => [
+    resourceVersions.value.step,
+    resourceVersions.value.maps,
+    resourceVersions.value.logs,
+    resourceVersions.value.all,
+  ],
+  async () => {
   if (!currentStep.value) return
 
   const keysToDelete = Object.keys(tabInfoCache.value)
@@ -522,5 +529,6 @@ watch(stepRefreshCounter, async () => {
   }
 
   await fetchTabInfo(activeTab.value)
-})
+  }
+)
 </script>

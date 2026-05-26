@@ -7,7 +7,7 @@ import { readProjectTextFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { InfoEnum, StepEnum } from '@/api/type'
 import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
-import type { ECCResponse } from '@/api/runtimeEvents'
+import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
 
 // ============ 类型定义 ============
 
@@ -113,7 +113,8 @@ function parseTimeString(timeStr: string): number {
  */
 export function useSubflow() {
   const { isDesktopRuntimeAvailable } = useDesktopRuntime()
-  const { runtimeEvents, currentProject, stepRefreshCounter } = useWorkspace()
+  const { currentProject, resourceVersions } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
   const route = useRoute()
 
   // 状态
@@ -166,14 +167,20 @@ export function useSubflow() {
    * 获取子流程信息
    */
   async function fetchSubflowInfo(stepEnum: StepEnum): Promise<void> {
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
     try {
-      const response = await resolveWorkspaceStepInfoApi({
-        step: stepEnum,
-        id: InfoEnum.subflow
-      })
+      const response = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveWorkspaceStepInfoApi({
+          step: stepEnum,
+          id: InfoEnum.subflow
+        }),
+      )
+      if (!isCurrent() || !response) return
 
       console.log('workspace subflow response:', response)
 
@@ -207,12 +214,20 @@ export function useSubflow() {
       const localPath = projectPath
         ? convertRemoteToLocalPath(subflowPath, projectPath)
         : subflowPath
-      const resolvedPath = await resolveProjectPathAccess(localPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(localPath),
+      )
+      if (!isCurrent()) return
       if (!resolvedPath) {
         subflowSteps.value = []
         return
       }
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (!isCurrent() || fileContent === undefined) return
       const subflowData: SubflowData = JSON.parse(fileContent)
 
       console.log('subflow data:', subflowData)
@@ -221,11 +236,14 @@ export function useSubflow() {
       subflowSteps.value = convertSubflowToSteps(subflowData)
 
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to fetch subflow info:', err)
       error.value = err instanceof Error ? err.message : String(err)
       subflowSteps.value = []
     } finally {
-      isLoading.value = false
+      if (isCurrent()) {
+        isLoading.value = false
+      }
     }
   }
 
@@ -239,22 +257,33 @@ export function useSubflow() {
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     try {
       const localPath = currentProject.value?.path
         ? convertRemoteToLocalPath(subflowPath, currentProject.value.path)
         : subflowPath
 
       console.log('Loading subflow from runtime event path:', localPath)
-      const resolvedPath = await resolveProjectPathAccess(localPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(localPath),
+      )
+      if (!isCurrent()) return
       if (!resolvedPath) return
 
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (!isCurrent() || fileContent === undefined) return
       const subflowData: SubflowData = JSON.parse(fileContent)
 
       console.log('Subflow data from runtime event path:', subflowData)
 
       subflowSteps.value = convertSubflowToSteps(subflowData)
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load subflow from path:', subflowPath, err)
     }
   }
@@ -321,36 +350,11 @@ export function useSubflow() {
     { immediate: true }
   )
 
-  // 监听 runtime event payload；只有明确携带 subflow_path 的事件才直接刷新子流程数据。
   watch(
-    () => runtimeEvents.value.length,
-    async (newLen, oldLen) => {
-      if (newLen <= (oldLen ?? 0)) return
-
-      const latest: ECCResponse = runtimeEvents.value[newLen - 1]
-      if (!latest || latest.cmd !== 'notify') return
-
-      const notifyId = latest.data?.id as string | undefined
-      const runtimeStep = latest.data?.step as string | undefined
-      const info = latest.data?.info as Record<string, unknown> | undefined
-
-      if (notifyId === 'subflow') {
-        const subflowPath = (info?.subflow_path ?? latest.data?.subflow_path) as string | undefined
-        if (!subflowPath) return
-
-        console.log('Received runtime subflow event, step:', runtimeStep, 'path:', subflowPath)
-
-        const currentRouteStep = getCurrentRouteStep()
-        if (currentRouteStep && runtimeStep &&
-            currentRouteStep.toLowerCase() === runtimeStep.toLowerCase()) {
-          await loadSubflowFromPath(subflowPath)
-        }
-      }
-    }
-  )
-
-  watch(
-    stepRefreshCounter,
+    () => [
+      resourceVersions.value.step,
+      resourceVersions.value.all,
+    ],
     async () => {
       await refreshCurrentSubflow()
     }

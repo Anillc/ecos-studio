@@ -5,7 +5,17 @@ const testState = vi.hoisted(() => ({
   currentProject: null as Ref<{ path: string } | null> | null,
   flowExecutionActive: null as Ref<boolean> | null,
   runtimeEvents: null as Ref<unknown[]> | null,
-  stepRefreshCounter: null as Ref<number> | null,
+  resourceVersions: null as Ref<{
+    home: number
+    flow: number
+    parameters: number
+    step: number
+    'step-config': number
+    maps: number
+    logs: number
+    tiles: number
+    all: number
+  }> | null,
   readWorkspaceHomeResourceApi: vi.fn(),
   readProjectBlobUrl: vi.fn(),
   readOptionalProjectTextFile: vi.fn(),
@@ -16,7 +26,6 @@ const testState = vi.hoisted(() => ({
   watchProjectFile: vi.fn(),
   requestProjectPathAccess: vi.fn(),
   resolveProjectPathAccess: vi.fn(),
-  triggerStepRefresh: vi.fn(),
   unmountCallbacks: [] as Array<() => void>,
   subscribeProjectLogTail: vi.fn(),
   projectFileWatchers: [] as Array<{
@@ -61,8 +70,7 @@ vi.mock('./useWorkspace', () => ({
   useWorkspace: () => ({
     currentProject: testState.currentProject,
     runtimeEvents: testState.runtimeEvents,
-    stepRefreshCounter: testState.stepRefreshCounter,
-    triggerStepRefresh: testState.triggerStepRefresh,
+    resourceVersions: testState.resourceVersions,
   }),
 }))
 
@@ -129,12 +137,34 @@ async function importFreshHomeDataModule() {
   return await import('./useHomeData')
 }
 
+async function startLifecycleSession(projectRoot: string) {
+  const { useWorkspaceLifecycle } = await import('./useWorkspaceLifecycle')
+  const lifecycle = useWorkspaceLifecycle()
+  lifecycle.closeSession()
+  const session = lifecycle.beginSession({
+    workspaceId: projectRoot,
+    projectRoot,
+  })
+  lifecycle.activateSession(session.sessionId)
+  return lifecycle
+}
+
 describe('useHomeData live project file watchers', () => {
   beforeEach(() => {
     testState.currentProject = ref(null)
     testState.flowExecutionActive = ref(false)
     testState.runtimeEvents = ref([])
-    testState.stepRefreshCounter = ref(0)
+    testState.resourceVersions = ref({
+      home: 0,
+      flow: 0,
+      parameters: 0,
+      step: 0,
+      'step-config': 0,
+      maps: 0,
+      logs: 0,
+      tiles: 0,
+      all: 0,
+    })
     testState.unmountCallbacks.length = 0
     testState.logTailListeners.length = 0
     testState.projectFileWatchers.length = 0
@@ -149,7 +179,6 @@ describe('useHomeData live project file watchers', () => {
     testState.watchProjectFile.mockReset()
     testState.requestProjectPathAccess.mockReset()
     testState.resolveProjectPathAccess.mockReset()
-    testState.triggerStepRefresh.mockReset()
     testState.subscribeProjectLogTail.mockReset()
 
     testState.readWorkspaceHomeResourceApi.mockImplementation(async () => {
@@ -220,6 +249,7 @@ describe('useHomeData live project file watchers', () => {
 
   it('subscribes to main log tail events for the current live step and updates incrementally', async () => {
     const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
     testState.currentProject!.value = { path: '/workspace/a' }
 
     const home = useHomeData()
@@ -281,6 +311,7 @@ describe('useHomeData live project file watchers', () => {
 
   it('re-subscribes when the active project changes and unsubscribes the prior live tail', async () => {
     const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
     testState.currentProject!.value = { path: '/workspace/a' }
 
     useHomeData()
@@ -320,6 +351,7 @@ describe('useHomeData live project file watchers', () => {
     })
 
     const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
     testState.currentProject!.value = { path: '/workspace/a' }
 
     const home = useHomeData()
@@ -392,6 +424,7 @@ describe('useHomeData live project file watchers', () => {
     testState.readProjectBlobUrl.mockImplementation(async (path: string) => `blob:${path}`)
 
     const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
     testState.currentProject!.value = { path: '/workspace/a' }
 
     const home = useHomeData()
@@ -459,6 +492,7 @@ describe('useHomeData live project file watchers', () => {
     testState.readProjectBlobUrl.mockImplementation(async (path: string) => `blob:${path}`)
 
     const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
     testState.currentProject!.value = { path: '/workspace/a' }
 
     const home = useHomeData()
@@ -540,6 +574,7 @@ describe('useHomeData live project file watchers', () => {
     })
 
     const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
     testState.currentProject!.value = { path: '/workspace/a' }
 
     useHomeData()
@@ -574,6 +609,7 @@ describe('useHomeData live project file watchers', () => {
 
   it('falls back to the on-demand reader only when the live log is explicitly expanded', async () => {
     const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
     testState.currentProject!.value = { path: '/workspace/a' }
 
     const home = useHomeData()
@@ -587,5 +623,139 @@ describe('useHomeData live project file watchers', () => {
     expect(liveSegment).toBeDefined()
     await expect(home.ensureFlowLogSegmentContentLoaded(liveSegment!)).resolves.toBe(false)
     expect(testState.readOptionalProjectTextFileUpdate).not.toHaveBeenCalled()
+  })
+
+  it('unsubscribes live watchers when the lifecycle session closes', async () => {
+    const { useHomeData } = await importFreshHomeDataModule()
+    const lifecycle = await startLifecycleSession('/workspace/a')
+    testState.currentProject!.value = { path: '/workspace/a' }
+
+    useHomeData()
+    testState.flowExecutionActive!.value = true
+
+    await vi.waitFor(() => {
+      expect(testState.subscribeProjectLogTail).toHaveBeenCalledTimes(1)
+    })
+    await vi.waitFor(() => {
+      expect(testState.projectFileWatchers.length).toBeGreaterThanOrEqual(2)
+    })
+
+    const liveTail = testState.logTailListeners[0]
+    const fileWatchers = [...testState.projectFileWatchers]
+
+    lifecycle.closeSession()
+
+    expect(liveTail!.unwatch).toHaveBeenCalledTimes(1)
+    for (const watcher of fileWatchers) {
+      expect(watcher.unwatch).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('refreshes home data when the structured home resource version changes', async () => {
+    let version = 1
+    testState.readProjectTextFile.mockImplementation(async (path: string) => {
+      if (path.endsWith('/home/home.json')) {
+        const projectPath = path.replace(/\/home\/home\.json$/, '')
+        return JSON.stringify({
+          ...homeDataFor(projectPath),
+          monitor: {
+            step: ['Synthesis'],
+            frequency: [version],
+          },
+        })
+      }
+      if (path === '/workspace/a/home/flow.json') return flowJsonFor('Synthesis')
+      return '{}'
+    })
+
+    const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
+    testState.currentProject!.value = { path: '/workspace/a' }
+
+    const home = useHomeData()
+
+    await vi.waitFor(() => {
+      expect(home.monitorData.value).toEqual({
+        step: ['Synthesis'],
+        frequency: [1],
+      })
+    })
+
+    version = 2
+    testState.resourceVersions!.value = {
+      ...testState.resourceVersions!.value,
+      home: 1,
+    }
+
+    await vi.waitFor(() => {
+      expect(home.monitorData.value).toEqual({
+        step: ['Synthesis'],
+        frequency: [2],
+      })
+    })
+  })
+
+  it('ignores stale home data reads after the workspace session changes', async () => {
+    const delayedReads: Array<{
+      projectPath: string
+      resolve: (content: string) => void
+    }> = []
+    testState.readProjectTextFile.mockImplementation(async (path: string) => {
+      if (path.endsWith('/home/home.json')) {
+        const projectPath = path.replace(/\/home\/home\.json$/, '')
+        return await new Promise<string>((resolve) => {
+          delayedReads.push({ projectPath, resolve })
+        })
+      }
+      if (path === '/workspace/a/home/flow.json') return flowJsonFor('Synthesis')
+      if (path === '/workspace/b/home/flow.json') return flowJsonFor('Floorplan')
+      return '{}'
+    })
+
+    const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
+    testState.currentProject!.value = { path: '/workspace/a' }
+
+    const home = useHomeData()
+
+    await vi.waitFor(() => {
+      expect(delayedReads.map((entry) => entry.projectPath)).toContain('/workspace/a')
+    })
+
+    await startLifecycleSession('/workspace/b')
+    testState.currentProject!.value = { path: '/workspace/b' }
+
+    await vi.waitFor(() => {
+      expect(delayedReads.map((entry) => entry.projectPath)).toContain('/workspace/b')
+    })
+
+    delayedReads.find((entry) => entry.projectPath === '/workspace/b')!.resolve(JSON.stringify({
+      ...homeDataFor('/workspace/b'),
+      monitor: {
+        step: ['Floorplan'],
+        frequency: [2],
+      },
+    }))
+
+    await vi.waitFor(() => {
+      expect(home.monitorData.value).toEqual({
+        step: ['Floorplan'],
+        frequency: [2],
+      })
+    })
+
+    delayedReads.find((entry) => entry.projectPath === '/workspace/a')!.resolve(JSON.stringify({
+      ...homeDataFor('/workspace/a'),
+      monitor: {
+        step: ['Synthesis'],
+        frequency: [1],
+      },
+    }))
+    await Promise.resolve()
+
+    expect(home.monitorData.value).toEqual({
+      step: ['Floorplan'],
+      frequency: [2],
+    })
   })
 })

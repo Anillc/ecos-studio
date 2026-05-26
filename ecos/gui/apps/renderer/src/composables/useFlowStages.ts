@@ -3,10 +3,10 @@ import { useWorkspace } from './useWorkspace'
 import { useDesktopRuntime, isDesktopRuntime } from './useDesktopRuntime'
 import { convertRemoteToLocalPath } from './useHomeData'
 import { STEP_METADATA, getStepMetadata } from '@/api/type'
-import type { ECCResponse } from '@/api/runtimeEvents'
 import { readProjectTextFile, watchProjectFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { readWorkspaceFlowResourceApi, readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
+import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
 
 // ============ 类型定义 ============
 
@@ -105,13 +105,15 @@ function fallbackRunStepKeys(): string[] {
  */
 export function useFlowStages() {
   const { isDesktopRuntimeAvailable } = useDesktopRuntime()
-  const { currentProject, stepRefreshCounter } = useWorkspace()
+  const { currentProject, resourceVersions } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
 
   // 动态加载的流程步骤
   const dynamicFlowStages = ref<FlowStage[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   let unwatchFlowJsonFile: (() => void) | null = null
+  let unregisterFlowJsonLifecycleCleanup: (() => void) | null = null
   let watchSession = 0
 
   // 合并后的完整流程步骤
@@ -136,16 +138,26 @@ export function useFlowStages() {
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
     try {
       const localPath = convertToLocalPath(flowJsonPath)
-      const resolvedPath = await resolveProjectPathAccess(localPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(localPath),
+      )
+      if (!isCurrent()) return
       console.log('Loading flow.json from path:', resolvedPath ?? localPath)
       if (!resolvedPath) return
 
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (!isCurrent() || fileContent === undefined) return
       const flowData: FlowData = JSON.parse(fileContent)
 
       console.log('Loaded flow data from path:', flowData)
@@ -153,34 +165,14 @@ export function useFlowStages() {
       dynamicFlowStages.value = transformFlowData(flowData)
       console.log('Flow stages loaded from path:', dynamicFlowStages.value)
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load flow.json from path:', flowJsonPath, err)
       error.value = err instanceof Error ? err.message : String(err)
       dynamicFlowStages.value = []
     } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * 从 home.json 路径间接加载 flow stages
-   * 用于 runtime event payload 中的 home_page 路径
-   */
-  async function loadFlowStagesFromHomePath(homePath: string): Promise<void> {
-    if (!isDesktopRuntimeAvailable || !homePath) return
-
-    try {
-      const localHomePath = convertToLocalPath(homePath)
-      const resolvedHomePath = await resolveProjectPathAccess(localHomePath)
-      if (!resolvedHomePath) return
-
-      const homeContent = await readProjectTextFile(resolvedHomePath)
-      const homeData = JSON.parse(homeContent)
-      const flowPath = homeData.flow
-      if (flowPath) {
-        await loadFlowStagesFromPath(flowPath)
+      if (isCurrent()) {
+        isLoading.value = false
       }
-    } catch (err) {
-      console.error('Failed to load flow stages from home path:', homePath, err)
     }
   }
 
@@ -195,11 +187,17 @@ export function useFlowStages() {
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
     try {
-      const flowData = await readWorkspaceFlowResourceApi() as FlowData | null
+      const flowData = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readWorkspaceFlowResourceApi() as Promise<FlowData | null>,
+      )
+      if (!isCurrent()) return
       if (!flowData) {
         console.warn('Failed to read flow data')
         dynamicFlowStages.value = []
@@ -212,15 +210,20 @@ export function useFlowStages() {
       console.log('Flow stages loaded:', dynamicFlowStages.value)
 
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load flow stages:', err)
       error.value = err instanceof Error ? err.message : String(err)
       dynamicFlowStages.value = []
     } finally {
-      isLoading.value = false
+      if (isCurrent()) {
+        isLoading.value = false
+      }
     }
   }
 
   function cleanupFlowJsonWatch(): void {
+    unregisterFlowJsonLifecycleCleanup?.()
+    unregisterFlowJsonLifecycleCleanup = null
     unwatchFlowJsonFile?.()
     unwatchFlowJsonFile = null
   }
@@ -250,7 +253,17 @@ export function useFlowStages() {
         unwatch?.()
         return
       }
+      if (!unwatch) return
       unwatchFlowJsonFile = unwatch
+      unregisterFlowJsonLifecycleCleanup = workspaceLifecycle.registerCleanup(() => {
+        if (unwatchFlowJsonFile === unwatch) {
+          unwatchFlowJsonFile = null
+        }
+        unwatch()
+      }, {
+        sessionId: workspaceLifecycle.currentSessionId.value,
+        label: 'flow.json watcher',
+      })
     } catch (err) {
       console.warn('Failed to watch flow.json for stage updates:', err)
     }
@@ -322,58 +335,14 @@ export function useFlowStages() {
   )
 
   watch(
-    stepRefreshCounter,
+    () => [
+      resourceVersions.value.flow,
+      resourceVersions.value.all,
+    ],
     async () => {
       if (!currentProject.value?.path) return
       await refreshFlowStages()
     },
-  )
-
-  // 监听 runtime event payload；只有明确携带路径的事件才直接刷新流程步骤。
-  const { runtimeEvents } = useWorkspace()
-
-  watch(
-    () => runtimeEvents.value.length,
-    async (newLen, oldLen) => {
-      if (newLen <= (oldLen ?? 0)) return
-
-      const latest: ECCResponse = runtimeEvents.value[newLen - 1]
-      if (!latest || latest.cmd !== 'notify') return
-
-      const notifyId = latest.data?.id as string | undefined
-      const info = latest.data?.info as Record<string, unknown> | undefined
-
-      if (notifyId === 'step') {
-        const stepName = latest.data?.step as string | undefined
-        const stepPath = (info?.step_path ?? latest.data?.step_path) as string | undefined
-
-        console.log('Received runtime step event, step:', stepName, 'path:', stepPath)
-        console.log('latest:', latest)
-
-        // 乐观更新：先将对应步骤状态设为 Success，避免等待文件读取的延迟
-        if (stepName) {
-          const stepNameLower = stepName.toLowerCase()
-          const idx = dynamicFlowStages.value.findIndex(s => s.path.toLowerCase() === stepNameLower)
-          if (idx !== -1) {
-            dynamicFlowStages.value[idx] = {
-              ...dynamicFlowStages.value[idx],
-              state: 'Success'
-            }
-          }
-        }
-
-        if (stepPath) {
-          await loadFlowStagesFromPath(stepPath)
-        } else {
-          await refreshFlowStages()
-        }
-      } else if (notifyId === 'subflow') {
-        const homePage = (info?.home_page ?? latest.data?.home_page) as string | undefined
-        if (homePage) {
-          await loadFlowStagesFromHomePath(homePage)
-        }
-      }
-    }
   )
 
   if (getCurrentInstance()) {

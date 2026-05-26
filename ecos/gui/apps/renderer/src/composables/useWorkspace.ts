@@ -6,9 +6,19 @@ import { useToast } from 'primevue/usetoast'
 import { waitForDesktopApi } from '@/platform/desktop'
 import { loadWorkspaceApi, createWorkspaceApi, waitForRuntimeReady } from '../api'
 import * as runtimeEventApi from '../api/runtimeEvents'
-import type { RuntimeEventClient, ECCResponse } from '../api/runtimeEvents'
+import type { RuntimeEventClient, RuntimeEventResponse } from '../api/runtimeEvents'
 import { setDesktopWindowTitle } from './windowTitle'
 import { useMessageStore } from '@/stores/messageStore'
+import {
+  useWorkspaceLifecycle,
+  type WorkspaceSession,
+  type WorkspaceInvalidationScope,
+} from './useWorkspaceLifecycle'
+import {
+  readWorkspaceFlowResourceApi,
+  readWorkspaceHomeResourceApi,
+  readWorkspaceParametersResourceApi,
+} from '@/api/workspaceResources'
 
 interface SerializedProject {
   id: string
@@ -30,16 +40,27 @@ interface SerializedProject {
 
 const currentProject = ref<Project | null>()
 const recentProjects = ref<Project[]>([])
+let openProjectRequestSequence = 0
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
 
 // Runtime event connection（workspace 级别，跟随 workspace 生命周期）
 const runtimeEventClient = ref<RuntimeEventClient | null>(null)
-const runtimeEvents = ref<ECCResponse[]>([])
-const sseClient = runtimeEventClient
-const sseMessages = runtimeEvents
+const runtimeEvents = ref<RuntimeEventResponse[]>([])
 const handledRefreshRuntimeEvents = new Set<string>()
+let unregisterRuntimeEventCleanup: (() => void) | null = null
 
-// 跨组件刷新信号：runFlow 完成后递增，DrawingArea / ThumbnailGallery 等组件监听以刷新数据
-const stepRefreshCounter = ref(0)
+const workspaceLifecycle = useWorkspaceLifecycle()
 
 /** 准备工作区就绪时由 App 层显示全屏加载遮罩 */
 const runtimeBackendConnecting = ref(false)
@@ -70,11 +91,6 @@ async function deleteSetting(key: string): Promise<void> {
 async function pickDirectory(title: string): Promise<string | null> {
   const desktopApi = await waitForDesktopApi()
   return await desktopApi.dialog.pickDirectory({ title })
-}
-
-async function readProjectTextFile(path: string): Promise<string> {
-  const desktopApi = await waitForDesktopApi()
-  return await desktopApi.workspace.readProjectTextFile(path)
 }
 
 /**
@@ -149,7 +165,7 @@ export function useWorkspace() {
    * 路径标准化：处理跨平台路径分隔符，移除末尾斜杠
    */
   const normalizePath = (path: string): string => {
-    // 统一使用正斜杠（Tauri 内部会自动处理平台差异）
+    // 统一使用正斜杠（desktop runtime 内部会自动处理平台差异）
     let normalized = path.replace(/\\/g, '/')
     // 移除末尾的斜杠
     if (normalized.endsWith('/') && normalized.length > 1) {
@@ -263,13 +279,20 @@ export function useWorkspace() {
 
           if (router.currentRoute.value.path.startsWith('/workspace')) {
             // reload 后需要重新通过桌面 CLI 加载 workspace 状态并建立 runtime event 连接
+            const session = workspaceLifecycle.beginSession({
+              projectRoot: normalizePath(restored.path),
+            })
             try {
               if (!(await ensureApiReady())) return
+              workspaceLifecycle.setSessionLoading(session.sessionId)
               const response = await loadWorkspaceApi(restored.path)
+              if (!workspaceLifecycle.isCurrentSession(session.sessionId)) return
               if (response.response === 'success') {
                 const resolvedPath = normalizePath(response.data.directory || restored.path)
                 const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
+                if (!workspaceLifecycle.isCurrentSession(session.sessionId)) return
                 if (!canonicalProjectRoot) {
+                  workspaceLifecycle.failSession(session.sessionId)
                   return
                 }
                 currentProject.value = {
@@ -279,9 +302,16 @@ export function useWorkspace() {
                 messageStore.clearMessages()
                 await updateWindowTitle(restored.name)
                 const workspaceId = response.data.workspace_id || response.data.directory
-                connectRuntimeEvents(workspaceId)
+                workspaceLifecycle.activateSession(session.sessionId, {
+                  workspaceId,
+                  projectRoot: canonicalProjectRoot,
+                })
+                connectRuntimeEvents(workspaceId, session.sessionId)
+              } else {
+                workspaceLifecycle.failSession(session.sessionId)
               }
             } catch (error) {
+              workspaceLifecycle.failSession(session.sessionId)
               console.error('Failed to reload workspace after restore:', error)
             }
           }
@@ -331,6 +361,9 @@ export function useWorkspace() {
     }
   }
   const openProject = async (project?: Project) => {
+    const openProjectRequestId = ++openProjectRequestSequence
+    const isLatestOpenProjectRequest = () => openProjectRequestId === openProjectRequestSequence
+    let sessionId: string | null = null
     try {
       let selectedPath: string | null = null
 
@@ -339,10 +372,12 @@ export function useWorkspace() {
       } else {
         // 1. 弹出文件夹选择对话框
         selectedPath = await pickDirectory('Select ECOS Studio Project Directory')
+        if (!isLatestOpenProjectRequest()) return false
         if (!selectedPath) return false
       }
 
       if (!(await isProjectValid(selectedPath))) {
+        if (!isLatestOpenProjectRequest()) return false
         showToast({
           severity: 'error',
           summary: 'Not an ECOS Workspace',
@@ -350,22 +385,64 @@ export function useWorkspace() {
         })
         return false
       }
+      if (!isLatestOpenProjectRequest()) return false
+
+      const preserveExistingSession = Boolean(currentProject.value) && !project
+      let session: WorkspaceSession | null = null
+      const ensureOpenSession = (projectRoot: string): WorkspaceSession => {
+        if (session) return session
+        const nextSession = workspaceLifecycle.beginSession({ projectRoot })
+        session = nextSession
+        sessionId = nextSession.sessionId
+        return nextSession
+      }
+      if (!currentProject.value) {
+        session = workspaceLifecycle.beginSession({
+          projectRoot: normalizePath(selectedPath),
+        })
+        sessionId = session.sessionId
+      }
 
       runtimeBackendTitle.value = 'Loading your workspace'
       runtimeBackendSubtitle.value = 'Opening project data and preparing the workspace view'
       runtimeBackendConnecting.value = true
 
-      if (!(await ensureApiReady({ keepLoading: true }))) return false
+      if (!(await ensureApiReady({ keepLoading: true }))) {
+        if (!isLatestOpenProjectRequest()) return false
+        if (session) workspaceLifecycle.failSession(session.sessionId)
+        return false
+      }
+      if (!isLatestOpenProjectRequest()) return false
 
       runtimeBackendTitle.value = 'Loading your workspace'
       runtimeBackendSubtitle.value = 'Opening project data and preparing the workspace view'
+      if (session) workspaceLifecycle.setSessionLoading(session.sessionId)
+
+      if (currentProject.value) {
+        try {
+          await snapshotCurrentProject(isLatestOpenProjectRequest)
+        } catch (err) {
+          console.error('Failed to snapshot project data before switching:', err)
+        }
+      }
+      if (!isLatestOpenProjectRequest()) return false
+
+      if (!preserveExistingSession) {
+        const activeSession = ensureOpenSession(normalizePath(selectedPath))
+        workspaceLifecycle.setSessionLoading(activeSession.sessionId)
+      }
 
       // 3. 通过桌面 CLI 加载项目状态
       const response = await loadWorkspaceApi(selectedPath)
+      if (!isLatestOpenProjectRequest()) return false
+      if (session && !workspaceLifecycle.isCurrentSession(session.sessionId)) return false
       if (response.response === 'success') {
         const resolvedPath = normalizePath(response.data.directory || selectedPath)
         const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
+        if (!isLatestOpenProjectRequest()) return false
+        if (session && !workspaceLifecycle.isCurrentSession(session.sessionId)) return false
         if (!canonicalProjectRoot) {
+          if (session) workspaceLifecycle.failSession(session.sessionId)
           showToast({
             severity: 'error',
             summary: 'Permission Setup Failed',
@@ -387,13 +464,8 @@ export function useWorkspace() {
           lastOpened: new Date()
         }
 
-        if (currentProject.value) {
-          try {
-            await snapshotCurrentProject()
-          } catch (err) {
-            console.error('Failed to snapshot project data before switching:', err)
-          }
-        }
+        const activeSession = ensureOpenSession(canonicalProjectRoot)
+        workspaceLifecycle.setSessionLoading(activeSession.sessionId)
 
         currentProject.value = loadedProject
         messageStore.clearMessages()
@@ -403,7 +475,11 @@ export function useWorkspace() {
 
         // 建立 runtime event 连接
         const workspaceId = response.data.workspace_id || response.data.directory
-        connectRuntimeEvents(workspaceId)
+        workspaceLifecycle.activateSession(activeSession.sessionId, {
+          workspaceId,
+          projectRoot: canonicalProjectRoot,
+        })
+        connectRuntimeEvents(workspaceId, activeSession.sessionId)
 
         // 更新窗口标题
         await updateWindowTitle(loadedProject.name)
@@ -413,16 +489,20 @@ export function useWorkspace() {
 
         return true
       } else {
+        if (session) workspaceLifecycle.failSession(session.sessionId)
         console.error('Failed to load project:', response.message)
         showToast({ severity: 'error', summary: 'Failed to Open Project', detail: response.message?.join('; ') || 'Unknown error' })
         return false
       }
     } catch (error) {
+      if (sessionId) workspaceLifecycle.failSession(sessionId)
       console.error('Open project error:', error)
       showToast({ severity: 'error', summary: 'Failed to Open Project', detail: String(error) })
       return false
     } finally {
-      runtimeBackendConnecting.value = false
+      if (isLatestOpenProjectRequest()) {
+        runtimeBackendConnecting.value = false
+      }
     }
   }
 
@@ -431,6 +511,7 @@ export function useWorkspace() {
    * @param config 项目配置（来自向导）
    */
   const newProject = async (config?: WorkspaceConfig) => {
+    let sessionId: string | null = null
     try {
       runtimeBackendTitle.value = 'Creating your workspace'
       runtimeBackendSubtitle.value = 'Writing project files and preparing the workspace view'
@@ -453,10 +534,19 @@ export function useWorkspace() {
         selectedPath = result
       }
 
-      if (!(await ensureApiReady({ keepLoading: true }))) return false
+      const session = workspaceLifecycle.beginSession({
+        projectRoot: normalizePath(selectedPath),
+      })
+      sessionId = session.sessionId
+
+      if (!(await ensureApiReady({ keepLoading: true }))) {
+        workspaceLifecycle.failSession(session.sessionId)
+        return false
+      }
 
       runtimeBackendTitle.value = 'Creating your workspace'
       runtimeBackendSubtitle.value = 'Writing project files and preparing the workspace view'
+      workspaceLifecycle.setSessionLoading(session.sessionId)
 
       // 3. 通过桌面 CLI 创建项目（传递更多配置信息）
       // 将前端参数映射为后端期望的格式 (参考 ics55_parameter.json)
@@ -479,14 +569,6 @@ export function useWorkspace() {
         'Max fanout': frontendParams.max_fanout || 20
       }
 
-      // 注意：新建工程流程不再前置调用 set_pdk_root。
-      // - chipcompiler.create_workspace 本身就接收 pdk_root 参数，会把它持久化到工程里；
-      // - set_pdk_root 的另一项副作用是把 CHIPCOMPILER_<PDK>_PDK_ROOT 写入 os.environ，
-      //   但在"新建工程"这一步它还没有 workspace 可替换，仅剩写环境变量这件事，
-      //   而这个兜底更适合放到后端 create_workspace 成功分支里做；
-      // - 后端 set_pdk_root 目前硬编码白名单仅接受 ics55，会把 sky130 / 自定义 PDK 的新建流程直接拦死。
-      // 因此这里把 pdk_root 原样透传给 create_workspace 即可，set_pdk_root 留给
-      // "已有 workspace 时后置改路径" 的场景使用。
       const resolvedPdkRoot = config?.pdk_root || ''
 
       const response = await createWorkspaceApi({
@@ -499,10 +581,13 @@ export function useWorkspace() {
         rtl_list: config?.rtl_list || []
       })
       console.log(response)
+      if (!workspaceLifecycle.isCurrentSession(session.sessionId)) return false
       if (response.response === 'success') {
         const resolvedPath = normalizePath(response.data.directory)
         const canonicalProjectRoot = await registerProjectRoot(resolvedPath)
+        if (!workspaceLifecycle.isCurrentSession(session.sessionId)) return false
         if (!canonicalProjectRoot) {
+          workspaceLifecycle.failSession(session.sessionId)
           showToast({
             severity: 'error',
             summary: 'Permission Setup Failed',
@@ -525,7 +610,11 @@ export function useWorkspace() {
 
         // 建立 runtime event 连接
         const workspaceId = response.data.workspace_id || response.data.directory
-        connectRuntimeEvents(workspaceId)
+        workspaceLifecycle.activateSession(session.sessionId, {
+          workspaceId,
+          projectRoot: canonicalProjectRoot,
+        })
+        connectRuntimeEvents(workspaceId, session.sessionId)
 
         // 更新窗口标题
         await updateWindowTitle(createdProject.name)
@@ -535,11 +624,13 @@ export function useWorkspace() {
 
         return true
       } else {
+        workspaceLifecycle.failSession(session.sessionId)
         console.error('Failed to create project:', response.message)
         showToast({ severity: 'error', summary: 'Failed to Create Project', detail: response.message?.join('; ') || 'Unknown error' })
         return false
       }
     } catch (error) {
+      if (sessionId) workspaceLifecycle.failSession(sessionId)
       console.error('New project error:', error)
       showToast({ severity: 'error', summary: 'Failed to Create Project', detail: String(error) })
       return false
@@ -556,85 +647,128 @@ export function useWorkspace() {
   /**
    * 从磁盘读取 workspace 数据，生成项目摘要快照
    */
-  async function snapshotCurrentProject(): Promise<void> {
+  async function snapshotCurrentProject(isCurrent: () => boolean = () => true): Promise<void> {
     const project = currentProject.value
     if (!project) return
 
     const projectPath = normalizePath(project.path)
-    const idx = recentProjects.value.findIndex(p => normalizePath(p.path) === projectPath)
-    if (idx === -1) return
+    if (!recentProjects.value.some(p => normalizePath(p.path) === projectPath)) return
 
     const snapshot: Partial<Project> = {}
 
     try {
-      const flowContent = await readProjectTextFile(`${project.path}/home/flow.json`)
-      const flowData = JSON.parse(flowContent)
-      const steps: Array<{ name: string; state: string; runtime: string }> = flowData.steps || []
-
-      const completedSteps = steps.filter(s => s.state === 'Success').length
-      const totalSteps = steps.length
-      const failedStep = steps.find(s => s.state === 'Incomplete' || s.state === 'Invalid')
-      const ongoingStep = steps.find(s => s.state === 'Ongoing')
-      const firstPending = steps.find(s => s.state === 'Unstart' || s.state === 'Pending')
-
-      let status: ProjectStatus = 'not_started'
-      if (ongoingStep) status = 'running'
-      else if (completedSteps === totalSteps && totalSteps > 0) status = 'success'
-      else if (failedStep) status = 'failed'
-      else if (completedSteps > 0) status = 'in_progress'
-
-      let totalSeconds = 0
-      for (const step of steps) {
-        if (step.runtime) {
-          const parts = step.runtime.split(':').map(Number)
-          if (parts.length === 3) totalSeconds += parts[0] * 3600 + parts[1] * 60 + parts[2]
+      const flowData = await readWorkspaceFlowResourceApi()
+      if (!isCurrent()) return
+      if (isRecord(flowData) && Array.isArray(flowData.steps)) {
+        const steps = flowData.steps
+        const hasMalformedStep = steps.some(
+          step => !isRecord(step) || asString(step.name) === undefined || asString(step.state) === undefined
+        )
+        if (hasMalformedStep) {
+          throw new Error('Malformed flow steps in snapshot payload')
         }
-      }
-      const h = Math.floor(totalSeconds / 3600)
-      const m = Math.floor((totalSeconds % 3600) / 60)
-      const s = totalSeconds % 60
-      const totalRuntime = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`
 
-      snapshot.status = status
-      snapshot.totalSteps = totalSteps
-      snapshot.completedSteps = completedSteps
-      snapshot.currentStep = ongoingStep?.name || failedStep?.name || firstPending?.name
-      snapshot.totalRuntime = totalSteps > 0 ? totalRuntime : undefined
+        const completedSteps = steps.filter(s => asString(s.state) === 'Success').length
+        const totalSteps = steps.length
+        const failedStep = steps.find(s => asString(s.state) === 'Incomplete' || asString(s.state) === 'Invalid')
+        const ongoingStep = steps.find(s => asString(s.state) === 'Ongoing')
+        const firstPending = steps.find(s => asString(s.state) === 'Unstart' || asString(s.state) === 'Pending')
+
+        let status: ProjectStatus = 'not_started'
+        if (ongoingStep) status = 'running'
+        else if (completedSteps === totalSteps && totalSteps > 0) status = 'success'
+        else if (failedStep) status = 'failed'
+        else if (completedSteps > 0) status = 'in_progress'
+
+        let totalSeconds = 0
+        let hasValidRuntime = false
+        for (const step of steps) {
+          const runtime = asString(step.runtime)
+          if (runtime) {
+            const parts = runtime.split(':')
+            const numericParts = parts.map(part => part.trim() === '' ? Number.NaN : Number(part))
+            if (numericParts.length === 3 && numericParts.every(Number.isFinite)) {
+              totalSeconds += numericParts[0] * 3600 + numericParts[1] * 60 + numericParts[2]
+              hasValidRuntime = true
+            }
+          }
+        }
+        const h = Math.floor(totalSeconds / 3600)
+        const m = Math.floor((totalSeconds % 3600) / 60)
+        const s = totalSeconds % 60
+        const totalRuntime = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`
+        const currentStep = asString(ongoingStep?.name)
+          || asString(failedStep?.name)
+          || asString(firstPending?.name)
+
+        snapshot.status = status
+        snapshot.totalSteps = totalSteps
+        snapshot.completedSteps = completedSteps
+        snapshot.currentStep = currentStep
+        if (totalSteps > 0 && hasValidRuntime) snapshot.totalRuntime = totalRuntime
+        else if (totalSteps === 0) snapshot.totalRuntime = undefined
+      }
     } catch {
       console.warn('Failed to read flow.json for snapshot')
     }
 
     try {
-      const paramsContent = await readProjectTextFile(`${project.path}/home/parameters.json`)
-      const params = JSON.parse(paramsContent)
-      snapshot.pdk = params['PDK'] || undefined
-      snapshot.topModule = params['Top module'] || undefined
-      snapshot.frequencyTarget = params['Frequency max [MHz]'] || undefined
-      snapshot.coreUtilization = params['Core']?.['Utilitization'] || undefined
+      const params = await readWorkspaceParametersResourceApi()
+      if (!isCurrent()) return
+      if (isRecord(params)) {
+        const pdk = asString(params['PDK'])
+        const topModule = asString(params['Top module'])
+        const frequencyTarget = asNumber(params['Frequency max [MHz]'])
+        if (pdk !== undefined) snapshot.pdk = pdk
+        if (topModule !== undefined) snapshot.topModule = topModule
+        if (frequencyTarget !== undefined) snapshot.frequencyTarget = frequencyTarget
+        const core = params['Core']
+        if (isRecord(core)) {
+          const coreUtilization = asNumber(core['Utilitization'])
+          if (coreUtilization !== undefined) snapshot.coreUtilization = coreUtilization
+        }
+      }
     } catch {
       console.warn('Failed to read parameters.json for snapshot')
     }
 
     try {
-      const homeContent = await readProjectTextFile(`${project.path}/home/home.json`)
-      const homeData = JSON.parse(homeContent)
-      const monitor = homeData.monitor
-      if (monitor) {
+      const homeData = await readWorkspaceHomeResourceApi()
+      if (!isCurrent()) return
+      const monitor = isRecord(homeData) ? homeData.monitor : null
+      if (isRecord(monitor)) {
         if (Array.isArray(monitor.instance) && monitor.instance.length > 0) {
-          snapshot.cellCount = monitor.instance[monitor.instance.length - 1]
+          const cellCount = asNumber(monitor.instance[monitor.instance.length - 1])
+          if (cellCount !== undefined) snapshot.cellCount = cellCount
         }
         if (Array.isArray(monitor.frequency) && monitor.frequency.length > 0) {
-          const lastFreq = monitor.frequency[monitor.frequency.length - 1]
-          if (typeof lastFreq === 'number' && lastFreq > 0) snapshot.frequency = lastFreq
+          const lastFreq = asNumber(monitor.frequency[monitor.frequency.length - 1])
+          if (lastFreq !== undefined && lastFreq > 0) snapshot.frequency = lastFreq
         }
       }
     } catch {
       console.warn('Failed to read home.json for snapshot')
     }
 
-    Object.assign(recentProjects.value[idx], snapshot)
+    const currentIdx = recentProjects.value.findIndex(p => normalizePath(p.path) === projectPath)
+    if (currentIdx === -1) return
+    if (!isCurrent()) return
+
+    Object.assign(recentProjects.value[currentIdx], snapshot)
+    if (Object.prototype.hasOwnProperty.call(snapshot, 'currentStep') && snapshot.currentStep === undefined) {
+      delete recentProjects.value[currentIdx].currentStep
+    }
+    if (Object.prototype.hasOwnProperty.call(snapshot, 'totalRuntime') && snapshot.totalRuntime === undefined) {
+      delete recentProjects.value[currentIdx].totalRuntime
+    }
+    if (!isCurrent()) return
     const serialized = recentProjects.value.map(serializeProject)
+    if (!isCurrent()) return
     await setSetting('recent_projects', serialized)
+    if (!isCurrent()) {
+      const latestSerialized = recentProjects.value.map(serializeProject)
+      await setSetting('recent_projects', latestSerialized)
+    }
   }
 
   const closeProject = async () => {
@@ -649,6 +783,7 @@ export function useWorkspace() {
     currentProject.value = null
     messageStore.clearMessages()
     disconnectRuntimeEvents()
+    workspaceLifecycle.closeSession()
     await clearProjectRoot()
     await deleteSetting('current_project_path')
     await updateWindowTitle()
@@ -657,30 +792,33 @@ export function useWorkspace() {
   /**
    * 建立 runtime event 连接，订阅 workspace 的运行生命周期通知
    */
-  function connectRuntimeEvents(workspaceId: string) {
+  function connectRuntimeEvents(workspaceId: string, sessionId = workspaceLifecycle.session.value.sessionId) {
     // 如果已有连接，先关闭
     disconnectRuntimeEvents()
 
-    type RuntimeEventApi = typeof runtimeEventApi & {
-      createRuntimeEventClient?: (workspaceId: string) => RuntimeEventClient
-    }
-    const createRuntimeEventClient =
-      (runtimeEventApi as RuntimeEventApi).createRuntimeEventClient ?? runtimeEventApi.createSSEClient
-    const client = createRuntimeEventClient(workspaceId)
+    const client = runtimeEventApi.createRuntimeEventClient(workspaceId)
 
     // 注册通用处理器，收集所有通知到 runtimeEvents
     client.onAll((response) => {
+      if (!workspaceLifecycle.isCurrentSession(sessionId)) return
       // 过滤心跳消息，不记录到 messages
       if (response.data?.type !== 'heartbeat') {
         runtimeEvents.value.push(response)
-        if (shouldTriggerStepRefresh(response)) {
-          triggerStepRefresh()
-        }
+        invalidateResourcesForRuntimeEvent(response, sessionId)
       }
     })
 
     client.connect()
     runtimeEventClient.value = client
+    unregisterRuntimeEventCleanup = workspaceLifecycle.registerCleanup(() => {
+      if (runtimeEventClient.value === client) {
+        runtimeEventClient.value = null
+      }
+      client.close()
+    }, {
+      sessionId,
+      label: 'runtime event client',
+    })
     console.log(`Runtime events connected for workspace: ${workspaceId}`)
   }
 
@@ -688,6 +826,8 @@ export function useWorkspace() {
    * 断开 runtime event 连接
    */
   function disconnectRuntimeEvents() {
+    unregisterRuntimeEventCleanup?.()
+    unregisterRuntimeEventCleanup = null
     if (runtimeEventClient.value) {
       runtimeEventClient.value.close()
       runtimeEventClient.value = null
@@ -696,20 +836,16 @@ export function useWorkspace() {
     handledRefreshRuntimeEvents.clear()
   }
 
-  function triggerStepRefresh() {
-    stepRefreshCounter.value++
-  }
-
-  function shouldTriggerStepRefresh(response: ECCResponse): boolean {
+  function runtimeEventInvalidationScopes(response: RuntimeEventResponse): WorkspaceInvalidationScope[] | null {
     const event = response.data
     const eventType = event?.type as string | undefined
     if (!eventType || !['step_complete', 'task_complete', 'error', 'cancelled'].includes(eventType)) {
-      return false
+      return null
     }
 
     const cmd = event.cmd as string | undefined
     if (cmd && !['run_step', 'rtl2gds'].includes(cmd)) {
-      return false
+      return null
     }
 
     const refreshKey = [
@@ -722,43 +858,56 @@ export function useWorkspace() {
       .join('|')
 
     if (refreshKey && handledRefreshRuntimeEvents.has(refreshKey)) {
-      return false
+      return null
     }
 
-    const hasTopLevelPathPayload =
-      typeof event.subflow_path === 'string'
-      || typeof event.step_path === 'string'
-      || typeof event.home_page === 'string'
-      || typeof event.log_file === 'string'
+    const scopes = new Set<WorkspaceInvalidationScope>(
+      cmd === 'rtl2gds'
+        ? ['all']
+        : ['flow', 'step', 'maps', 'logs'],
+    )
 
     const info = event.info
     if (info && typeof info === 'object') {
       const payload = info as Record<string, unknown>
-      if (
-        typeof payload.subflow_path === 'string'
-        || typeof payload.step_path === 'string'
-        || typeof payload.home_page === 'string'
-        || typeof payload.log_file === 'string'
-      ) {
-        if (refreshKey) {
-          handledRefreshRuntimeEvents.add(refreshKey)
-        }
-        return false
+      if (typeof payload.home_page === 'string') {
+        scopes.add('home')
+        scopes.add('parameters')
+      }
+      if (typeof payload.log_file === 'string') scopes.add('logs')
+      if (typeof payload.subflow_path === 'string' || typeof payload.step_path === 'string') {
+        scopes.add('step')
+        scopes.add('maps')
+        scopes.add('tiles')
       }
     }
 
-    if (hasTopLevelPathPayload) {
-      if (refreshKey) {
-        handledRefreshRuntimeEvents.add(refreshKey)
-      }
-      return false
+    if (typeof event.home_page === 'string') {
+      scopes.add('home')
+      scopes.add('parameters')
+    }
+    if (typeof event.log_file === 'string') scopes.add('logs')
+    if (typeof event.subflow_path === 'string' || typeof event.step_path === 'string') {
+      scopes.add('step')
+      scopes.add('maps')
+      scopes.add('tiles')
     }
 
     if (refreshKey) {
       handledRefreshRuntimeEvents.add(refreshKey)
     }
 
-    return true
+    return [...scopes]
+  }
+
+  function invalidateResourcesForRuntimeEvent(response: RuntimeEventResponse, sessionId: string): void {
+    const scopes = runtimeEventInvalidationScopes(response)
+    if (!scopes) return
+    workspaceLifecycle.invalidate(scopes, {
+      sessionId,
+      reason: 'runtime-event',
+      step: response.data?.step,
+    })
   }
 
   return {
@@ -771,14 +920,10 @@ export function useWorkspace() {
     importProject,
     closeProject,
     updateWindowTitle,
-    // Runtime events (sse* aliases are kept for compatibility)
     runtimeEventClient,
     runtimeEvents,
-    sseClient,
-    sseMessages,
-    // 跨组件刷新
-    stepRefreshCounter,
-    triggerStepRefresh,
+    resourceVersions: workspaceLifecycle.resourceVersions,
+    workspaceSession: workspaceLifecycle.session,
     // 准备工作区时的全屏遮罩（见 App.vue）
     runtimeBackendConnecting,
     runtimeBackendTitle,

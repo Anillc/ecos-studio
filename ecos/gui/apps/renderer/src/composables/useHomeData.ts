@@ -3,7 +3,6 @@ import { useWorkspace } from './useWorkspace'
 import { useDesktopRuntime } from './useDesktopRuntime'
 import { flowExecutionActive } from './useFlowRunner'
 import { readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
-import type { ECCResponse } from '@/api/runtimeEvents'
 import type { DesktopProjectLogTailEvent } from '@ecos-studio/shared'
 import {
   readOptionalProjectTextFile,
@@ -16,6 +15,7 @@ import {
 } from '@/utils/projectFiles'
 import { requestProjectPathAccess, resolveProjectPathAccess } from '@/utils/projectFs'
 import { mergePlannedFlowLogSegments } from './flowLogSegmentPlan'
+import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
 
 // ============ 类型定义 ============
 
@@ -349,6 +349,17 @@ function pruneLogCacheKeepOnly(aliveKeys: Iterable<string>): void {
   }
 }
 
+function currentFlowLogStepName(segments: FlowLogSegment[]): string {
+  const live = segments.find((segment) => segment.live)
+  if (live) return live.stepName
+
+  for (let i = segments.length - 1; i >= 0; i -= 1) {
+    const segment = segments[i]
+    if (segment && !segment.missing) return segment.stepName
+  }
+  return ''
+}
+
 // ============ Home 资源（monitor / checklist / layout / metrics）模块级持久化 ============
 //
 // HomeView 不在 KeepAlive：原实现每次 mount 都会
@@ -378,7 +389,7 @@ let _loadedMetricsSignature = ''
 
 function invalidateLayoutCache(): void {
   if (_currentLayoutBlobUrl) {
-    URL.revokeObjectURL(_currentLayoutBlobUrl)
+    if (_currentLayoutBlobUrl.startsWith('blob:')) URL.revokeObjectURL(_currentLayoutBlobUrl)
     _currentLayoutBlobUrl = null
   }
   layoutBlobUrlState.value = ''
@@ -387,7 +398,7 @@ function invalidateLayoutCache(): void {
 
 function invalidateMetricsCache(): void {
   for (const url of _currentMetricsBlobUrls) {
-    URL.revokeObjectURL(url)
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url)
   }
   _currentMetricsBlobUrls = []
   analysisChartsState.value = []
@@ -424,12 +435,12 @@ function markHomeAssetSignaturesStale(): void {
  * 同时调用时只发起 **一次** runtime 请求 + 一次文件读取。
  *
  * @param projectPath 当前项目路径
- * @param isInTauri   是否在桌面运行时
+ * @param isDesktopRuntimeAvailable   是否在桌面运行时
  * @returns 解析后的 HomeData，失败返回 null
  */
 export async function fetchSharedHomeData(
   projectPath: string,
-  isInTauri: boolean,
+  isDesktopRuntimeAvailable: boolean,
 ): Promise<HomeData | null> {
   // 项目切换时使缓存失效
   if (projectPath !== _cachedForProject) {
@@ -456,7 +467,7 @@ export async function fetchSharedHomeData(
     const isStale = () => generation !== _fetchGeneration || projectPath !== _cachedForProject
 
     try {
-      if (!isInTauri || !projectPath) return null
+      if (!isDesktopRuntimeAvailable || !projectPath) return null
 
       // 请求文件系统权限
       if (!(await requestProjectPathAccess(projectPath))) return null
@@ -515,7 +526,11 @@ export function resetSharedHomeDataProjectState() {
  */
 export function useHomeData() {
   const { isDesktopRuntimeAvailable } = useDesktopRuntime()
-  const { currentProject, stepRefreshCounter, triggerStepRefresh } = useWorkspace()
+  const {
+    currentProject,
+    resourceVersions,
+  } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
 
   // 响应式数据全部走模块级——HomeView remount 时直接复用上一次加载结果，
   // 只有源数据真的变了（项目切换 / runtime event 推送 / 本地 flow 执行）才触发重读。
@@ -545,6 +560,7 @@ export function useHomeData() {
   let liveProjectPath: string | null = null
   let liveHomeDataRefreshSession = 0
   let lastOngoingKey: string | null = null
+  let unregisterLiveLifecycleCleanup: (() => void) | null = null
 
   /**
    * 将远程路径转换为本地项目路径
@@ -617,7 +633,7 @@ export function useHomeData() {
 
       const nextBlobUrl = await readProjectBlobUrl(resolvedPath, { mimeType: 'image/png' })
       if (!isCurrent()) {
-        URL.revokeObjectURL(nextBlobUrl)
+        if (nextBlobUrl.startsWith('blob:')) URL.revokeObjectURL(nextBlobUrl)
         return
       }
 
@@ -626,7 +642,7 @@ export function useHomeData() {
       _currentLayoutBlobUrl = nextBlobUrl
       layoutBlobUrlState.value = nextBlobUrl
       _loadedLayoutPath = layoutPath
-      if (prevBlobUrl) URL.revokeObjectURL(prevBlobUrl)
+      if (prevBlobUrl?.startsWith('blob:')) URL.revokeObjectURL(prevBlobUrl)
       console.log('Layout blob URL created:', nextBlobUrl)
     } catch (err) {
       console.error('Failed to load layout image:', err)
@@ -691,7 +707,9 @@ export function useHomeData() {
       }
     }
     if (!isCurrent()) {
-      for (const url of newBlobUrls) URL.revokeObjectURL(url)
+      for (const url of newBlobUrls) {
+        if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+      }
       return
     }
 
@@ -700,7 +718,9 @@ export function useHomeData() {
     _currentMetricsBlobUrls = newBlobUrls
     analysisChartsState.value = charts
     _loadedMetricsSignature = signature
-    for (const url of prevBlobUrls) URL.revokeObjectURL(url)
+    for (const url of prevBlobUrls) {
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+    }
     console.log('Metrics images loaded:', charts.length)
   }
 
@@ -822,6 +842,8 @@ export function useHomeData() {
   }
 
   function cleanupFlowLogLiveWatch(): void {
+    unregisterLiveLifecycleCleanup?.()
+    unregisterLiveLifecycleCleanup = null
     liveHomeDataRefreshSession++
     cleanupLogWatchOnly()
     unwatchFlowJsonFile?.()
@@ -1092,7 +1114,7 @@ export function useHomeData() {
         && !plan.hasPendingStep
       ) {
         flowExecutionActive.value = false
-        triggerStepRefresh()
+        workspaceLifecycle.invalidate('all')
       }
 
       const logPaths = plan.tasks.map((t) => t.logPath)
@@ -1189,8 +1211,11 @@ export function useHomeData() {
       return
     }
 
+    const workspaceSessionId = workspaceLifecycle.currentSessionId.value
     const callSession = ++flowLogLoadSession
-    const isStale = () => callSession !== flowLogLoadSession
+    const isStale = () =>
+      callSession !== flowLogLoadSession
+      || !workspaceLifecycle.isCurrentSession(workspaceSessionId)
 
     flowLogError.value = null
     const startingEmpty = flowLogSegments.value.length === 0
@@ -1228,6 +1253,7 @@ export function useHomeData() {
       // 当前页面只展示一个选中 step 的正文，因此这里仅同步 metadata；
       // 真正的正文读取改为选中时按需触发，避免 mount 时为所有 step 做 IPC 读盘。
       flowLogSegments.value = mergePlannedFlowLogSegments(plan.tasks, flowLogSegments.value)
+      flowLogStepName.value = currentFlowLogStepName(flowLogSegments.value)
 
       if (!isStale()) {
         console.log('Flow step logs loaded:', flowLogSegments.value.length, 'segments')
@@ -1249,7 +1275,13 @@ export function useHomeData() {
   async function ensureFlowLogsLoaded(): Promise<void> {
     let flowPath = sharedHomeData.value?.flow
     if (!flowPath && isDesktopRuntimeAvailable && currentProject.value?.path) {
-      const homeData = await fetchSharedHomeData(currentProject.value.path, isDesktopRuntimeAvailable)
+      const sessionId = workspaceLifecycle.currentSessionId.value
+      const projectPath = currentProject.value.path
+      const homeData = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable),
+      )
+      if (!workspaceLifecycle.isCurrentSession(sessionId)) return
       flowPath = homeData?.flow ?? ''
     }
     if (flowPath) {
@@ -1329,6 +1361,8 @@ export function useHomeData() {
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
@@ -1337,7 +1371,12 @@ export function useHomeData() {
       // home.json（fetchSharedHomeData 内部会在项目路径变化时自动失效）。
       // 有更新时由 runtime event → loadHomeDataFromPath 覆盖缓存，不需要每次
       // mount 都重请求后端再重读整个 home.json。
-      const homeData = await fetchSharedHomeData(currentProject.value.path, isDesktopRuntimeAvailable)
+      const projectPath = currentProject.value.path
+      const homeData = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable),
+      )
+      if (!isCurrent()) return
       if (!homeData) {
         console.warn('Failed to get home data from shared cache')
         clearHomeData()
@@ -1346,15 +1385,19 @@ export function useHomeData() {
 
       console.log('Loaded home data:', homeData)
 
-      await loadHomeAssetsFromData(homeData, { includeFlowLogs: true })
+      await loadHomeAssetsFromData(homeData, { includeFlowLogs: true, isCurrent })
+      if (!isCurrent()) return
 
       console.log('Home data fully loaded')
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load home data:', err)
       error.value = err instanceof Error ? err.message : String(err)
       clearHomeData()
     } finally {
-      isLoading.value = false
+      if (isCurrent()) {
+        isLoading.value = false
+      }
     }
   }
 
@@ -1368,19 +1411,29 @@ export function useHomeData() {
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
     try {
       // 转换远程路径为本地路径
       const localPath = convertToLocalPath(homePath)
-      const resolvedHomePath = await resolvedPathMemo(localPath)
+      const resolvedHomePath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolvedPathMemo(localPath),
+      )
+      if (!isCurrent()) return
       console.log('Loading home data from runtime event path:', resolvedHomePath ?? localPath)
 
       // 请求文件系统访问权限
       if (!resolvedHomePath) return
 
-      const fileContent = await readProjectTextFile(resolvedHomePath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedHomePath),
+      )
+      if (!isCurrent() || fileContent === undefined) return
       const homeData: HomeData = JSON.parse(fileContent)
 
       // 更新共享缓存，让其他 composable 也能获取最新数据
@@ -1388,14 +1441,18 @@ export function useHomeData() {
 
       console.log('Loaded home data from runtime event path:', homeData)
 
-      await loadHomeAssetsFromData(homeData, { includeFlowLogs: true })
+      await loadHomeAssetsFromData(homeData, { includeFlowLogs: true, isCurrent })
+      if (!isCurrent()) return
 
       console.log('Home data from runtime event path fully loaded')
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load home data from path:', homePath, err)
       error.value = err instanceof Error ? err.message : String(err)
     } finally {
-      isLoading.value = false
+      if (isCurrent()) {
+        isLoading.value = false
+      }
     }
   }
 
@@ -1475,6 +1532,14 @@ export function useHomeData() {
     const sid = liveSession
     cleanupFlowLogLiveWatch()
     liveProjectPath = projectPath
+    unregisterLiveLifecycleCleanup = workspaceLifecycle.registerCleanup(() => {
+      if (sid !== liveSession) return
+      liveSession++
+      cleanupFlowLogLiveWatch()
+    }, {
+      sessionId: workspaceLifecycle.currentSessionId.value,
+      label: 'home live file watchers',
+    })
 
     const homeData = await fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable)
     if (sid !== liveSession || currentProject.value?.path !== projectPath) return
@@ -1566,67 +1631,20 @@ export function useHomeData() {
   )
 
   watch(
-    stepRefreshCounter,
+    () => [
+      resourceVersions.value.home,
+      resourceVersions.value.flow,
+      resourceVersions.value.logs,
+      resourceVersions.value.all,
+    ],
     async () => {
       if (!currentProject.value?.path) return
       invalidateSharedHomeData()
+      markHomeAssetSignaturesStale()
       resetFlowLogState()
+      invalidateLogFileCache()
       await loadHomeData()
     },
-  )
-
-  // 监听 runtime event payload，当收到包含 home_page/log_file 的事件时自动刷新 Home 数据
-  const { runtimeEvents } = useWorkspace()
-
-  watch(
-    () => runtimeEvents.value.length,
-    async (newLen, oldLen) => {
-      if (newLen <= (oldLen ?? 0)) return
-
-      // 获取最新一条 runtime event
-      const latest: ECCResponse = runtimeEvents.value[newLen - 1]
-      if (!latest) return
-
-      // 判断是否为 notify 类型的消息
-      if (latest.cmd !== 'notify') return
-
-      const info = latest.data?.info as Record<string, unknown> | undefined
-      const homePage = (info?.home_page ?? latest.data?.home_page) as string | undefined
-      const logFile = (info?.log_file ?? latest.data?.log_file) as string | undefined
-      const stepName = latest.data?.step as string | undefined
-
-      if (!homePage && !logFile) return
-
-      if (homePage) {
-        console.log('Received runtime event containing home_page path:', homePage)
-      }
-      if (logFile) {
-        console.log('Received runtime event containing log_file path:', logFile)
-      }
-
-      if (homePage) {
-        await loadHomeDataFromPath(homePage)
-      }
-      if (stepName !== undefined && logFile) {
-        flowLogStepName.value = stepName
-      }
-      // 某步刚跑完会带 log_file；不管是否有 home_page，都把这个具体文件的缓存清掉，
-      // 下一次 hydrate 才会真的重读磁盘，否则会一直拿老内容。
-      //
-      // 注意：`logFileCache` 的 key 是 **resolve 之后的规范化路径**（与
-      // `planFlowLogSegments` 里组装的 `stepLogAbsPath(resolvedRoot, ...)` 保持一致）。
-      // 这里必须先走 `resolvedPathMemo` 得到同样的 key，否则 `delete` 打不到目标条目，
-      // UI 会继续显示旧内容直到项目切换。
-      if (logFile) {
-        const localLog = convertToLocalPath(logFile)
-        const resolvedLog = await resolvedPathMemo(localLog)
-        invalidateLogFileCache(resolvedLog ?? localLog)
-      }
-      // 仅 log_file、无 home_page 时仍按 flow.json 聚合刷新（例如某步刚跑完）
-      if (logFile && !homePage) {
-        await ensureFlowLogsLoaded()
-      }
-    }
   )
 
   // 组件卸载：只停掉本实例挂载的 live watcher / 定时器；

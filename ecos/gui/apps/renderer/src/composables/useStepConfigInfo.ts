@@ -7,6 +7,7 @@ import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { useDesktopRuntime } from '@/composables/useDesktopRuntime'
 import { useWorkspace } from '@/composables/useWorkspace'
+import { useWorkspaceLifecycle } from '@/composables/useWorkspaceLifecycle'
 
 const stepEnumValues = Object.values(StepEnum)
 
@@ -55,6 +56,8 @@ export function useStepConfigInfo() {
   const route = useRoute()
   const { isDesktopRuntimeAvailable } = useDesktopRuntime()
   const { currentProject } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
+  const { resourceVersions } = workspaceLifecycle
 
   /** Must be true before first watch; otherwise the UI can hit the "has data" branch with nothing rendered. */
   const loading = ref(true)
@@ -76,7 +79,10 @@ export function useStepConfigInfo() {
   const stepConfigTextBaseline = ref('')
 
   const isSavingStepConfig = ref(false)
+  const activeStepConfigSave = ref<symbol | null>(null)
   const stepConfigSaveError = ref<string | null>(null)
+  let activeRefetchToken: symbol | null = null
+  let lastLoadedStep: StepEnum | null = null
 
   const currentStep = computed(() => {
     const pathParts = route.path.split('/')
@@ -88,12 +94,19 @@ export function useStepConfigInfo() {
 
   async function refetch(): Promise<void> {
     const stepEnum = currentStep.value
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const refetchToken = Symbol('step-config-refetch')
+    activeRefetchToken = refetchToken
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
+    const isLatestRefetch = () => activeRefetchToken === refetchToken
+    const canApply = () => isCurrent() && isLatestRefetch()
     if (!stepEnum) {
       info.value = null
       error.value = null
       runtimeMessages.value = []
       responseKind.value = 'idle'
       clearFileState()
+      lastLoadedStep = null
       loading.value = false
       return
     }
@@ -101,13 +114,19 @@ export function useStepConfigInfo() {
     loading.value = true
     error.value = null
     runtimeMessages.value = []
-    clearFileState()
+    if (lastLoadedStep !== stepEnum) {
+      clearFileState()
+    }
 
     try {
-      const response = await resolveWorkspaceStepInfoApi({
-        step: stepEnum,
-        id: InfoEnum.config,
-      })
+      const response = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveWorkspaceStepInfoApi({
+          step: stepEnum,
+          id: InfoEnum.config,
+        }),
+      )
+      if (!canApply() || !response) return
       runtimeMessages.value = response.message ?? []
 
       const payload = response.info
@@ -115,7 +134,10 @@ export function useStepConfigInfo() {
       if (response.response === 'available') {
         responseKind.value = 'success'
         info.value = payload ?? {}
-        await loadStepConfigFileFromInfo(info.value)
+        await loadStepConfigFileFromInfo(info.value, sessionId, refetchToken)
+        if (canApply()) {
+          lastLoadedStep = stepEnum
+        }
         return
       }
 
@@ -124,22 +146,31 @@ export function useStepConfigInfo() {
         const configPath = payload ? pickStepConfigPathFromInfo(payload) : undefined
         if (payload && configPath) {
           responseKind.value = 'warning'
-          await loadStepConfigFileFromInfo(payload)
+          await loadStepConfigFileFromInfo(payload, sessionId, refetchToken)
+          if (canApply()) {
+            lastLoadedStep = stepEnum
+          }
           return
         }
         responseKind.value = 'idle'
+        clearFileState()
+        lastLoadedStep = stepEnum
         return
       }
 
       responseKind.value = 'error'
       info.value = null
       error.value = (response.message && response.message[0]) || 'Failed to load step configuration'
+      clearFileState()
     } catch (e) {
+      if (!canApply()) return
       responseKind.value = 'error'
       info.value = null
       error.value = e instanceof Error ? e.message : String(e)
     } finally {
-      loading.value = false
+      if (canApply()) {
+        loading.value = false
+      }
     }
   }
 
@@ -192,14 +223,24 @@ export function useStepConfigInfo() {
     }
   }
 
-  async function loadStepConfigFileFromInfo(data: Record<string, unknown>) {
+  async function loadStepConfigFileFromInfo(
+    data: Record<string, unknown>,
+    sessionId: string,
+    refetchToken: symbol,
+  ) {
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
+    const isLatestRefetch = () => activeRefetchToken === refetchToken
+    const canApply = () => isCurrent() && isLatestRefetch()
     const rawPath = pickStepConfigPathFromInfo(data)
     if (!rawPath) {
       return
     }
 
-    const projectPath = currentProject.value?.path ?? ''
-    const localPath = projectPath ? convertRemoteToLocalPath(rawPath, projectPath) : rawPath
+    const localPath = await workspaceLifecycle.runForSession(sessionId, () => {
+      const projectPath = currentProject.value?.path ?? ''
+      return projectPath ? convertRemoteToLocalPath(rawPath, projectPath) : rawPath
+    })
+    if (!canApply() || !localPath) return
     stepConfigPathResolved.value = localPath
 
     if (!isDesktopRuntimeAvailable) {
@@ -209,15 +250,25 @@ export function useStepConfigInfo() {
     }
 
     try {
-      const resolvedPath = await resolveProjectPathAccess(localPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(localPath),
+      )
+      if (!canApply()) return
       if (!resolvedPath) {
         stepConfigRaw.value = null
         stepConfigReadError.value = `No file-system access to ${localPath}`
         return
       }
-      stepConfigRaw.value = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (!canApply() || fileContent === undefined) return
+      stepConfigRaw.value = fileContent
       stepConfigReadError.value = null
     } catch (e) {
+      if (!canApply()) return
       stepConfigRaw.value = null
       stepConfigReadError.value = e instanceof Error ? e.message : String(e)
     }
@@ -229,6 +280,16 @@ export function useStepConfigInfo() {
       void refetch()
     },
     { immediate: true },
+  )
+
+  watch(
+    () => [
+      resourceVersions.value['step-config'],
+      resourceVersions.value.all,
+    ],
+    () => {
+      void refetch()
+    },
   )
 
   /** Empty when there is no runtime payload and no loaded files (loading masks idle). */
@@ -294,6 +355,17 @@ export function useStepConfigInfo() {
   async function saveStepConfig(): Promise<boolean> {
     stepConfigSaveError.value = null
     const path = stepConfigPathResolved.value
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const step = currentStep.value
+    const saveToken = Symbol('step-config-save')
+    const isCurrentSave = () => activeStepConfigSave.value === saveToken
+    const canApply = () => workspaceLifecycle.isCurrentSession(sessionId) && isCurrentSave()
+    const setSavingForToken = (value: boolean) => {
+      if (activeStepConfigSave.value === saveToken) {
+        isSavingStepConfig.value = value
+        if (!value) activeStepConfigSave.value = null
+      }
+    }
     if (!path) {
       stepConfigSaveError.value = 'No configuration file path resolved'
       return false
@@ -302,35 +374,68 @@ export function useStepConfigInfo() {
       stepConfigSaveError.value = 'Saving requires the ECOS Studio desktop runtime'
       return false
     }
+    const rawBeforeSave = stepConfigRaw.value
+    const textDraftBeforeSave = stepConfigTextDraft.value
+    const draftBeforeSave = stepConfigDraft.value === null ? null : deepClone(stepConfigDraft.value)
+    activeStepConfigSave.value = saveToken
     isSavingStepConfig.value = true
     try {
-      const resolvedPath = await resolveProjectPathAccess(path)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(path),
+      )
+      if (!canApply()) return false
       if (!resolvedPath) {
         stepConfigSaveError.value = `No file-system access to ${path}`
         return false
       }
       let text: string
-      if (!rawLooksValidJson(stepConfigRaw.value ?? '')) {
-        text = stepConfigTextDraft.value
-        await writeProjectTextFile(resolvedPath, text)
+      if (!rawLooksValidJson(rawBeforeSave ?? '')) {
+        text = textDraftBeforeSave
+        const writeResult = await workspaceLifecycle.runForSession(
+          sessionId,
+          async () => {
+            await writeProjectTextFile(resolvedPath, text)
+            return true
+          },
+        )
+        if (!canApply() || writeResult !== true) return false
         stepConfigRaw.value = text
         stepConfigTextBaseline.value = text
+        workspaceLifecycle.invalidate('step-config', {
+          reason: 'step-config-save',
+          sessionId,
+          step,
+        })
         return true
       }
-      if (stepConfigDraft.value === null) {
+      if (draftBeforeSave === null) {
         stepConfigSaveError.value = 'Nothing to save'
         return false
       }
-      text = JSON.stringify(stepConfigDraft.value, null, 4)
-      await writeProjectTextFile(resolvedPath, text)
+      text = JSON.stringify(draftBeforeSave, null, 4)
+      const writeResult = await workspaceLifecycle.runForSession(
+        sessionId,
+        async () => {
+          await writeProjectTextFile(resolvedPath, text)
+          return true
+        },
+      )
+      if (!canApply() || writeResult !== true) return false
       stepConfigRaw.value = text
-      stepConfigBaselineSig.value = stableJsonSig(stepConfigDraft.value)
+      stepConfigBaselineSig.value = stableJsonSig(draftBeforeSave)
+      workspaceLifecycle.invalidate('step-config', {
+        reason: 'step-config-save',
+        sessionId,
+        step,
+      })
       return true
     } catch (e) {
+      if (!canApply()) return false
       stepConfigSaveError.value = e instanceof Error ? e.message : String(e)
       return false
     } finally {
-      isSavingStepConfig.value = false
+      setSavingForToken(false)
     }
   }
 
