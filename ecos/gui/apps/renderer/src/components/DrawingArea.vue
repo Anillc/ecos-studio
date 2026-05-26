@@ -35,7 +35,7 @@ import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
 import { RULER_THICKNESS } from '@/applications/editor/core/rulerConfig'
 
 const route = useRoute()
-const { currentProject, runtimeEvents, resourceVersions } = useWorkspace()
+const { currentProject, resourceVersions } = useWorkspace()
 const { getResourceUrl } = useEDA()
 const layoutState = useLayoutState()
 const tilePrefetchStore = useLayoutTilePrefetchStore()
@@ -707,40 +707,18 @@ watch(() => route.path, (newPath) => {
   handleStageChange(stage)
 })
 
-// Runtime event payload 驱动：只有明确携带 subflow/step 路径的事件才直接刷新当前 step 版图。
-watch(
-  () => runtimeEvents.value.length,
-  async (newLen, oldLen) => {
-    if (newLen <= (oldLen ?? 0)) return
-    const latest = runtimeEvents.value[newLen - 1]
-    if (!latest || latest.cmd !== 'notify') return
-
-    const notifyId = latest.data?.id as string | undefined
-    const runtimeStep = latest.data?.step as string | undefined
-    if (notifyId !== 'subflow' && notifyId !== 'step') return
-
-    const pathParts = route.path.split('/')
-    const currentStage = pathParts[pathParts.length - 1] || ''
-    if (runtimeStep && currentStage.toLowerCase() === runtimeStep.toLowerCase()) {
-      tilePrefetchStore.invalidateStep(currentStage)
-      await handleStageChange(currentStage)
-    }
-  }
-)
-
-// Workspace resource invalidation fallback after CLI lifecycle events.
+// CLI 运行命令完成后的兜底刷新信号。
 watch(
   () => [
     resourceVersions.value.step,
-    resourceVersions.value.maps,
     resourceVersions.value.tiles,
     resourceVersions.value.all,
   ],
   () => {
-  const pathParts = route.path.split('/')
-  const stage = pathParts[pathParts.length - 1] || 'home'
-  tilePrefetchStore.invalidateStep(stage)
-  handleStageChange(stage)
+    const pathParts = route.path.split('/')
+    const stage = pathParts[pathParts.length - 1] || 'home'
+    tilePrefetchStore.invalidateStep(stage)
+    handleStageChange(stage)
   }
 )
 

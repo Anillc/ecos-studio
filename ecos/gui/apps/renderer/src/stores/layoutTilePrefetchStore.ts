@@ -299,8 +299,6 @@ export const useLayoutTilePrefetchStore = defineStore('layoutTilePrefetch', () =
     notifyNavigatedStep,
     invalidateStep,
     enqueuePrefetch,
-    /** @deprecated 使用 discoverAndSchedule 内部逻辑；保留名以免外部误用 */
-    enqueueAllFlowSteps: discoverAndSchedule,
     clearDeferredPrefetchQueue,
     pause,
     resume,
