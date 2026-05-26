@@ -1,6 +1,6 @@
 import { spawn as spawnChild } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
@@ -27,11 +27,6 @@ interface PreparedCommand {
 }
 
 type CliEventType = 'queued' | 'started' | 'stdout' | 'stderr' | 'completed' | 'failed' | 'cancelled'
-
-const cliResultCommandAliases: Partial<Record<string, DesktopCliCommandName>> = {
-  get_home: 'home_page',
-  run_flow: 'rtl2gds',
-}
 
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -102,8 +97,7 @@ function normalizeCliResult(
     : record
   const response = readResponse(resultRecord.response)
   const rawCmd = readString(resultRecord.cmd)
-  const cmd = cliResultCommandAliases[rawCmd]
-    ?? (rawCmd ? rawCmd as DesktopCliCommandName : request.cmd)
+  const cmd = rawCmd ? rawCmd as DesktopCliCommandName : request.cmd
 
   return {
     cmd,
@@ -228,10 +222,6 @@ export class EccCliAdapter {
     request: DesktopCliCommandRequest,
     context: DesktopRuntimeAdapterContext,
   ): Promise<DesktopCliCommandResult> {
-    if (request.cmd === 'set_pdk_root') {
-      return this.setPdkRoot(request)
-    }
-
     const prepared = this.prepareCommand(request)
     if ('response' in prepared) {
       return prepared
@@ -390,8 +380,7 @@ export class EccCliAdapter {
           const eventType = normalizeEventType(record.phase ?? record.event)
           if (eventType) {
             const rawCmd = readString(record.cmd)
-            const cmd = cliResultCommandAliases[rawCmd]
-              ?? (rawCmd ? rawCmd as DesktopCliCommandName : request.cmd)
+            const cmd = rawCmd ? rawCmd as DesktopCliCommandName : request.cmd
             const response = responseFromEventType(eventType)
             context.emit({
               result: {
@@ -508,50 +497,4 @@ export class EccCliAdapter {
     })
   }
 
-  private setPdkRoot(request: DesktopCliCommandRequest): DesktopCliCommandResult {
-    const pdk = requiredString(request, 'pdk').toLowerCase()
-    const pdkRoot = requiredString(request, 'pdk_root')
-    const envKey = pdk ? `CHIPCOMPILER_${pdk.toUpperCase()}_PDK_ROOT` : ''
-    const responseData = {
-      env_key: envKey,
-      pdk,
-      pdk_root: pdkRoot,
-    }
-
-    let failure = ''
-    if (!pdk) {
-      failure = 'missing pdk name'
-    } else if (!pdkRoot) {
-      failure = 'missing pdk_root'
-    } else if (!existsSync(pdkRoot)) {
-      failure = `pdk_root is not a directory: ${pdkRoot}`
-    } else if (!statSync(pdkRoot).isDirectory()) {
-      failure = `pdk_root is not a directory: ${pdkRoot}`
-    }
-
-    if (failure) {
-      return result(
-        request.cmd,
-        'failed',
-        [`set pdk root failed: ${failure}`],
-        responseData,
-      )
-    }
-
-    const resolvedRoot = realpathSync(pdkRoot)
-    this.env = {
-      ...this.env,
-      [envKey]: resolvedRoot,
-    }
-
-    return result(
-      request.cmd,
-      'success',
-      [`set pdk root success: ${pdk} -> ${resolvedRoot}`],
-      {
-        ...responseData,
-        pdk_root: resolvedRoot,
-      },
-    )
-  }
 }

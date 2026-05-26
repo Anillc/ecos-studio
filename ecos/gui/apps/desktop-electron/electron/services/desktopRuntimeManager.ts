@@ -28,7 +28,6 @@ const supportedCommands = new Set<DesktopCliCommandName>([
   'clear',
   'load_workspace',
   'create_workspace',
-  'set_pdk_root',
   'run_step',
   'rtl2gds',
   'get_info',

@@ -75,7 +75,7 @@ function registerHandlers() {
     appInfoService: {
       getVersions: vi.fn(),
     },
-    desktopCliBridgeService: {
+    desktopRuntimeManager: {
       execute: vi.fn(),
       onEvent: vi.fn(),
     },
@@ -583,7 +583,7 @@ describe('registerIpc', () => {
     })
   })
 
-  it('executes desktop commands through the CLI Bridge', async () => {
+  it('executes desktop commands through the runtime manager', async () => {
     const { handlers, services } = registerHandlers()
     const event = { sender: { id: 'web-contents' } }
     const result = {
@@ -593,7 +593,7 @@ describe('registerIpc', () => {
       ok: true,
       response: 'success',
     }
-    services.desktopCliBridgeService.execute.mockResolvedValue(result)
+    services.desktopRuntimeManager.execute.mockResolvedValue(result)
     const request = {
       cmd: 'run_step',
       data: { step: 'place', rerun: false },
@@ -604,7 +604,7 @@ describe('registerIpc', () => {
       handlers.get(desktopApiIpcChannels.cliExecute)?.(event, request),
     ).resolves.toEqual(result)
 
-    expect(services.desktopCliBridgeService.execute).toHaveBeenCalledWith(
+    expect(services.desktopRuntimeManager.execute).toHaveBeenCalledWith(
       request,
       expect.any(Function),
     )
@@ -623,7 +623,7 @@ describe('registerIpc', () => {
       text: 'queued',
       type: 'queued',
     }
-    services.desktopCliBridgeService.execute.mockImplementation(async (_request, listener) => {
+    services.desktopRuntimeManager.execute.mockImplementation(async (_request, listener) => {
       listener(cliEvent)
       return {
         cmd: 'run_step',
@@ -653,7 +653,7 @@ describe('registerIpc', () => {
       isDestroyed: vi.fn(() => true),
       send: vi.fn(),
     })
-    services.desktopCliBridgeService.execute.mockImplementation(async (_request, listener) => {
+    services.desktopRuntimeManager.execute.mockImplementation(async (_request, listener) => {
       listener({
         cmd: 'run_step',
         jobId: 'job-1',

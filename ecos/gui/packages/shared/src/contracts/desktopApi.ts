@@ -64,8 +64,6 @@ export interface ScannedPdkDirectory {
 export interface VersionInfo {
   gui: string
   runtime: string
-  /** Legacy FastAPI version field. New desktop builds use `runtime` instead. */
-  server?: string
   ecc: string
   dreamplace: string
   eccTools?: string

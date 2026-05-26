@@ -5,7 +5,7 @@ import { createMainWindow } from './createMainWindow'
 import { configureGpuMode } from './gpuMode'
 import { registerIpc } from './registerIpc'
 import { AppInfoService } from '../services/appInfoService'
-import { DesktopCliBridgeService } from '../services/desktopCliBridgeService'
+import { DesktopRuntimeManager } from '../services/desktopRuntimeManager'
 import {
   getElectronLatestMainLogFile,
   getElectronMainLogFile,
@@ -26,7 +26,7 @@ let ipcRegistered = false
 let services:
   | {
       appInfoService: AppInfoService
-      desktopCliBridgeService: DesktopCliBridgeService
+      desktopRuntimeManager: DesktopRuntimeManager
       settingsStore: SettingsStore
       shellService: ShellPtyService
       tileService: TileService
@@ -92,7 +92,7 @@ function getDesktopServices() {
   const workspaceResourceService = new WorkspaceResourceService({
     projectScopeProvider: projectScopeService,
   })
-  const desktopCliBridgeService = new DesktopCliBridgeService({
+  const desktopRuntimeManager = new DesktopRuntimeManager({
     adapter: new EccCliAdapter({
       env: runtimeEnv,
     }),
@@ -106,7 +106,7 @@ function getDesktopServices() {
 
   services = {
     appInfoService,
-    desktopCliBridgeService,
+    desktopRuntimeManager,
     settingsStore,
     shellService,
     tileService,
@@ -123,7 +123,7 @@ async function launchMainWindow(): Promise<void> {
   if (!ipcRegistered) {
     registerIpc(undefined, {
       appInfoService: desktopServices.appInfoService,
-      desktopCliBridgeService: desktopServices.desktopCliBridgeService,
+      desktopRuntimeManager: desktopServices.desktopRuntimeManager,
       settingsStore: desktopServices.settingsStore,
       shellService: desktopServices.shellService,
       tileService: desktopServices.tileService,

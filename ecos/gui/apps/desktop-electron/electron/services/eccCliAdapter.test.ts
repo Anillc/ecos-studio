@@ -187,7 +187,7 @@ describe('EccCliAdapter', () => {
     )
   })
 
-  it('maps workspace commands to CLI argv and normalizes CLI command aliases', async () => {
+  it('maps workspace commands to CLI argv', async () => {
     const harness = createSpawnHarness()
     const adapter = new EccCliAdapter({ spawn: harness.spawn })
 
@@ -219,7 +219,7 @@ describe('EccCliAdapter', () => {
       '--rerun',
     ])
     complete(harness.children[1], {
-      cmd: 'run_flow',
+      cmd: 'rtl2gds',
       data: { rerun: true },
       message: ['flow complete'],
       response: 'success',
@@ -266,7 +266,7 @@ describe('EccCliAdapter', () => {
       '--json',
     ])
     complete(harness.children[3], {
-      cmd: 'get_home',
+      cmd: 'home_page',
       data: { path: '/work/loaded/home/home.json' },
       message: ['home'],
       response: 'success',
@@ -275,70 +275,6 @@ describe('EccCliAdapter', () => {
       cmd: 'home_page',
       ok: true,
     })
-  })
-
-  it('implements set_pdk_root locally and injects the env into later CLI children', async () => {
-    const harness = createSpawnHarness()
-    const pdkRoot = createTempDir('ecos-pdk-root-')
-    const adapter = new EccCliAdapter({
-      env: { PATH: '/usr/bin' },
-      spawn: harness.spawn,
-    })
-
-    await expect(adapter.execute(request('set_pdk_root', {
-      pdk: 'ics55',
-      pdk_root: pdkRoot,
-    }), { emit: vi.fn() })).resolves.toEqual({
-      cmd: 'set_pdk_root',
-      data: {
-        env_key: 'CHIPCOMPILER_ICS55_PDK_ROOT',
-        pdk: 'ics55',
-        pdk_root: pdkRoot,
-      },
-      message: [`set pdk root success: ics55 -> ${pdkRoot}`],
-      ok: true,
-      response: 'success',
-    })
-
-    const runPromise = adapter.execute(request('run_step', {
-      directory: '/work/demo',
-      step: 'Synthesis',
-    }), { emit: vi.fn() })
-
-    expect(harness.calls[0]?.options.env).toMatchObject({
-      CHIPCOMPILER_ICS55_PDK_ROOT: pdkRoot,
-      PATH: '/usr/bin',
-    })
-
-    complete(harness.children[0], {
-      cmd: 'run_step',
-      data: { state: 'Success', step: 'Synthesis' },
-      message: [],
-      response: 'success',
-    })
-    await runPromise
-  })
-
-  it('rejects missing or invalid set_pdk_root fields without spawning ECC', async () => {
-    const harness = createSpawnHarness()
-    const adapter = new EccCliAdapter({ spawn: harness.spawn })
-
-    await expect(adapter.execute(request('set_pdk_root', {
-      pdk_root: '/tmp/pdk',
-    }), { emit: vi.fn() })).resolves.toMatchObject({
-      cmd: 'set_pdk_root',
-      ok: false,
-      response: 'failed',
-    })
-
-    await expect(adapter.execute(request('set_pdk_root', {
-      pdk: 'ics55',
-      pdk_root: '/path/that/does/not/exist',
-    }), { emit: vi.fn() })).resolves.toMatchObject({
-      ok: false,
-      response: 'failed',
-    })
-    expect(harness.spawn).not.toHaveBeenCalled()
   })
 
   it('forwards stdout and stderr events while using JSON stdout as the final result', async () => {
@@ -485,20 +421,4 @@ describe('EccCliAdapter', () => {
     )
   })
 
-  it('rejects file paths for set_pdk_root', async () => {
-    const harness = createSpawnHarness()
-    const directory = createTempDir()
-    const filePath = join(directory, 'not-a-directory')
-    mkdirSync(directory, { recursive: true })
-    const adapter = new EccCliAdapter({ spawn: harness.spawn })
-    rmSync(filePath, { force: true })
-
-    await expect(adapter.execute(request('set_pdk_root', {
-      pdk: 'ics55',
-      pdk_root: filePath,
-    }), { emit: vi.fn() })).resolves.toMatchObject({
-      ok: false,
-      response: 'failed',
-    })
-  })
 })

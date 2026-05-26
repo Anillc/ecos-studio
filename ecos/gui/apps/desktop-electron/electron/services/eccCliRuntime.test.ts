@@ -7,7 +7,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createEccCliRuntimeEnv, createDevEccCliRuntimeEnv } from './eccCliRuntime'
+import { createEccCliRuntimeEnv } from './eccCliRuntime'
 
 function createRepoFixture(): { appPath: string; repoRoot: string; userDataPath: string } {
   const repoRoot = mkdtempSync(join(tmpdir(), 'ecos-studio-'))
@@ -21,7 +21,7 @@ function createRepoFixture(): { appPath: string; repoRoot: string; userDataPath:
   return { appPath, repoRoot, userDataPath }
 }
 
-describe('createDevEccCliRuntimeEnv', () => {
+describe('createEccCliRuntimeEnv', () => {
   it('leaves development env unchanged so global ecc from PATH is used', () => {
     const fixture = createRepoFixture()
     mkdirSync(join(fixture.repoRoot, 'ecc'), { recursive: true })
@@ -32,7 +32,7 @@ describe('createDevEccCliRuntimeEnv', () => {
     mkdirSync(venvBin, { recursive: true })
     writeFileSync(venvEcc, '#!/usr/bin/env bash\n')
 
-    const env = createDevEccCliRuntimeEnv({
+    const env = createEccCliRuntimeEnv({
       appPath: fixture.appPath,
       cwd: fixture.appPath,
       env: {
@@ -59,7 +59,7 @@ describe('createDevEccCliRuntimeEnv', () => {
     const pyprojectPath = join(fixture.repoRoot, 'ecc', 'pyproject.toml')
     writeFileSync(pyprojectPath, '[project]\nname = "ecc"\n')
 
-    const env = createDevEccCliRuntimeEnv({
+    const env = createEccCliRuntimeEnv({
       appPath: fixture.appPath,
       cwd: fixture.appPath,
       env: {
@@ -84,7 +84,7 @@ describe('createDevEccCliRuntimeEnv', () => {
     const fixture = createRepoFixture()
     writeFileSync(join(fixture.repoRoot, 'ecc', 'pyproject.toml'), '')
 
-    const env = createDevEccCliRuntimeEnv({
+    const env = createEccCliRuntimeEnv({
       appPath: fixture.appPath,
       cwd: fixture.appPath,
       env: {
@@ -110,7 +110,7 @@ describe('createDevEccCliRuntimeEnv', () => {
     mkdirSync(venvScripts, { recursive: true })
     writeFileSync(join(venvScripts, 'ecc.exe'), '')
 
-    const env = createDevEccCliRuntimeEnv({
+    const env = createEccCliRuntimeEnv({
       appPath: fixture.appPath,
       cwd: fixture.appPath,
       env: {
@@ -133,7 +133,7 @@ describe('createDevEccCliRuntimeEnv', () => {
     const fixture = createRepoFixture()
     writeFileSync(join(fixture.repoRoot, 'ecc', 'pyproject.toml'), '')
 
-    const env = createDevEccCliRuntimeEnv({
+    const env = createEccCliRuntimeEnv({
       appPath: fixture.appPath,
       cwd: fixture.appPath,
       env: {
@@ -155,7 +155,7 @@ describe('createDevEccCliRuntimeEnv', () => {
     mkdirSync(appPath, { recursive: true })
     mkdirSync(userDataPath, { recursive: true })
 
-    const env = createDevEccCliRuntimeEnv({
+    const env = createEccCliRuntimeEnv({
       appPath,
       cwd: appPath,
       env: {
@@ -195,7 +195,7 @@ describe('createDevEccCliRuntimeEnv', () => {
     const fixture = createRepoFixture()
     writeFileSync(join(fixture.repoRoot, 'ecc', 'pyproject.toml'), '')
 
-    const env = createDevEccCliRuntimeEnv({
+    const env = createEccCliRuntimeEnv({
       appPath: fixture.appPath,
       cwd: fixture.appPath,
       env: {

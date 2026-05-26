@@ -14,6 +14,22 @@ function result(overrides: Partial<DesktopCliCommandResult> = {}): DesktopCliCom
 }
 
 describe('DesktopRuntimeManager', () => {
+  it('rejects unknown command names', async () => {
+    const manager = new DesktopRuntimeManager({
+      adapter: { execute: vi.fn() },
+    })
+
+    await expect(manager.execute({
+      cmd: 'pwd',
+      data: {},
+      source: 'terminal',
+    } as never)).resolves.toMatchObject({
+      cmd: 'pwd',
+      ok: false,
+      response: 'error',
+    })
+  })
+
   it('emits queued, started, and completed events with the same job id', async () => {
     const listener = vi.fn()
     const manager = new DesktopRuntimeManager({

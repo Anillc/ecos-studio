@@ -61,5 +61,3 @@ export function createEccCliRuntimeEnv(
 
   return { ...options.env }
 }
-
-export const createDevEccCliRuntimeEnv = createEccCliRuntimeEnv

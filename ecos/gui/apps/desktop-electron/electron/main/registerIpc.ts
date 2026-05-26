@@ -110,7 +110,7 @@ export interface DesktopBridgeServices {
     readParameters(): Promise<Record<string, unknown> | null>
     resolveStepInfo(request: WorkspaceStepInfoRequest): Promise<WorkspaceStepInfoResult>
   }
-  desktopCliBridgeService: {
+  desktopRuntimeManager: {
     execute(
       request: DesktopCliCommandRequest,
       listener?: (event: DesktopCliCommandEvent) => void,
@@ -625,7 +625,7 @@ export function registerIpc(
       const isSenderDestroyed = (): boolean =>
         typeof sender.isDestroyed === 'function' ? sender.isDestroyed() : false
 
-      return await services.desktopCliBridgeService.execute(
+      return await services.desktopRuntimeManager.execute(
         request as DesktopCliCommandRequest,
         (payload) => {
           if (isSenderDestroyed()) return
