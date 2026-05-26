@@ -64,6 +64,7 @@
 import { ref, watch, onUnmounted } from 'vue'
 import { useDesktopRuntime } from '../composables/useDesktopRuntime'
 import { useWorkspace } from '../composables/useWorkspace'
+import { useWorkspaceLifecycle } from '../composables/useWorkspaceLifecycle'
 import { useMessageStore } from '../stores/messageStore'
 import { readProjectBlobUrl } from '@/utils/projectFiles'
 
@@ -86,6 +87,7 @@ const emit = defineEmits<{
 
 const { isDesktopRuntimeAvailable } = useDesktopRuntime()
 const { currentProject } = useWorkspace()
+const workspaceLifecycle = useWorkspaceLifecycle()
 const messageStore = useMessageStore()
 
 /** 聊天里仍引用着的 blob:，卸载 Maps 时不可 revoke，否则切回 Chat 会裂图 */
@@ -158,6 +160,7 @@ async function loadImage(key: string, path: string): Promise<void> {
     const localPath = convertToLocalPath(path)
     console.log('Loading image from:', localPath)
     const blobUrl = await readProjectBlobUrl(localPath)
+    workspaceLifecycle.registerBlobUrl(blobUrl)
     imageUrls.value[key] = blobUrl
 
     console.log('Created blob URL for', key, ':', blobUrl)
@@ -193,7 +196,7 @@ onUnmounted(() => {
   const keep = blobUrlsStillUsedInChat()
   Object.values(imageUrls.value).forEach(url => {
     if (url.startsWith('blob:') && !keep.has(url)) {
-      URL.revokeObjectURL(url)
+      workspaceLifecycle.revokeBlobUrl(url)
     }
   })
 })

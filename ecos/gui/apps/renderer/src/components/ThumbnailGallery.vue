@@ -107,11 +107,12 @@ import { requestProjectPathAccess } from '@/utils/projectFs'
 import { readProjectTextFile } from '@/utils/projectFiles'
 import MapsGallery from './MapsGallery.vue'
 import type { MapInfo as MapInfoType } from '../types'
+import { clearStepTabCache } from './thumbnailGalleryCache'
 
 const route = useRoute()
 const messageStore = useMessageStore()
 const { isDesktopRuntimeAvailable } = useDesktopRuntime()
-const { currentProject, runtimeEvents, resourceVersions } = useWorkspace()
+const { currentProject, resourceVersions } = useWorkspace()
 
 // Tabs 定义
 const tabs = [
@@ -476,59 +477,17 @@ watch(currentStep, async (newStep) => {
   }
 }, { immediate: true })
 
-// Runtime event payload 驱动：只有明确携带 subflow/step 路径的事件才刷新当前 tab。
-watch(
-  () => runtimeEvents.value.length,
-  async (newLen, oldLen) => {
-    if (newLen <= (oldLen ?? 0)) return
-    const latest = runtimeEvents.value[newLen - 1]
-    if (!latest || latest.cmd !== 'notify') return
-
-    const notifyId = latest.data?.id as string | undefined
-    const runtimeStep = latest.data?.step as string | undefined
-    if (notifyId !== 'subflow' && notifyId !== 'step') return
-
-    if (!currentStep.value || !runtimeStep) return
-    if (currentStep.value.toLowerCase() !== runtimeStep.toLowerCase()) return
-
-    const keysToDelete = Object.keys(tabInfoCache.value)
-      .filter(k => k.startsWith(`${currentStep.value}_`))
-    for (const key of keysToDelete) {
-      delete tabInfoCache.value[key]
-    }
-    const errorKeysToDelete = Object.keys(tabErrorCache.value)
-      .filter(k => k.startsWith(`${currentStep.value}_`))
-    for (const key of errorKeysToDelete) {
-      delete tabErrorCache.value[key]
-    }
-
-    await fetchTabInfo(activeTab.value)
-  }
-)
-
-// Workspace resource invalidation fallback after CLI lifecycle events.
 watch(
   () => [
-    resourceVersions.value.step,
     resourceVersions.value.maps,
+    resourceVersions.value.step,
     resourceVersions.value.logs,
     resourceVersions.value.all,
   ],
   async () => {
-  if (!currentStep.value) return
-
-  const keysToDelete = Object.keys(tabInfoCache.value)
-    .filter(k => k.startsWith(`${currentStep.value}_`))
-  for (const key of keysToDelete) {
-    delete tabInfoCache.value[key]
-  }
-  const errorKeysToDelete = Object.keys(tabErrorCache.value)
-    .filter(k => k.startsWith(`${currentStep.value}_`))
-  for (const key of errorKeysToDelete) {
-    delete tabErrorCache.value[key]
-  }
-
-  await fetchTabInfo(activeTab.value)
-  }
+    if (!currentStep.value) return
+    clearStepTabCache(tabInfoCache.value, tabErrorCache.value, currentStep.value)
+    await fetchTabInfo(activeTab.value)
+  },
 )
 </script>
