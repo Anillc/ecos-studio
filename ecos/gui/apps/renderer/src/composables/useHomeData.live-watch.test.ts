@@ -587,6 +587,33 @@ describe('useHomeData live project file watchers', () => {
     })
   })
 
+  it('watches parameters.json during live execution and invalidates parameter data when it changes', async () => {
+    const { useHomeData } = await importFreshHomeDataModule()
+    const lifecycle = await startLifecycleSession('/workspace/a')
+    testState.currentProject!.value = { path: '/workspace/a' }
+
+    useHomeData()
+    testState.flowExecutionActive!.value = true
+
+    const parametersWatch = await vi.waitFor(() => {
+      const watcher = testState.projectFileWatchers.find((entry) =>
+        entry.path === '/workspace/a/home/parameters.json'
+      )
+      expect(watcher).toBeDefined()
+      return watcher!
+    })
+
+    const before = lifecycle.resourceVersions.value.parameters
+    parametersWatch.listener({
+      subscriptionId: 'parameters-watch-1',
+      path: '/workspace/a/home/parameters.json',
+      eventType: 'change',
+    })
+
+    expect(lifecycle.resourceVersions.value.parameters).toBe(before + 1)
+    expect(lifecycle.resourceVersions.value.home).toBe(0)
+  })
+
   it('ignores older home.json refreshes that finish after newer changes', async () => {
     let version = 1
     const delayedHomeReads: Array<{

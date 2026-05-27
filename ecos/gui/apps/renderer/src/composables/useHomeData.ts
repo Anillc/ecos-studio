@@ -549,6 +549,7 @@ export function useHomeData() {
   let pollLogFallbackTimer: ReturnType<typeof setInterval> | null = null
   let unwatchFlowJsonFile: (() => void) | null = null
   let unwatchHomeJsonFile: (() => void) | null = null
+  let unwatchParametersJsonFile: (() => void) | null = null
   let unwatchLogFile: (() => void) | null = null
   let liveLogPatchTimer: ReturnType<typeof setTimeout> | null = null
   let liveLogPatchInFlight = false
@@ -835,6 +836,8 @@ export function useHomeData() {
     unwatchFlowJsonFile = null
     unwatchHomeJsonFile?.()
     unwatchHomeJsonFile = null
+    unwatchParametersJsonFile?.()
+    unwatchParametersJsonFile = null
     if (pollFlowJsonTimer != null) {
       clearInterval(pollFlowJsonTimer)
       pollFlowJsonTimer = null
@@ -1568,6 +1571,19 @@ export function useHomeData() {
         return
       }
       unwatchHomeJsonFile = homeJsonUnwatch
+    }
+
+    const resolvedParametersPath = await resolvedPathMemo(`${projectPath}/home/parameters.json`)
+    if (sid !== liveSession || currentProject.value?.path !== projectPath) return
+    if (resolvedParametersPath) {
+      const parametersJsonUnwatch = await startProjectFileWatcher(sid, resolvedParametersPath, () => {
+        workspaceLifecycle.invalidate('parameters')
+      })
+      if (sid !== liveSession || currentProject.value?.path !== projectPath) {
+        parametersJsonUnwatch?.()
+        return
+      }
+      unwatchParametersJsonFile = parametersJsonUnwatch
     }
 
     pollFlowJsonTimer = setInterval(() => {
