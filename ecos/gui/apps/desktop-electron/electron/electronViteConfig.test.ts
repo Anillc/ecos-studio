@@ -32,4 +32,19 @@ describe('desktop electron build config', () => {
     })
   })
 
+  it('lets the renderer dev server pick a free port after the preferred port', () => {
+    const resolvedConfig = typeof electronViteConfig === 'function'
+      ? electronViteConfig({
+          command: 'serve',
+          isPreview: false,
+          mode: 'development',
+        })
+      : electronViteConfig
+
+    expect(resolvedConfig.renderer?.server).toEqual(expect.objectContaining({
+      port: 1420,
+      strictPort: false,
+    }))
+  })
+
 })

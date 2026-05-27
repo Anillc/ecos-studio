@@ -24,6 +24,10 @@ pnpm install
 pnpm run dev
 ```
 
+The renderer dev server prefers port `1420`. If another ECOS Studio dev
+instance is already using it, Vite automatically picks the next free port and
+electron-vite passes that URL to the Electron shell.
+
 ```bash
 # Linux VM / sandbox-restricted environment
 pnpm run dev:vm

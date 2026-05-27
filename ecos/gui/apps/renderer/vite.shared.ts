@@ -85,7 +85,7 @@ export function createRendererViteConfig({
     clearScreen: false,
     server: {
       port: 1420,
-      strictPort: true,
+      strictPort: false,
       fs: {
         allow: fsAllow,
       },
