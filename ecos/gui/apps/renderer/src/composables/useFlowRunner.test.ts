@@ -7,12 +7,14 @@ const {
   showToast,
   runStepApi,
   rtl2gdsApi,
+  currentProject,
 } = vi.hoisted(() => ({
   ensureDesktopRuntime: vi.fn(() => false),
   ensureApiReady: vi.fn(() => Promise.resolve(true)),
   showToast: vi.fn(),
   runStepApi: vi.fn(),
   rtl2gdsApi: vi.fn(),
+  currentProject: { value: null as { path: string } | null },
 }))
 
 vi.mock('vue-router', () => ({
@@ -32,6 +34,7 @@ vi.mock('./useDesktopRuntime', () => ({
 
 vi.mock('./useWorkspace', () => ({
   useWorkspace: () => ({
+    currentProject,
     ensureApiReady,
     showToast,
   }),
@@ -42,7 +45,12 @@ vi.mock('@/api/flow', () => ({
   rtl2gdsApi,
 }))
 
-import { flowExecutionActive, useFlowRunner } from './useFlowRunner'
+import {
+  clearFlowExecutionActiveForWorkspace,
+  flowExecutionActive,
+  markFlowExecutionActiveForWorkspace,
+  useFlowRunner,
+} from './useFlowRunner'
 
 describe('useFlowRunner desktop-only guard', () => {
   beforeEach(() => {
@@ -54,6 +62,7 @@ describe('useFlowRunner desktop-only guard', () => {
     runStepApi.mockReset()
     rtl2gdsApi.mockReset()
     flowExecutionActive.value = false
+    currentProject.value = null
   })
 
   it('shows a toast when running a single step outside the desktop runtime', async () => {
@@ -95,6 +104,7 @@ describe('useFlowRunner desktop-only guard', () => {
 
   it('resolves the full flow API result without directly refreshing resources', async () => {
     ensureDesktopRuntime.mockReturnValue(true)
+    currentProject.value = { path: '/work/demo' }
     rtl2gdsApi.mockResolvedValue({
       response: 'success',
       data: { rerun: false },
@@ -104,6 +114,13 @@ describe('useFlowRunner desktop-only guard', () => {
     const { runAllFlow } = useFlowRunner()
 
     await expect(runAllFlow()).resolves.toEqual({ rerun: false })
+    expect(rtl2gdsApi).toHaveBeenCalledWith({
+      cmd: 'rtl2gds',
+      data: {
+        directory: '/work/demo',
+        rerun: false,
+      },
+    })
   })
 
   it('does not mark the full flow running when the runtime bridge is unavailable', async () => {
@@ -117,5 +134,47 @@ describe('useFlowRunner desktop-only guard', () => {
     expect(ensureApiReady).toHaveBeenCalledTimes(1)
     expect(rtl2gdsApi).not.toHaveBeenCalled()
     expect(isRunning.value).toBe(false)
+  })
+
+  it('sends the active project directory when running a single step', async () => {
+    ensureDesktopRuntime.mockReturnValue(true)
+    currentProject.value = { path: '/work/demo' }
+    runStepApi.mockResolvedValue({
+      data: { state: StateEnum.Success, step: StepEnum.FLOORPLAN },
+      message: ['done'],
+      response: 'success',
+    })
+
+    const { runFlow } = useFlowRunner()
+
+    await runFlow()
+
+    expect(runStepApi).toHaveBeenCalledWith({
+      cmd: 'run_step',
+      data: {
+        directory: '/work/demo',
+        rerun: false,
+        step: StepEnum.FLOORPLAN,
+      },
+    })
+  })
+
+  it('tracks running flow state per workspace', () => {
+    currentProject.value = { path: '/work/a' }
+    const workspaceA = useFlowRunner()
+    currentProject.value = { path: '/work/b' }
+    const workspaceB = useFlowRunner()
+
+    markFlowExecutionActiveForWorkspace('/work/a')
+
+    currentProject.value = { path: '/work/a' }
+    expect(workspaceA.isRunning.value).toBe(true)
+    currentProject.value = { path: '/work/b' }
+    expect(workspaceB.isRunning.value).toBe(false)
+    expect(flowExecutionActive.value).toBe(true)
+
+    clearFlowExecutionActiveForWorkspace('/work/a')
+
+    expect(flowExecutionActive.value).toBe(false)
   })
 })

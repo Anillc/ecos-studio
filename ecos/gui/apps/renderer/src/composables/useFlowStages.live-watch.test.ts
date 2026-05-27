@@ -175,6 +175,21 @@ describe('useFlowStages live project file watchers', () => {
     })
   })
 
+  it('reports that a workspace flow is running when any run stage is ongoing', async () => {
+    const { useFlowStages } = await importFreshFlowStagesModule()
+    await startLifecycleSession('/workspace/a')
+    testState.readProjectTextFile.mockResolvedValue(flowJsonFor({
+      Synthesis: 'Success',
+      Floorplan: 'Ongoing',
+    }))
+
+    const flow = useFlowStages()
+
+    await vi.waitFor(() => {
+      expect(flow.hasOngoingRunStage.value).toBe(true)
+    })
+  })
+
   it('does not let a stale flow read from a previous session replace current stages', async () => {
     const { useFlowStages } = await importFreshFlowStagesModule()
     await startLifecycleSession('/workspace/a')

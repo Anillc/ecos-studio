@@ -39,9 +39,17 @@ export interface RuntimeEventClientConfig {
 
 export type RuntimeEventClientState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
+function normalizeWorkspaceId(value: string): string {
+  const normalized = value.trim().replace(/\\/g, '/')
+  return normalized.length > 1 && normalized.endsWith('/')
+    ? normalized.slice(0, -1)
+    : normalized
+}
+
 export function createRuntimeEventClient(workspaceId: string, config: RuntimeEventClientConfig = {}) {
   void config
 
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId)
   let unsubscribeCliEvents: (() => void) | null = null
   let state: RuntimeEventClientState = 'disconnected'
   const handlers = new Map<RuntimeNotifyType, RuntimeEventHandler[]>()
@@ -85,6 +93,20 @@ export function createRuntimeEventClient(workspaceId: string, config: RuntimeEve
       return null
     }
 
+    const eventWorkspaceId = typeof event.workspaceId === 'string'
+      ? event.workspaceId
+      : undefined
+    const eventDirectory = typeof event.directory === 'string'
+      ? event.directory
+      : undefined
+    const metadataWorkspace = eventWorkspaceId ?? eventDirectory
+    if (
+      metadataWorkspace
+      && normalizeWorkspaceId(metadataWorkspace) !== normalizedWorkspaceId
+    ) {
+      return null
+    }
+
     const result = event.result
     const message = result?.message?.length
       ? result.message
@@ -103,6 +125,8 @@ export function createRuntimeEventClient(workspaceId: string, config: RuntimeEve
       timestamp: Date.now(),
     }
 
+    if (eventDirectory) data.directory = eventDirectory
+    if (eventWorkspaceId) data.workspaceId = eventWorkspaceId
     if (id) data.id = id
     if (step) data.step = step
     if (event.stream) data.stream = event.stream

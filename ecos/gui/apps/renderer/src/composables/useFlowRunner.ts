@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref, shallowReactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDesktopRuntime } from './useDesktopRuntime'
 import { useWorkspace } from './useWorkspace'
@@ -9,6 +9,36 @@ import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
 
 /** 任意流程命令执行中为 true，供 Home flow log 等订阅，避免多实例 composable 状态不一致 */
 export const flowExecutionActive = ref(false)
+const activeFlowWorkspaces = shallowReactive(new Set<string>())
+
+function normalizeWorkspacePath(path: string): string {
+  const normalized = path.trim().replace(/\\/g, '/')
+  return normalized.length > 1 && normalized.endsWith('/')
+    ? normalized.slice(0, -1)
+    : normalized
+}
+
+function refreshGlobalFlowExecutionActive() {
+  flowExecutionActive.value = activeFlowWorkspaces.size > 0
+}
+
+export function markFlowExecutionActiveForWorkspace(path: string): void {
+  const workspacePath = normalizeWorkspacePath(path)
+  if (!workspacePath) return
+  activeFlowWorkspaces.add(workspacePath)
+  refreshGlobalFlowExecutionActive()
+}
+
+export function clearFlowExecutionActiveForWorkspace(path: string): void {
+  const workspacePath = normalizeWorkspacePath(path)
+  if (!workspacePath) return
+  activeFlowWorkspaces.delete(workspacePath)
+  refreshGlobalFlowExecutionActive()
+}
+
+export function isFlowExecutionActiveForWorkspace(path: string | undefined | null): boolean {
+  return Boolean(path && activeFlowWorkspaces.has(normalizeWorkspacePath(path)))
+}
 
 /**
  * Flow execution should not inherit transient global interaction locks.
@@ -35,11 +65,11 @@ function clearTransientInteractionLocks() {
  */
 export function useFlowRunner() {
   const { ensureDesktopRuntime } = useDesktopRuntime()
-  const { ensureApiReady, showToast } = useWorkspace()
+  const { currentProject, ensureApiReady, showToast } = useWorkspace()
   const route = useRoute()
 
-  // 状态（与 flowExecutionActive 同一引用）
-  const isRunning = flowExecutionActive
+  // 状态：当前 workspace 的运行态。flowExecutionActive 仍保留为全局兼容信号。
+  const isRunning = computed(() => isFlowExecutionActiveForWorkspace(currentProject.value?.path))
   const state = ref<StateEnum>(StateEnum.Invalid)
   const error = ref<string | null>(null)
   const lastRunResult = ref<RunStepResponse | null>(null)
@@ -62,6 +92,11 @@ export function useFlowRunner() {
       detail: 'Flow execution is only available in the desktop app.',
       life: 5000,
     })
+  }
+
+  function getCurrentWorkspacePath(): string | null {
+    const path = currentProject.value?.path
+    return path ? normalizeWorkspacePath(path) : null
   }
 
   /**
@@ -87,12 +122,23 @@ export function useFlowRunner() {
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
 
+    const directory = getCurrentWorkspacePath()
+    if (!directory) {
+      showToast({
+        severity: 'error',
+        summary: 'No Workspace Open',
+        detail: 'Open a workspace before running a flow step.',
+        life: 5000,
+      })
+      return { step: step as StepEnum, state: StateEnum.Invalid }
+    }
+
     if (isRunning.value) {
       return { step: step as StepEnum, state: StateEnum.Ongoing }
     }
 
     clearTransientInteractionLocks()
-    isRunning.value = true
+    markFlowExecutionActiveForWorkspace(directory)
     state.value = StateEnum.Ongoing
     error.value = null
     try {
@@ -101,6 +147,7 @@ export function useFlowRunner() {
       const result = await runStepApi({
         cmd: CMDEnum.run_step,
         data: {
+          directory,
           step: step as StepEnum,
           rerun: false
         }
@@ -134,7 +181,7 @@ export function useFlowRunner() {
       })
     } finally {
       clearTransientInteractionLocks()
-      isRunning.value = false
+      clearFlowExecutionActiveForWorkspace(directory)
     }
     return null
   }
@@ -158,12 +205,23 @@ export function useFlowRunner() {
       return null
     }
 
+    const directory = getCurrentWorkspacePath()
+    if (!directory) {
+      showToast({
+        severity: 'error',
+        summary: 'No Workspace Open',
+        detail: 'Open a workspace before running the flow.',
+        life: 5000,
+      })
+      return null
+    }
+
     if (isRunning.value) {
       return null
     }
 
     clearTransientInteractionLocks()
-    isRunning.value = true
+    markFlowExecutionActiveForWorkspace(directory)
     state.value = StateEnum.Ongoing
     error.value = null
 
@@ -173,6 +231,7 @@ export function useFlowRunner() {
       const result = await rtl2gdsApi({
         cmd: CMDEnum.rtl2gds,
         data: {
+          directory,
           rerun: false
         }
       })
@@ -210,7 +269,7 @@ export function useFlowRunner() {
       })
     } finally {
       clearTransientInteractionLocks()
-      isRunning.value = false
+      clearFlowExecutionActiveForWorkspace(directory)
     }
     return null
   }

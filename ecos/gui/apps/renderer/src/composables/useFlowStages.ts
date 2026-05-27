@@ -120,6 +120,9 @@ export function useFlowStages() {
   const flowStages = computed<FlowStage[]>(() => {
     return [...FIXED_SETUP_STAGES, ...dynamicFlowStages.value]
   })
+  const hasOngoingRunStage = computed(() =>
+    dynamicFlowStages.value.some((stage) => stage.state === 'Ongoing' || stage.state === 'running')
+  )
 
   /**
    * 将远程路径转换为本地项目路径
@@ -356,6 +359,7 @@ export function useFlowStages() {
     // 状态
     flowStages,
     dynamicFlowStages,
+    hasOngoingRunStage,
     isLoading,
     error,
 

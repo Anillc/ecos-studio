@@ -52,6 +52,7 @@ describe('flow API desktop bridge payloads', () => {
     await runStepApi(reactive({
       cmd: CMDEnum.run_step,
       data: {
+        directory: '/work/demo',
         rerun: false,
         step: StepEnum.PLACEMENT,
       },
@@ -59,6 +60,7 @@ describe('flow API desktop bridge payloads', () => {
     await rtl2gdsApi(reactive({
       cmd: CMDEnum.rtl2gds,
       data: {
+        directory: '/work/demo',
         rerun: true,
       },
     }))
@@ -74,6 +76,7 @@ describe('flow API desktop bridge payloads', () => {
     expect(execute).toHaveBeenNthCalledWith(1, expect.objectContaining({
       cmd: 'run_step',
       data: {
+        directory: '/work/demo',
         rerun: false,
         step: StepEnum.PLACEMENT,
       },
@@ -81,6 +84,7 @@ describe('flow API desktop bridge payloads', () => {
     expect(execute).toHaveBeenNthCalledWith(2, expect.objectContaining({
       cmd: 'rtl2gds',
       data: {
+        directory: '/work/demo',
         rerun: true,
       },
     }))

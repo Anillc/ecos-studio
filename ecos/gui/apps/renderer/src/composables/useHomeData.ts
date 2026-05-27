@@ -1,7 +1,10 @@
-import { ref, shallowRef, watch, onUnmounted } from 'vue'
+import { computed, ref, shallowRef, watch, onUnmounted } from 'vue'
 import { useWorkspace } from './useWorkspace'
 import { useDesktopRuntime } from './useDesktopRuntime'
-import { flowExecutionActive } from './useFlowRunner'
+import {
+  clearFlowExecutionActiveForWorkspace,
+  isFlowExecutionActiveForWorkspace,
+} from './useFlowRunner'
 import { getWorkspaceResourceIndexApi, readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
 import type { DesktopProjectLogTailEvent } from '@ecos-studio/shared'
 import {
@@ -534,6 +537,9 @@ export function useHomeData() {
   const flowLogError = flowLogErrorState
   /** True while flow.json and step log files are being read (progressive fill). */
   const flowLogLoading = flowLogLoadingState
+  const currentWorkspaceFlowExecutionActive = computed(() =>
+    isFlowExecutionActiveForWorkspace(currentProject.value?.path),
+  )
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
@@ -1088,11 +1094,11 @@ export function useHomeData() {
       if (!plan || sid !== liveSession || currentProject.value?.path !== projectPath) return
 
       if (
-        flowExecutionActive.value
+        isFlowExecutionActiveForWorkspace(projectPath)
         && !plan.hasOngoingStep
         && !plan.hasPendingStep
       ) {
-        flowExecutionActive.value = false
+        clearFlowExecutionActiveForWorkspace(projectPath)
         workspaceLifecycle.invalidate('all')
       }
 
@@ -1511,7 +1517,7 @@ export function useHomeData() {
   }
 
   async function startFlowLogLiveWatchForCurrentProject(): Promise<void> {
-    if (!isDesktopRuntimeAvailable || !flowExecutionActive.value) return
+    if (!isDesktopRuntimeAvailable || !currentWorkspaceFlowExecutionActive.value) return
     const projectPath = currentProject.value?.path
     if (!projectPath) return
 
@@ -1573,7 +1579,7 @@ export function useHomeData() {
 
   // run_step / rtl2gds 期间：监听 flow.json 与当前步日志文件，渐进更新 Flow step log
   watch(
-    flowExecutionActive,
+    currentWorkspaceFlowExecutionActive,
     async (active) => {
       if (!isDesktopRuntimeAvailable) return
       if (!active) {
@@ -1605,7 +1611,7 @@ export function useHomeData() {
         await loadHomeData()
         if (
           projectChanged &&
-          flowExecutionActive.value &&
+          currentWorkspaceFlowExecutionActive.value &&
           currentProject.value?.path === newPath
         ) {
           await startFlowLogLiveWatchForCurrentProject()
@@ -1658,6 +1664,7 @@ export function useHomeData() {
     flowLogLoading,
     isLoading,
     error,
+    currentWorkspaceFlowExecutionActive,
 
     // 方法
     loadHomeData,

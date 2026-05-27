@@ -231,7 +231,7 @@
             <!-- 模式选择器（Cursor 风格下拉） -->
             <div class="mode-selector" @click.stop>
               <!-- 当前模式显示 + 触发器 -->
-              <button class="mode-trigger" @click="showModeMenu = !showModeMenu" :disabled="isRunning">
+              <button class="mode-trigger" @click="showModeMenu = !showModeMenu" :disabled="flowRunControlBusy">
                 <i :class="runModes[runMode].icon" class="mode-trigger-icon"></i>
                 <span>{{ runModes[runMode].label }}</span>
                 <i class="ri-arrow-down-s-line mode-chevron" :class="{ open: showModeMenu }"></i>
@@ -251,8 +251,8 @@
             </div>
 
             <!-- 执行按钮 -->
-            <button @click="handleRunFlow" :disabled="isRunning" class="run-go-btn" :class="{ running: isRunning }">
-              <i :class="isRunning ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
+            <button @click="handleRunFlow" :disabled="flowRunControlBusy" class="run-go-btn" :class="{ running: flowRunControlBusy }">
+              <i :class="flowRunControlBusy ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
             </button>
           </div>
         </div>
@@ -390,10 +390,10 @@
         <div class="p-3 border-t border-(--border-color) bg-(--bg-secondary)/30 space-y-2">
           <!-- 操作按钮组 -->
           <div class="flex gap-2">
-            <button @click="handleRunFlow" :disabled="isRunning"
+            <button @click="handleRunFlow" :disabled="flowRunControlBusy"
               class="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-(--accent-color) text-white text-[11px] font-bold rounded hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-(--accent-color)/20">
-              <i :class="isRunning ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
-              {{ isRunning ? 'RUNNING' : 'RUN' }}
+              <i :class="flowRunControlBusy ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
+              {{ flowRunControlBusy ? 'RUNNING' : 'RUN' }}
             </button>
           </div>
         </div>
@@ -416,7 +416,13 @@ import { useWorkspace } from '@/composables/useWorkspace'
 const themeStore = useThemeStore()
 
 // 流程阶段管理
-const { flowStages, refreshFlowStages, setFirstRunStepOngoing, setRunStepOngoingByPath } = useFlowStages()
+const {
+  flowStages,
+  hasOngoingRunStage,
+  refreshFlowStages,
+  setFirstRunStepOngoing,
+  setRunStepOngoingByPath,
+} = useFlowStages()
 
 // 子流程管理
 const {
@@ -474,6 +480,8 @@ const flowResult = computed(() => {
   return 'none'
 })
 
+const flowRunControlBusy = computed(() => isRunning.value || hasOngoingRunStage.value)
+
 // ============ 主题相关 ============
 const isDark = computed(() => themeStore.themeName === 'dark')
 
@@ -500,6 +508,8 @@ const { ensureApiReady } = useWorkspace()
 // ============ 事件处理 ============
 const handleRunFlow = async () => {
   closeMenu()
+  if (flowRunControlBusy.value) return
+
   if (!(await ensureApiReady())) {
     await refreshFlowStages()
     return

@@ -24,6 +24,7 @@ export function getInfoApi(request: RequestData<GetInfoRequest>) {
 
 
 export interface RTL2GDSRequest {
+  directory: string;
   rerun: boolean;
 }
 
@@ -40,6 +41,7 @@ export function rtl2gdsApi(request: RequestData<RTL2GDSRequest>) {
 }
 
 export interface RunStepRequest {
+  directory: string;
   step: StepEnum;
   rerun: boolean;
 }

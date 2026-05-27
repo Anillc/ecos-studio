@@ -82,7 +82,11 @@ vi.mock('./useDesktopRuntime', () => ({
 }))
 
 vi.mock('./useFlowRunner', () => ({
+  clearFlowExecutionActiveForWorkspace: () => {
+    if (testState.flowExecutionActive) testState.flowExecutionActive.value = false
+  },
   flowExecutionActive: testState.flowExecutionActive,
+  isFlowExecutionActiveForWorkspace: () => testState.flowExecutionActive?.value ?? false,
 }))
 
 vi.mock('@/api/workspaceResources', () => ({

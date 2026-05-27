@@ -44,6 +44,8 @@ export interface DesktopCliCommandEvent {
   jobId: string
   cmd: DesktopCliCommandName
   type: DesktopCliCommandEventType
+  workspaceId?: string
+  directory?: string
   stream?: 'stdout' | 'stderr' | 'system'
   text?: string
   result?: DesktopCliCommandResult

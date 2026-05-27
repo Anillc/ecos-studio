@@ -82,6 +82,113 @@ describe('createRuntimeEventClient desktop CLI events', () => {
     expect(client.getState()).toBe('disconnected')
   })
 
+  it('ignores lifecycle notifications for other workspaces', async () => {
+    const listeners: Array<(event: DesktopCliCommandEvent) => void> = []
+    setWindow({
+      ecosDesktop: {
+        cli: {
+          onEvent: (listener: (event: DesktopCliCommandEvent) => void) => {
+            listeners.push(listener)
+            return () => undefined
+          },
+        },
+      },
+    })
+
+    const { createRuntimeEventClient } = await import('./runtimeEvents')
+    const client = createRuntimeEventClient('/work/demo')
+    const allHandler = vi.fn()
+    client.onAll(allHandler)
+    client.connect()
+
+    listeners[0]({
+      cmd: 'run_step',
+      directory: '/work/other',
+      jobId: 'job-other',
+      result: {
+        cmd: 'run_step',
+        data: { state: 'Success', step: 'Placement' },
+        message: ['other done'],
+        ok: true,
+        response: 'success',
+      },
+      stream: 'system',
+      type: 'completed',
+      workspaceId: '/work/other',
+    })
+    listeners[0]({
+      cmd: 'run_step',
+      directory: '/work/demo',
+      jobId: 'job-demo',
+      result: {
+        cmd: 'run_step',
+        data: { state: 'Success', step: 'Synthesis' },
+        message: ['demo done'],
+        ok: true,
+        response: 'success',
+      },
+      stream: 'system',
+      type: 'completed',
+      workspaceId: '/work/demo',
+    })
+
+    expect(allHandler).toHaveBeenCalledTimes(1)
+    expect(allHandler).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        directory: '/work/demo',
+        state: 'Success',
+        step: 'Synthesis',
+        type: 'step_complete',
+        workspaceId: '/work/demo',
+      }),
+      message: ['demo done'],
+    }))
+  })
+
+  it('matches workspace lifecycle notifications with normalized path separators', async () => {
+    const listeners: Array<(event: DesktopCliCommandEvent) => void> = []
+    setWindow({
+      ecosDesktop: {
+        cli: {
+          onEvent: (listener: (event: DesktopCliCommandEvent) => void) => {
+            listeners.push(listener)
+            return () => undefined
+          },
+        },
+      },
+    })
+
+    const { createRuntimeEventClient } = await import('./runtimeEvents')
+    const client = createRuntimeEventClient('C:/work/demo')
+    const allHandler = vi.fn()
+    client.onAll(allHandler)
+    client.connect()
+
+    listeners[0]({
+      cmd: 'run_step',
+      directory: 'C:\\work\\demo\\',
+      jobId: 'job-demo',
+      result: {
+        cmd: 'run_step',
+        data: { state: 'Success', step: 'CTS' },
+        message: ['done'],
+        ok: true,
+        response: 'success',
+      },
+      stream: 'system',
+      type: 'completed',
+    })
+
+    expect(allHandler).toHaveBeenCalledTimes(1)
+    expect(allHandler).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        directory: 'C:\\work\\demo\\',
+        step: 'CTS',
+        type: 'step_complete',
+      }),
+    }))
+  })
+
   it('ignores stdout and stderr stream events while publishing failed lifecycle notifications', async () => {
     const listeners: Array<(event: DesktopCliCommandEvent) => void> = []
     setWindow({
