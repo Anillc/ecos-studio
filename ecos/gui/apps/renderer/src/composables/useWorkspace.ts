@@ -387,6 +387,15 @@ export function useWorkspace() {
       }
       if (!isLatestOpenProjectRequest()) return false
 
+      const normalizedSelectedPath = normalizePath(selectedPath)
+      if (
+        project
+        && currentProject.value
+        && normalizePath(currentProject.value.path) === normalizedSelectedPath
+      ) {
+        return true
+      }
+
       const preserveExistingSession = Boolean(currentProject.value) && !project
       let session: WorkspaceSession | null = null
       const ensureOpenSession = (projectRoot: string): WorkspaceSession => {
@@ -398,7 +407,7 @@ export function useWorkspace() {
       }
       if (!currentProject.value) {
         session = workspaceLifecycle.beginSession({
-          projectRoot: normalizePath(selectedPath),
+          projectRoot: normalizedSelectedPath,
         })
         sessionId = session.sessionId
       }
@@ -428,7 +437,7 @@ export function useWorkspace() {
       if (!isLatestOpenProjectRequest()) return false
 
       if (!preserveExistingSession) {
-        const activeSession = ensureOpenSession(normalizePath(selectedPath))
+        const activeSession = ensureOpenSession(normalizedSelectedPath)
         workspaceLifecycle.setSessionLoading(activeSession.sessionId)
       }
 

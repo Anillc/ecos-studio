@@ -210,6 +210,30 @@ describe('useWorkspace openProject', () => {
     return workspace
   }
 
+  it('re-enters the active workspace without reloading it through the CLI', async () => {
+    const workspace = useWorkspace()
+    const activeProject: Project = {
+      id: '/work/demo',
+      name: 'demo',
+      path: '/work/demo',
+      lastOpened: new Date('2026-01-01T00:00:00.000Z'),
+    }
+
+    workspace.currentProject.value = activeProject
+    workspace.recentProjects.value = [{ ...activeProject }]
+    settingsData.set('current_project_path', '/work/demo')
+
+    await expect(workspace.openProject({
+      ...activeProject,
+      path: '/work/demo/',
+    })).resolves.toBe(true)
+
+    expect(loadWorkspaceApiMock).not.toHaveBeenCalled()
+    expect(waitForRuntimeReadyMock).not.toHaveBeenCalled()
+    expect(workspace.currentProject.value?.path).toBe('/work/demo')
+    expect(settingsData.get('current_project_path')).toBe('/work/demo')
+  })
+
   it('keeps the active workspace when the directory picker is canceled', async () => {
     const workspace = useWorkspace()
     const existingProject: Project = {
