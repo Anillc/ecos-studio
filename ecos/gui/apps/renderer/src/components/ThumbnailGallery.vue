@@ -105,6 +105,7 @@ import { useDesktopRuntime } from '../composables/useDesktopRuntime'
 import { useWorkspace } from '../composables/useWorkspace'
 import { requestProjectPathAccess } from '@/utils/projectFs'
 import { readProjectTextFile } from '@/utils/projectFiles'
+import { convertRemoteToLocalPath } from '@/utils/projectPaths'
 import MapsGallery from './MapsGallery.vue'
 import type { MapInfo as MapInfoType } from '../types'
 import { clearStepTabCache } from './thumbnailGalleryCache'
@@ -270,47 +271,8 @@ function getFileFormat(value: unknown): 'json' | 'csv' | 'text' | 'html' {
   return 'text'
 }
 
-// 将远程路径转换为本地项目路径
-// 例如: /nfs/share/home/xxx/benchmark/sky130_gcd/place_ecc/feature/file
-// 转换为: /Users/ekko/projects/place_ecc/feature/file
 function convertToLocalPath(remotePath: string): string {
-  // 如果不是远程路径，直接返回
-  if (!remotePath.includes('/nfs/')) {
-    return remotePath
-  }
-
-  // 获取当前项目路径
-  const projectPath = currentProject.value?.path
-  console.log('projectPath:', currentProject.value)
-  if (!projectPath) {
-    console.warn('No current project path available')
-    return remotePath
-  }
-
-  // 从项目路径中提取项目名称（最后一个目录名）
-  const projectName = projectPath.split('/').filter(Boolean).pop()
-  console.log('projectName:', projectName)
-  if (!projectName) {
-    console.warn('Cannot extract project name from path:', projectPath)
-    return remotePath
-  }
-
-  // 在远程路径中找到项目名称的位置
-  const projectNameIndex = remotePath.indexOf(`/${projectName}/`)
-  if (projectNameIndex === -1) {
-    console.warn('Project name not found in remote path:', remotePath)
-    return remotePath
-  }
-
-  // 截取项目名称之后的相对路径部分
-  const relativePath = remotePath.slice(projectNameIndex + projectName.length + 2) // +2 for the two '/'
-
-  console.log('projectPath:', projectPath, 'relativePath:', relativePath)
-  // 拼接本地项目路径
-  const localPath = `${projectPath}/${relativePath}`
-  console.log('Path converted:', remotePath, '->', localPath)
-
-  return localPath
+  return convertRemoteToLocalPath(remotePath, currentProject.value?.path ?? '')
 }
 
 // 获取 Tab 数据

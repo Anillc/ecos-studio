@@ -2,7 +2,7 @@ import { ref, shallowRef, watch, onUnmounted } from 'vue'
 import { useWorkspace } from './useWorkspace'
 import { useDesktopRuntime } from './useDesktopRuntime'
 import { flowExecutionActive } from './useFlowRunner'
-import { readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
+import { getWorkspaceResourceIndexApi, readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
 import type { DesktopProjectLogTailEvent } from '@ecos-studio/shared'
 import {
   readOptionalProjectTextFile,
@@ -14,8 +14,11 @@ import {
   watchProjectFile,
 } from '@/utils/projectFiles'
 import { requestProjectPathAccess, resolveProjectPathAccess } from '@/utils/projectFs'
+import { convertRemoteToLocalPath } from '@/utils/projectPaths'
 import { mergePlannedFlowLogSegments } from './flowLogSegmentPlan'
 import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
+
+export { convertRemoteToLocalPath } from '@/utils/projectPaths'
 
 // ============ 类型定义 ============
 
@@ -80,24 +83,6 @@ export interface FlowLogSegment {
 type HomeAssetLoadGuard = () => boolean
 
 // ============ 共享 HomeData 缓存（模块级单例） ============
-
-/**
- * 将远程 NFS 路径转换为本地项目路径（纯函数版，不依赖 composable 上下文）
- * 例: /nfs/.../project_name/sub/path → {projectPath}/sub/path
- */
-export function convertRemoteToLocalPath(remotePath: string, projectPath: string): string {
-  if (!remotePath || !remotePath.includes('/nfs/')) return remotePath
-  if (!projectPath) return remotePath
-
-  const projectName = projectPath.split(/[/\\]/).filter(Boolean).pop()
-  if (!projectName) return remotePath
-
-  const idx = remotePath.indexOf(`/${projectName}/`)
-  if (idx === -1) return remotePath
-
-  const relativePath = remotePath.slice(idx + projectName.length + 2)
-  return `${projectPath}/${relativePath}`
-}
 
 /** 从 flow.json 路径解析 workspace 根目录（…/home/flow.json → …） */
 export function workspaceRootFromFlowPath(flowJsonPath: string): string {
@@ -211,6 +196,10 @@ const LIVE_LOG_POLL_MS = 1200
 
 function flowLogSegmentKey(seg: Pick<FlowLogSegment, 'stepName' | 'tool'>): string {
   return `${seg.stepName}\u001f${seg.tool}`
+}
+
+function flowLogLookupKey(stepName: string, tool: string): string {
+  return `${stepName.trim().toLowerCase()}\u001f${tool.trim().toLowerCase()}`
 }
 
 function setFlowLogContent(key: string, content: string): void {
@@ -504,6 +493,7 @@ export function updateSharedHomeData(data: HomeData) {
 export function invalidateSharedHomeData() {
   sharedHomeData.value = null
   _fetchPromise = null
+  _fetchGeneration += 1
 }
 
 export function resetSharedHomeDataProjectState() {
@@ -559,6 +549,7 @@ export function useHomeData() {
   let liveLogPatchQueued = false
   let liveProjectPath: string | null = null
   let liveHomeDataRefreshSession = 0
+  let homeDataLoadSession = 0
   let lastOngoingKey: string | null = null
   let unregisterLiveLifecycleCleanup: (() => void) | null = null
 
@@ -568,38 +559,8 @@ export function useHomeData() {
    * 转换为: {projectPath}/sub/path
    */
   function convertToLocalPath(remotePath: string): string {
-    if (!remotePath || !remotePath.includes('/nfs/')) {
-      return remotePath
-    }
-
     const projectPath = currentProject.value?.path
-    if (!projectPath) {
-      console.warn('No current project path available')
-      return remotePath
-    }
-
-    // 从项目路径中提取项目名称（最后一个目录名）
-    const projectName = projectPath.split(/[/\\]/).filter(Boolean).pop()
-    if (!projectName) {
-      console.warn('Cannot extract project name from path:', projectPath)
-      return remotePath
-    }
-
-    // 在远程路径中找到项目名称的位置
-    const projectNameIndex = remotePath.indexOf(`/${projectName}/`)
-    if (projectNameIndex === -1) {
-      console.warn('Project name not found in remote path:', remotePath)
-      return remotePath
-    }
-
-    // 截取项目名称之后的相对路径部分
-    const relativePath = remotePath.slice(projectNameIndex + projectName.length + 2)
-
-    // 拼接本地项目路径
-    const localPath = `${projectPath}/${relativePath}`
-    console.log('Path converted:', remotePath, '->', localPath)
-
-    return localPath
+    return convertRemoteToLocalPath(remotePath, projectPath ?? '')
   }
 
   /**
@@ -763,7 +724,23 @@ export function useHomeData() {
     }
   }
 
-  function stepLogAbsPath(rootNorm: string, name: string, tool: string): string {
+  async function getWorkspaceStepLogPaths(): Promise<Map<string, string>> {
+    try {
+      const index = await getWorkspaceResourceIndexApi()
+      const logPaths = new Map<string, string>()
+      for (const step of index.flow.steps) {
+        const logPath = step.resources.log.file?.path
+        if (typeof logPath !== 'string' || logPath.length === 0) continue
+        logPaths.set(flowLogLookupKey(step.name, step.tool), logPath)
+      }
+      return logPaths
+    } catch (error) {
+      console.warn('Failed to read workspace resource log paths:', error)
+      return new Map<string, string>()
+    }
+  }
+
+  function fallbackWorkspaceLogPath(rootNorm: string, name: string, tool: string): string {
     return `${rootNorm}/${name}_${tool}/log/${name}.log`
   }
 
@@ -795,6 +772,7 @@ export function useHomeData() {
     }
     const steps = flowData.steps ?? []
     const root = resolvedWorkspaceRoot.replace(/\\/g, '/')
+    const workspaceLogPaths = await getWorkspaceStepLogPaths()
 
     const tasks: Array<{ seg: FlowLogSegment; logPath: string }> = []
     let hasFailedStep = false
@@ -810,7 +788,8 @@ export function useHomeData() {
       if (stateLc === 'unstart') continue
       if (stateLc === 'ongoing' && !includeOngoingLive) continue
 
-      const logPath = stepLogAbsPath(root, step.name, step.tool)
+      const logPath = workspaceLogPaths.get(flowLogLookupKey(step.name, step.tool))
+        ?? fallbackWorkspaceLogPath(root, step.name, step.tool)
       const failed = step.state === 'Incomplete' || step.state === 'Invalid'
       const live = stateLc === 'ongoing' && includeOngoingLive
       const seg: FlowLogSegment = {
@@ -1130,10 +1109,8 @@ export function useHomeData() {
       if (key !== lastOngoingKey) {
         lastOngoingKey = key
         cleanupLogWatchOnly()
-        if (ongoing) {
-          const root = workspaceRootFromFlowPath(flowLocal)!.replace(/\\/g, '/')
-          const lp = stepLogAbsPath(root, ongoing.stepName, ongoing.tool)
-          await bindLogFileWatch(sid, lp)
+        if (ongoing?.logPath) {
+          await bindLogFileWatch(sid, ongoing.logPath)
         }
       }
     } catch (err) {
@@ -1362,7 +1339,10 @@ export function useHomeData() {
     }
 
     const sessionId = workspaceLifecycle.currentSessionId.value
-    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
+    const loadSession = ++homeDataLoadSession
+    const isCurrent = () =>
+      loadSession === homeDataLoadSession
+      && workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
@@ -1412,7 +1392,10 @@ export function useHomeData() {
     }
 
     const sessionId = workspaceLifecycle.currentSessionId.value
-    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
+    const loadSession = ++homeDataLoadSession
+    const isCurrent = () =>
+      loadSession === homeDataLoadSession
+      && workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
@@ -1500,10 +1483,14 @@ export function useHomeData() {
     const projectPath = liveProjectPath
     if (!projectPath || currentProject.value?.path !== projectPath) return
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const loadSession = ++homeDataLoadSession
     const refreshSid = ++liveHomeDataRefreshSession
     const isCurrent = (): boolean =>
       sid === liveSession
       && refreshSid === liveHomeDataRefreshSession
+      && loadSession === homeDataLoadSession
+      && workspaceLifecycle.isCurrentSession(sessionId)
       && currentProject.value?.path === projectPath
 
     const resolvedHomePath = await resolvedPathMemo(`${projectPath}/home/home.json`)
