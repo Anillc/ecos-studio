@@ -215,4 +215,39 @@ describe('layoutTilePrefetchStore', () => {
     })
     expect(store.stepStates.route).toBe('ready')
   })
+
+  it('drops stale in-flight prefetch results when a new workspace session reuses the same project path', async () => {
+    const first = deferred<{ baseUrl: string; outDir: string; fromCache: boolean }>()
+    mocks.runLayoutTileGenerationSingleFlight
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ baseUrl: 'file:///tiles-v2', outDir: '/tiles-v2', fromCache: false })
+    const store = useLayoutTilePrefetchStore()
+
+    store.setEnabled(true)
+    store.setProject('/project', { sessionId: 'session-1' })
+    store.notifyNavigatedStep('route', { sessionId: 'session-1' })
+    store.enqueuePrefetch([{ stepKey: 'route', layoutJsonRelative: 'route/output/layout.json' }])
+    await waitForTileGenerateCalls(1)
+    expect(store.stepStates.route).toBe('prefetching')
+
+    store.setProject('/project', { sessionId: 'session-2' })
+    first.resolve({ baseUrl: 'file:///tiles-v1', outDir: '/tiles-v1', fromCache: false })
+    await waitForQueueToSettle()
+
+    expect(store.cachedTiles.route).toBeUndefined()
+    expect(store.stepStates.route).toBeUndefined()
+
+    store.notifyNavigatedStep('route', { sessionId: 'session-2' })
+    store.enqueuePrefetch([{ stepKey: 'route', layoutJsonRelative: 'route/output/layout.json' }])
+    await vi.waitFor(() => {
+      expect(mocks.runLayoutTileGenerationSingleFlight).toHaveBeenCalledTimes(2)
+    })
+
+    expect(store.cachedTiles.route).toEqual({
+      baseUrl: 'file:///tiles-v2',
+      outDir: '/tiles-v2',
+      fromCache: false,
+    })
+    expect(store.stepStates.route).toBe('ready')
+  })
 })

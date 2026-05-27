@@ -16,6 +16,7 @@ const testState = vi.hoisted(() => ({
     tiles: number
     all: number
   }> | null,
+  getWorkspaceResourceIndexApi: vi.fn(),
   readWorkspaceHomeResourceApi: vi.fn(),
   readProjectBlobUrl: vi.fn(),
   readOptionalProjectTextFile: vi.fn(),
@@ -85,6 +86,7 @@ vi.mock('./useFlowRunner', () => ({
 }))
 
 vi.mock('@/api/workspaceResources', () => ({
+  getWorkspaceResourceIndexApi: testState.getWorkspaceResourceIndexApi,
   readWorkspaceHomeResourceApi: testState.readWorkspaceHomeResourceApi,
 }))
 
@@ -169,6 +171,7 @@ describe('useHomeData live project file watchers', () => {
     testState.logTailListeners.length = 0
     testState.projectFileWatchers.length = 0
 
+    testState.getWorkspaceResourceIndexApi.mockReset()
     testState.readWorkspaceHomeResourceApi.mockReset()
     testState.readProjectBlobUrl.mockReset()
     testState.readOptionalProjectTextFile.mockReset()
@@ -184,6 +187,56 @@ describe('useHomeData live project file watchers', () => {
     testState.readWorkspaceHomeResourceApi.mockImplementation(async () => {
       const projectPath = testState.currentProject!.value?.path ?? '/workspace/a'
       return JSON.parse(await testState.readProjectTextFile(`${projectPath}/home/home.json`))
+    })
+    testState.getWorkspaceResourceIndexApi.mockImplementation(async () => {
+      const projectPath = testState.currentProject!.value?.path ?? '/workspace/a'
+      const stepName = projectPath === '/workspace/b' ? 'Floorplan' : 'Synthesis'
+      return {
+        root: projectPath,
+        design: 'demo',
+        topModule: 'demo',
+        pdk: 'ics55',
+        home: {
+          homeJson: { path: `${projectPath}/home/home.json`, exists: true, kind: 'home' },
+          flowJson: { path: `${projectPath}/home/flow.json`, exists: true, kind: 'flow' },
+          parametersJson: { path: `${projectPath}/home/parameters.json`, exists: true, kind: 'parameters' },
+          checklistJson: { path: `${projectPath}/home/checklist.json`, exists: false, kind: 'checklist' },
+        },
+        homeData: homeDataFor(projectPath),
+        parameters: {},
+        flow: {
+          steps: [
+            {
+              name: stepName,
+              tool: 'yosys',
+              state: 'Ongoing',
+              runtime: '',
+              directory: `${projectPath}/${stepName}_yosys`,
+              info: {},
+              resources: {
+                output: {},
+                data: {},
+                feature: {},
+                report: {},
+                log: {
+                  file: {
+                    path: `${projectPath}/${stepName}_yosys/log/${stepName}.log`,
+                    exists: false,
+                    kind: 'log',
+                  },
+                },
+                script: {},
+                analysis: {},
+                subflow: {},
+                checklist: {},
+                config: {},
+              },
+            },
+          ],
+        },
+        status: 'available',
+        messages: [],
+      }
     })
     testState.requestProjectPathAccess.mockResolvedValue(true)
     testState.resolveProjectPathAccess.mockImplementation(async (path: string) => path)
@@ -307,6 +360,75 @@ describe('useHomeData live project file watchers', () => {
         'a live log\nnext line',
       )
     })
+  })
+
+  it('prefers workspace resource log paths over locally reconstructed step log paths', async () => {
+    testState.getWorkspaceResourceIndexApi.mockResolvedValue({
+      root: '/workspace/a',
+      design: 'demo',
+      topModule: 'demo',
+      pdk: 'ics55',
+      home: {
+        homeJson: { path: '/workspace/a/home/home.json', exists: true, kind: 'home' },
+        flowJson: { path: '/workspace/a/home/flow.json', exists: true, kind: 'flow' },
+        parametersJson: { path: '/workspace/a/home/parameters.json', exists: true, kind: 'parameters' },
+        checklistJson: { path: '/workspace/a/home/checklist.json', exists: false, kind: 'checklist' },
+      },
+      homeData: homeDataFor('/workspace/a'),
+      parameters: {},
+      flow: {
+        steps: [
+          {
+            name: 'Synthesis',
+            tool: 'yosys',
+            state: 'Ongoing',
+            runtime: '',
+            directory: '/workspace/a/Synthesis_yosys',
+            info: {},
+            resources: {
+              output: {},
+              data: {},
+              feature: {},
+              report: {},
+              log: {
+                file: {
+                  path: '/workspace/a/custom-logs/synth-live.log',
+                  exists: false,
+                  kind: 'log',
+                },
+              },
+              script: {},
+              analysis: {},
+              subflow: {},
+              checklist: {},
+              config: {},
+            },
+          },
+        ],
+      },
+      status: 'available',
+      messages: [],
+    })
+
+    const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
+    testState.currentProject!.value = { path: '/workspace/a' }
+
+    useHomeData()
+    testState.flowExecutionActive!.value = true
+
+    await vi.waitFor(() => {
+      expect(testState.subscribeProjectLogTail).toHaveBeenCalledWith(
+        '/workspace/a/custom-logs/synth-live.log',
+        expect.any(Function),
+        expect.any(Object),
+      )
+    })
+    expect(testState.subscribeProjectLogTail).not.toHaveBeenCalledWith(
+      '/workspace/a/Synthesis_yosys/log/Synthesis.log',
+      expect.any(Function),
+      expect.any(Object),
+    )
   })
 
   it('re-subscribes when the active project changes and unsubscribes the prior live tail', async () => {
@@ -692,6 +814,93 @@ describe('useHomeData live project file watchers', () => {
         step: ['Synthesis'],
         frequency: [2],
       })
+    })
+  })
+
+  it('keeps the newest same-session home refresh when an older resource-version reload resolves last', async () => {
+    let version = 1
+    const delayedReads: Array<{
+      version: number
+      resolve: (content: string) => void
+    }> = []
+    testState.readProjectTextFile.mockImplementation(async (path: string) => {
+      if (path.endsWith('/home/home.json')) {
+        const projectPath = path.replace(/\/home\/home\.json$/, '')
+        const payload = JSON.stringify({
+          ...homeDataFor(projectPath),
+          layout: `${projectPath}/home/layout-${version}.png`,
+          monitor: {
+            step: ['Synthesis'],
+            frequency: [version],
+          },
+        })
+
+        if (version > 1) {
+          return await new Promise<string>((resolve) => {
+            delayedReads.push({ version, resolve })
+          })
+        }
+        return payload
+      }
+      if (path === '/workspace/a/home/flow.json') return flowJsonFor('Synthesis')
+      return '{}'
+    })
+    testState.readProjectBlobUrl.mockImplementation(async (path: string) => `blob:${path}`)
+
+    const { useHomeData } = await importFreshHomeDataModule()
+    await startLifecycleSession('/workspace/a')
+    testState.currentProject!.value = { path: '/workspace/a' }
+
+    const home = useHomeData()
+
+    await vi.waitFor(() => {
+      expect(home.layoutBlobUrl.value).toBe('blob:/workspace/a/home/layout-1.png')
+    })
+
+    version = 2
+    testState.resourceVersions!.value = {
+      ...testState.resourceVersions!.value,
+      home: 1,
+    }
+    await vi.waitFor(() => {
+      expect(delayedReads.map((entry) => entry.version)).toContain(2)
+    })
+
+    version = 3
+    testState.resourceVersions!.value = {
+      ...testState.resourceVersions!.value,
+      logs: 1,
+    }
+    await vi.waitFor(() => {
+      expect(delayedReads.map((entry) => entry.version)).toContain(3)
+    })
+
+    delayedReads.find((entry) => entry.version === 3)!.resolve(JSON.stringify({
+      ...homeDataFor('/workspace/a'),
+      layout: '/workspace/a/home/layout-3.png',
+      monitor: {
+        step: ['Synthesis'],
+        frequency: [3],
+      },
+    }))
+    await vi.waitFor(() => {
+      expect(home.layoutBlobUrl.value).toBe('blob:/workspace/a/home/layout-3.png')
+    })
+
+    delayedReads.find((entry) => entry.version === 2)!.resolve(JSON.stringify({
+      ...homeDataFor('/workspace/a'),
+      layout: '/workspace/a/home/layout-2.png',
+      monitor: {
+        step: ['Synthesis'],
+        frequency: [2],
+      },
+    }))
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(home.layoutBlobUrl.value).toBe('blob:/workspace/a/home/layout-3.png')
+    expect(home.monitorData.value).toEqual({
+      step: ['Synthesis'],
+      frequency: [3],
     })
   })
 
