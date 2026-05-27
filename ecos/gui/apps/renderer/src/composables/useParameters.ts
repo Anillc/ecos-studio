@@ -232,7 +232,7 @@ export function transformConfigToParameters(config: ConfigData): ParametersData 
  */
 export function useParameters() {
   const { isDesktopRuntimeAvailable } = useDesktopRuntime()
-  const { currentProject, resourceVersions } = useWorkspace()
+  const { currentProject, resourceVersions, invalidateWorkspaceResources } = useWorkspace()
   const workspaceLifecycle = useWorkspaceLifecycle()
 
   const config = reactive<ConfigData>(getDefaultConfig())
@@ -243,17 +243,50 @@ export function useParameters() {
 
   let originalConfig: string = ''
   let resolvedParametersPath: string = ''
+  let savingSessionId: string | null = null
+  let saveRequestSequence = 0
+  let activeSaveRequestId = 0
+  let parametersResourceToken = 0
+  let saveWriteQueue: Promise<void> = Promise.resolve()
+
+  function advanceParametersResourceToken(): number {
+    parametersResourceToken += 1
+    isSaving.value = false
+    savingSessionId = null
+    activeSaveRequestId = 0
+    return parametersResourceToken
+  }
 
   function resetParametersState(): void {
+    advanceParametersResourceToken()
     Object.assign(config, getDefaultConfig())
     originalConfig = ''
     resolvedParametersPath = ''
     hasChanges.value = false
+    isSaving.value = false
+    savingSessionId = null
+    activeSaveRequestId = 0
   }
 
   function convertToLocalPath(remotePath: string): string {
     const projectPath = currentProject.value?.path
     return projectPath ? convertRemoteToLocalPath(remotePath, projectPath) : remotePath
+  }
+
+  function isSaveContextCurrent(options: {
+    sessionId: string
+    requestId: number
+    resourceToken: number
+    parametersPath: string
+    projectPath: string
+  }): boolean {
+    return (
+      workspaceLifecycle.isCurrentSession(options.sessionId)
+      && activeSaveRequestId === options.requestId
+      && parametersResourceToken === options.resourceToken
+      && resolvedParametersPath === options.parametersPath
+      && currentProject.value?.path === options.projectPath
+    )
   }
 
   async function loadParameters(): Promise<void> {
@@ -264,9 +297,14 @@ export function useParameters() {
     }
 
     const sessionId = workspaceLifecycle.currentSessionId.value
+    if (savingSessionId && savingSessionId !== sessionId) {
+      isSaving.value = false
+      savingSessionId = null
+    }
     isLoading.value = true
     error.value = null
     resolvedParametersPath = ''
+    const loadResourceToken = advanceParametersResourceToken()
 
     try {
       const projectPath = currentProject.value.path
@@ -309,6 +347,7 @@ export function useParameters() {
 
       console.log('Loaded parameters data:', parametersData)
 
+      if (loadResourceToken !== parametersResourceToken) return
       resolvedParametersPath = resolvedPath
 
       const transformedConfig = transformParametersToConfig(parametersData)
@@ -343,30 +382,91 @@ export function useParameters() {
 
     isSaving.value = true
     error.value = null
+    const saveSessionId = workspaceLifecycle.currentSessionId.value
+    const saveRequestId = ++saveRequestSequence
+    const saveResourceToken = parametersResourceToken
+    const saveParametersPath = resolvedParametersPath
+    const saveProjectPath = currentProject.value.path
+    activeSaveRequestId = saveRequestId
+    savingSessionId = saveSessionId
 
     try {
-      console.log('Saving parameters to:', resolvedParametersPath)
-      const resolvedPath = await resolveProjectPathAccess(resolvedParametersPath)
-      if (!resolvedPath) {
-        return false
-      }
-
+      const savedConfigSnapshot = JSON.stringify(config)
       const parametersData = transformConfigToParameters(config)
       const fileContent = JSON.stringify(parametersData, null, 4)
+      let writeSucceeded = false
 
-      await writeProjectTextFile(resolvedPath, fileContent)
+      const writeTask = saveWriteQueue.then(async () => {
+        if (!isSaveContextCurrent({
+          sessionId: saveSessionId,
+          requestId: saveRequestId,
+          resourceToken: saveResourceToken,
+          parametersPath: saveParametersPath,
+          projectPath: saveProjectPath,
+        })) {
+          return
+        }
+        console.log('Saving parameters to:', saveParametersPath)
+        const resolvedPath = await resolveProjectPathAccess(saveParametersPath)
+        if (!resolvedPath) {
+          return
+        }
 
-      originalConfig = JSON.stringify(config)
-      hasChanges.value = false
+        await writeProjectTextFile(resolvedPath, fileContent)
+        writeSucceeded = true
+      })
+      saveWriteQueue = writeTask.catch(() => {})
+      await writeTask
+      if (!writeSucceeded) {
+        return false
+      }
+      if (!isSaveContextCurrent({
+        sessionId: saveSessionId,
+        requestId: saveRequestId,
+        resourceToken: saveResourceToken,
+        parametersPath: saveParametersPath,
+        projectPath: saveProjectPath,
+      })) {
+        return true
+      }
+
+      if (JSON.stringify(config) === savedConfigSnapshot) {
+        originalConfig = savedConfigSnapshot
+        hasChanges.value = false
+      } else {
+        hasChanges.value = true
+      }
+      invalidateWorkspaceResources(['parameters', 'home'], { sessionId: saveSessionId })
 
       console.log('Parameters saved successfully')
       return true
     } catch (err) {
+      if (!isSaveContextCurrent({
+        sessionId: saveSessionId,
+        requestId: saveRequestId,
+        resourceToken: saveResourceToken,
+        parametersPath: saveParametersPath,
+        projectPath: saveProjectPath,
+      })) {
+        return false
+      }
       console.error('Failed to save parameters:', err)
       error.value = err instanceof Error ? err.message : String(err)
       return false
     } finally {
-      isSaving.value = false
+      if (isSaveContextCurrent({
+        sessionId: saveSessionId,
+        requestId: saveRequestId,
+        resourceToken: saveResourceToken,
+        parametersPath: saveParametersPath,
+        projectPath: saveProjectPath,
+      })) {
+        isSaving.value = false
+        if (savingSessionId === saveSessionId) {
+          savingSessionId = null
+        }
+        activeSaveRequestId = 0
+      }
     }
   }
 
@@ -400,6 +500,7 @@ export function useParameters() {
   watch(
     () => currentProject.value?.path,
     async (newPath) => {
+      isSaving.value = false
       if (newPath) {
         await loadParameters()
       } else {

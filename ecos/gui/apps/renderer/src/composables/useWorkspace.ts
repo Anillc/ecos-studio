@@ -910,6 +910,16 @@ export function useWorkspace() {
     })
   }
 
+  function invalidateWorkspaceResources(
+    scopes: WorkspaceInvalidationScope | WorkspaceInvalidationScope[],
+    options: { sessionId?: string } = {},
+  ): void {
+    workspaceLifecycle.invalidate(scopes, {
+      sessionId: options.sessionId ?? workspaceLifecycle.currentSessionId.value,
+      reason: 'workspace-composable',
+    })
+  }
+
   return {
     loadRecentProjects,
     removeRecentProject,
@@ -924,6 +934,7 @@ export function useWorkspace() {
     runtimeEvents,
     resourceVersions: workspaceLifecycle.resourceVersions,
     workspaceSession: workspaceLifecycle.session,
+    invalidateWorkspaceResources,
     // 准备工作区时的全屏遮罩（见 App.vue）
     runtimeBackendConnecting,
     runtimeBackendTitle,
