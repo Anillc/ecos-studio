@@ -113,7 +113,7 @@ export function useFlowRunner() {
 
     // 检查是否在 desktop runtime 环境中
     if (!ensureDesktopRuntime()) {
-      console.warn('Not running in desktop runtime environment, cannot execute Python script')
+      console.warn('Not running in desktop runtime environment, cannot execute ECC CLI flow command')
       showDesktopRequiredToast()
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
@@ -196,7 +196,7 @@ export function useFlowRunner() {
   async function runAllFlow(): Promise<any | null> {
     // 检查是否在 desktop runtime 环境中
     if (!ensureDesktopRuntime()) {
-      console.warn('Not running in desktop runtime environment, cannot execute Python script')
+      console.warn('Not running in desktop runtime environment, cannot execute ECC CLI flow command')
       showDesktopRequiredToast()
       return null
     }

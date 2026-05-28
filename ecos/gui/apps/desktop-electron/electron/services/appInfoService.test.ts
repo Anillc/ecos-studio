@@ -26,7 +26,7 @@ async function flushAsyncWork(): Promise<void> {
 }
 
 describe('AppInfoService', () => {
-  it('returns local GUI and structured ECC component versions without asking a server', async () => {
+  it('returns local GUI and structured ECC component versions through the CLI', async () => {
     const harness = createSpawnHarness()
     const service = new AppInfoService({
       appVersionProvider: () => '0.1.0-alpha.5',

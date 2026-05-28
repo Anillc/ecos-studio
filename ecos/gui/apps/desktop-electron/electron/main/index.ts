@@ -60,7 +60,7 @@ configureElectronLoggerFile({
 })
 electronLogger.status('[desktop] Logs: %s', mainLogFile)
 electronLogger.status('[desktop] Latest logs: %s', mainLatestLogFile)
-electronLogger.status('[runtime] Backend: ECC CLI')
+electronLogger.status('[runtime] Runtime: ECC CLI')
 
 function getDesktopServices() {
   if (services) {

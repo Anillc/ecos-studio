@@ -54,17 +54,8 @@ export const desktopApiEventChannels = {
   shellExit: 'shell:exit',
 } as const
 
-export const ipcChannels = {
-  appReady: 'app:ready',
-  ...desktopApiIpcChannels,
-  workspaceCreate: 'workspace:create',
-  workspaceSetProjectRoot: 'workspace:set-project-root',
-} as const
-
 export type DesktopApiIpcChannel =
   (typeof desktopApiIpcChannels)[keyof typeof desktopApiIpcChannels]
 
 export type DesktopApiEventChannel =
   (typeof desktopApiEventChannels)[keyof typeof desktopApiEventChannels]
-
-export type IpcChannel = (typeof ipcChannels)[keyof typeof ipcChannels]

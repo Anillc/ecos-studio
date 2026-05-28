@@ -18,7 +18,7 @@ export function aboutVersionRows(versions?: VersionInfo | null): AboutVersionRow
     {
       key: 'runtime',
       label: 'Runtime',
-      version: versions?.runtime ?? versions?.server ?? UNKNOWN_VERSION,
+      version: versions?.runtime ?? UNKNOWN_VERSION,
     },
     {
       key: 'ecc',

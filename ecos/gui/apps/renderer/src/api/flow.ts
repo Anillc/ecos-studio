@@ -66,7 +66,7 @@ export interface HomePageResponse {
 }
 
 /**
- * 调用 get_home_page API 获取 home.json 的路径
+ * 调用 home_page runtime command 获取 home.json 的路径
  */
 export function getHomePageApi() {
   return getDesktopApi().cli.execute({

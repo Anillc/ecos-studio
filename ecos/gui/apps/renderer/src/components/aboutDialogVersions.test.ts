@@ -21,17 +21,17 @@ describe('aboutDialogVersions', () => {
     ])
   })
 
-  it('keeps old VersionInfo bridge responses compatible', () => {
-    const versions: VersionInfo = {
+  it('does not use legacy bridge version fields as runtime data', () => {
+    const versions = {
       gui: '0.1.0-alpha.5',
-      runtime: 'ECC CLI',
+      legacyRuntime: 'legacy runtime',
       ecc: '0.1.0a5',
       dreamplace: '0.1.0a3',
-    }
+    } as unknown as VersionInfo
 
-    expect(aboutVersionRows(versions).find((row) => row.key === 'eccTools')).toEqual({
-      key: 'eccTools',
-      label: 'ECC-Tools',
+    expect(aboutVersionRows(versions).find((row) => row.key === 'runtime')).toEqual({
+      key: 'runtime',
+      label: 'Runtime',
       version: 'unknown',
     })
   })

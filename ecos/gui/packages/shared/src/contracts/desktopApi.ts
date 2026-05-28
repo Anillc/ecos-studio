@@ -64,8 +64,6 @@ export interface ScannedPdkDirectory {
 export interface VersionInfo {
   gui: string
   runtime: string
-  /** @deprecated Old bridge responses used `server`; prefer `runtime`. */
-  server?: string
   ecc: string
   dreamplace: string
   eccTools?: string

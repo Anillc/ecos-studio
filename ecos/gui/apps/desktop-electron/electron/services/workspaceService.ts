@@ -10,10 +10,6 @@ import type {
 } from '@ecos-studio/shared'
 import { LogTailService } from './logTailService'
 
-export interface ApiPortProvider {
-  getPort(): Promise<number>
-}
-
 export interface ProjectScopeProvider {
   clearProjectRoot(): Promise<void>
   getProjectRoot(): Promise<string>

@@ -1,10 +1,8 @@
 export {
   desktopApiEventChannels,
   desktopApiIpcChannels,
-  ipcChannels,
   type DesktopApiEventChannel,
   type DesktopApiIpcChannel,
-  type IpcChannel,
 } from './constants/ipcChannels.ts';
 export type {
   DesktopApi,
