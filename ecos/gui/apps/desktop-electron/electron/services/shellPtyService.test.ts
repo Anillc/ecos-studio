@@ -101,6 +101,30 @@ describe('ShellPtyService', () => {
     expect(fakePty.kill).toHaveBeenCalledTimes(1)
   })
 
+  it('does not mutate shell prompt hooks for command status decorations', async () => {
+    const fakePty = new FakePty()
+    const ptyBackend = {
+      spawn: vi.fn(() => fakePty),
+    }
+    const service = new ShellPtyService({
+      env: {
+        HOME: '/home/ecos',
+        PROMPT_COMMAND: 'history -a',
+        SHELL: '/bin/bash',
+      },
+      platform: 'linux',
+      ptyBackend,
+    })
+
+    await service.createSession({ cols: 80, rows: 24 }, vi.fn())
+
+    expect(ptyBackend.spawn).toHaveBeenCalledWith('/bin/bash', [], expect.objectContaining({
+      env: expect.objectContaining({
+        PROMPT_COMMAND: 'history -a',
+      }),
+    }))
+  })
+
   it('rejects operations for unknown or exited sessions', async () => {
     const fakePty = new FakePty()
     const service = new ShellPtyService({

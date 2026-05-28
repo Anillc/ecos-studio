@@ -9,10 +9,16 @@
         class="app-main"
         :style="terminalExpanded ? { '--terminal-panel-height': terminalPanelHeight } : undefined"
       >
-        <div class="app-content" :class="{ 'app-content--terminal-open': terminalExpanded }">
+        <div class="app-content" :class="{ 'app-content--terminal-safe-area': terminalExpanded }">
           <router-view />
         </div>
-        <ECOSTerminal :expanded="terminalExpanded" @collapse="terminalExpanded = false" />
+        <ECOSTerminal
+          :expanded="terminalExpanded"
+          :maximized="terminalPanelMaximized"
+          @collapse="terminalExpanded = false"
+          @height-change="handleTerminalHeightChange"
+          @toggle-maximize="toggleTerminalMaximized"
+        />
       </div>
       <StatusBar
         :terminal-expanded="terminalExpanded"
@@ -95,7 +101,20 @@ const documentationUrl =
 const showNewProjectWizard = ref(false)
 const showAboutDialog = ref(false)
 const terminalExpanded = ref(false)
-const terminalPanelHeight = 'min(300px, 42vh)'
+const terminalPanelHeight = ref('min(300px, 42vh)')
+const terminalPanelRestoredHeight = ref('min(300px, 42vh)')
+const terminalPanelMaximized = ref(false)
+
+function handleTerminalHeightChange(height: string) {
+  terminalPanelHeight.value = height
+  terminalPanelRestoredHeight.value = height
+  terminalPanelMaximized.value = false
+}
+
+function toggleTerminalMaximized() {
+  terminalPanelMaximized.value = !terminalPanelMaximized.value
+  terminalPanelHeight.value = terminalPanelMaximized.value ? '100%' : terminalPanelRestoredHeight.value
+}
 
 const handleWizardCreate = async (config: WorkspaceConfig) => {
   showNewProjectWizard.value = false
@@ -483,8 +502,15 @@ body.window-maximized .app-container {
   background: var(--bg-primary);
 }
 
-.app-content--terminal-open {
-  padding-bottom: var(--terminal-panel-height);
+.app-content--terminal-safe-area {
+  scroll-padding-bottom: var(--terminal-panel-height);
+}
+
+.app-content--terminal-safe-area::after {
+  content: '';
+  display: block;
+  height: var(--terminal-panel-height);
+  pointer-events: none;
 }
 
 /* 调整大小的边缘区域 */
