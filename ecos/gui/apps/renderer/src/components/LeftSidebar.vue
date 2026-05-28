@@ -35,10 +35,6 @@
           </span>
         </router-link>
       </div>
-      <button @click="toggleTheme" class="p-2 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-        title="Toggle theme">
-        <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-lg"></i>
-      </button>
     </div>
 
     <!-- 第二栏：流程进度面板 (Configure 页面不显示) -->
@@ -404,7 +400,6 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { useThemeStore } from '@/stores/themeStore'
 import { useFlowStages } from '@/composables/useFlowStages'
 import { useSubflow } from '@/composables/useSubflow'
 import { useFlowRunner } from '@/composables/useFlowRunner'
@@ -413,7 +408,6 @@ import { useWorkspace } from '@/composables/useWorkspace'
 
 // ============ Composables ============
 
-const themeStore = useThemeStore()
 
 // 流程阶段管理
 const {
@@ -482,12 +476,6 @@ const flowResult = computed(() => {
 
 const flowRunControlBusy = computed(() => isRunning.value || hasOngoingRunStage.value)
 
-// ============ 主题相关 ============
-const isDark = computed(() => themeStore.themeName === 'dark')
-
-const toggleTheme = () => {
-  themeStore.toggleTheme()
-}
 
 // ============ 运行模式 ============
 const runMode = ref('run')
