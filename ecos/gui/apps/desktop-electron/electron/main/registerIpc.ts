@@ -9,6 +9,9 @@ import {
 import {
   desktopApiEventChannels,
   desktopApiIpcChannels,
+  type DesktopCliCommandEvent,
+  type DesktopCliCommandRequest,
+  type DesktopCliCommandResult,
   type DesktopProjectFileChangedEvent,
   type DesktopProjectLogTailEvent,
   type DesktopDirectoryDialogOptions,
@@ -16,10 +19,17 @@ import {
   type DesktopProjectTextFileTail,
   type DesktopProjectTextFileUpdate,
   type DesktopSettingsValue,
+  type DesktopShellDataEvent,
+  type DesktopShellExitEvent,
+  type DesktopShellSession,
+  type DesktopShellSessionOptions,
   type ScannedPdkDirectory,
   type TileGenerationRequest,
   type TileGenerationResult,
   type VersionInfo,
+  type WorkspaceResourceIndex,
+  type WorkspaceStepInfoRequest,
+  type WorkspaceStepInfoResult,
 } from '@ecos-studio/shared'
 import {
   closeWindow,
@@ -55,7 +65,6 @@ export interface DesktopBridgeServices {
   }
   workspaceService: {
     clearProjectRoot(): Promise<void>
-    getApiPort(): Promise<number>
     isProjectDirectory(path: string): Promise<boolean>
     readProjectBinaryFile(path: string): Promise<Uint8Array>
     readOptionalProjectTextFile(path: string): Promise<string | null>
@@ -93,6 +102,28 @@ export interface DesktopBridgeServices {
   tileService: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
     getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
+  }
+  workspaceResourceService: {
+    getIndex(): Promise<WorkspaceResourceIndex>
+    readHome(): Promise<Record<string, unknown> | null>
+    readFlow(): Promise<Record<string, unknown> | null>
+    readParameters(): Promise<Record<string, unknown> | null>
+    resolveStepInfo(request: WorkspaceStepInfoRequest): Promise<WorkspaceStepInfoResult>
+  }
+  desktopRuntimeManager: {
+    execute(
+      request: DesktopCliCommandRequest,
+      listener?: (event: DesktopCliCommandEvent) => void,
+    ): Promise<DesktopCliCommandResult>
+  }
+  shellService: {
+    createSession(
+      options: DesktopShellSessionOptions,
+      listener: (event: DesktopShellDataEvent | DesktopShellExitEvent) => void,
+    ): Promise<DesktopShellSession>
+    write(sessionId: string, data: string): void | Promise<void>
+    resize(sessionId: string, cols: number, rows: number): void | Promise<void>
+    kill(sessionId: string): void | Promise<void>
   }
 }
 
@@ -247,6 +278,13 @@ export function registerIpc(
       onDestroyed: () => void
     }
   >()
+  const shellSessions = new Map<
+    string,
+    {
+      sender: IpcMainInvokeEvent['sender']
+      onDestroyed: () => void
+    }
+  >()
 
   const unwatchProjectFile = async (subscriptionId: string): Promise<void> => {
     const subscription = projectFileWatchSubscriptions.get(subscriptionId)
@@ -274,6 +312,20 @@ export function registerIpc(
       subscription.sender.off('destroyed', subscription.onDestroyed)
     }
     await services.workspaceService.unsubscribeProjectLogTail(subscriptionId)
+  }
+
+  const killShellSession = async (sessionId: string): Promise<void> => {
+    const session = shellSessions.get(sessionId)
+
+    if (!session) {
+      return
+    }
+
+    shellSessions.delete(sessionId)
+    if (typeof session.sender.off === 'function') {
+      session.sender.off('destroyed', session.onDestroyed)
+    }
+    await services.shellService.kill(sessionId)
   }
 
   handle(desktopApiIpcChannels.appGetVersions, async () => {
@@ -332,10 +384,6 @@ export function registerIpc(
       return await pickFiles(options as DesktopFileDialogOptions | undefined)
     },
   )
-
-  handle(desktopApiIpcChannels.workspaceGetApiPort, async () => {
-    return await services.workspaceService.getApiPort()
-  })
 
   handle(
     desktopApiIpcChannels.workspaceIsProjectDirectory,
@@ -530,6 +578,133 @@ export function registerIpc(
     desktopApiIpcChannels.tilesStatus,
     async (_event, request) => {
       return await services.tileService.getStatus(request as TileGenerationRequest)
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesGetIndex,
+    async () => {
+      return await services.workspaceResourceService.getIndex()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesReadHome,
+    async () => {
+      return await services.workspaceResourceService.readHome()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesReadFlow,
+    async () => {
+      return await services.workspaceResourceService.readFlow()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesReadParameters,
+    async () => {
+      return await services.workspaceResourceService.readParameters()
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.workspaceResourcesResolveStepInfo,
+    async (_event, request) => {
+      return await services.workspaceResourceService.resolveStepInfo(
+        request as WorkspaceStepInfoRequest,
+      )
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.cliExecute,
+    async (event, request) => {
+      const sender = event.sender
+      const isSenderDestroyed = (): boolean =>
+        typeof sender.isDestroyed === 'function' ? sender.isDestroyed() : false
+
+      return await services.desktopRuntimeManager.execute(
+        request as DesktopCliCommandRequest,
+        (payload) => {
+          if (isSenderDestroyed()) return
+          if (typeof sender.send === 'function') {
+            sender.send(desktopApiEventChannels.cliEvent, payload)
+          }
+        },
+      )
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.shellCreateSession,
+    async (event, options) => {
+      const sender = event.sender
+      const isSenderDestroyed = (): boolean =>
+        typeof sender.isDestroyed === 'function' ? sender.isDestroyed() : false
+      let sessionId: string | null = null
+      const onDestroyed = (): void => {
+        if (!sessionId) return
+        void killShellSession(sessionId)
+      }
+
+      const session = await services.shellService.createSession(
+        options as DesktopShellSessionOptions,
+        (payload) => {
+          if (isSenderDestroyed()) return
+          if (typeof sender.send !== 'function') return
+
+          if ('data' in payload) {
+            sender.send(desktopApiEventChannels.shellData, payload)
+          } else {
+            shellSessions.delete(payload.sessionId)
+            if (typeof sender.off === 'function') {
+              sender.off('destroyed', onDestroyed)
+            }
+            sender.send(desktopApiEventChannels.shellExit, payload)
+          }
+        },
+      )
+      sessionId = session.sessionId
+      shellSessions.set(session.sessionId, {
+        sender,
+        onDestroyed,
+      })
+      if (typeof sender.once === 'function') {
+        sender.once('destroyed', onDestroyed)
+      }
+
+      if (isSenderDestroyed()) {
+        onDestroyed()
+      }
+
+      return session
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.shellWrite,
+    async (_event, sessionId, data) => {
+      await services.shellService.write(sessionId as string, data as string)
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.shellResize,
+    async (_event, sessionId, cols, rows) => {
+      await services.shellService.resize(
+        sessionId as string,
+        cols as number,
+        rows as number,
+      )
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.shellKill,
+    async (_event, sessionId) => {
+      await killShellSession(sessionId as string)
     },
   )
 

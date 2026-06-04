@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { desktopApiIpcChannels } from '@ecos-studio/shared'
+import { desktopApiEventChannels, desktopApiIpcChannels } from '@ecos-studio/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { fromWebContents, openExternal, showOpenDialog } = vi.hoisted(() => ({
@@ -45,7 +45,6 @@ function registerHandlers() {
     },
     workspaceService: {
       clearProjectRoot: vi.fn(),
-      getApiPort: vi.fn(),
       isProjectDirectory: vi.fn(),
       readProjectBinaryFile: vi.fn(),
       readOptionalProjectTextFile: vi.fn(),
@@ -66,8 +65,25 @@ function registerHandlers() {
       generate: vi.fn(),
       getStatus: vi.fn(),
     },
+    workspaceResourceService: {
+      getIndex: vi.fn(),
+      readFlow: vi.fn(),
+      readHome: vi.fn(),
+      readParameters: vi.fn(),
+      resolveStepInfo: vi.fn(),
+    },
     appInfoService: {
       getVersions: vi.fn(),
+    },
+    desktopRuntimeManager: {
+      execute: vi.fn(),
+      onEvent: vi.fn(),
+    },
+    shellService: {
+      createSession: vi.fn(),
+      kill: vi.fn(),
+      resize: vi.fn(),
+      write: vi.fn(),
     },
   }
 
@@ -117,7 +133,6 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.settingsDelete,
       desktopApiIpcChannels.dialogPickDirectory,
       desktopApiIpcChannels.dialogPickFiles,
-      desktopApiIpcChannels.workspaceGetApiPort,
       desktopApiIpcChannels.workspaceIsProjectDirectory,
       desktopApiIpcChannels.workspaceRegisterProjectRoot,
       desktopApiIpcChannels.workspaceClearProjectRoot,
@@ -134,9 +149,19 @@ describe('registerIpc', () => {
       desktopApiIpcChannels.workspaceScanPdkDirectory,
       desktopApiIpcChannels.workspaceWatchProjectFile,
       desktopApiIpcChannels.workspaceUnwatchProjectFile,
+      desktopApiIpcChannels.workspaceResourcesGetIndex,
+      desktopApiIpcChannels.workspaceResourcesReadHome,
+      desktopApiIpcChannels.workspaceResourcesReadFlow,
+      desktopApiIpcChannels.workspaceResourcesReadParameters,
+      desktopApiIpcChannels.workspaceResourcesResolveStepInfo,
       desktopApiIpcChannels.tilesGenerate,
       desktopApiIpcChannels.tilesStatus,
       desktopApiIpcChannels.systemOpenExternal,
+      desktopApiIpcChannels.cliExecute,
+      desktopApiIpcChannels.shellCreateSession,
+      desktopApiIpcChannels.shellWrite,
+      desktopApiIpcChannels.shellResize,
+      desktopApiIpcChannels.shellKill,
       desktopApiIpcChannels.appGetVersions,
     ].sort())
   })
@@ -145,7 +170,7 @@ describe('registerIpc', () => {
     const { handlers, services } = registerHandlers()
     const versions = {
       gui: '0.1.0-alpha.4',
-      server: '0.1.0-alpha.4',
+      runtime: 'ECC CLI',
       ecc: '0.1.0a4',
       dreamplace: '0.1.0a2',
     }
@@ -235,7 +260,6 @@ describe('registerIpc', () => {
     const { handlers, services } = registerHandlers()
     const event = { sender: { id: 'web-contents' } }
     services.settingsStore.get.mockResolvedValue([{ id: 'recent' }])
-    services.workspaceService.getApiPort.mockResolvedValue(9123)
     services.workspaceService.isProjectDirectory.mockResolvedValue(true)
     services.workspaceService.readProjectTextFile.mockResolvedValue('{"steps":[]}')
     services.workspaceService.readOptionalProjectTextFile.mockResolvedValue(null)
@@ -311,9 +335,6 @@ describe('registerIpc', () => {
         filters: [{ name: 'HDL Files', extensions: ['v', 'sv'] }],
       }),
     ).resolves.toEqual(['/tmp/a.v', '/tmp/b.sv'])
-    await expect(handlers.get(desktopApiIpcChannels.workspaceGetApiPort)?.(event)).resolves.toBe(
-      9123,
-    )
     await expect(
       handlers.get(desktopApiIpcChannels.workspaceIsProjectDirectory)?.(event, '/tmp/project'),
     ).resolves.toBe(true)
@@ -494,6 +515,290 @@ describe('registerIpc', () => {
 
     expect(services.tileService.getStatus).toHaveBeenCalledWith(request)
     expect(services.tileService.generate).not.toHaveBeenCalled()
+  })
+
+  it('delegates workspace resource calls to the resource service', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    const index = {
+      design: 'gcd',
+      flow: { steps: [] },
+      home: {
+        checklistJson: { exists: false, kind: 'checklist', path: '/tmp/project/home/checklist.json' },
+        flowJson: { exists: true, kind: 'flow', path: '/tmp/project/home/flow.json' },
+        homeJson: { exists: true, kind: 'home', path: '/tmp/project/home/home.json' },
+        parametersJson: { exists: true, kind: 'parameters', path: '/tmp/project/home/parameters.json' },
+      },
+      homeData: {},
+      messages: [],
+      parameters: {},
+      pdk: 'ics55',
+      root: '/tmp/project',
+      status: 'available',
+      topModule: 'gcd',
+    }
+    services.workspaceResourceService.getIndex.mockResolvedValue(index)
+    services.workspaceResourceService.readHome.mockResolvedValue({ flow: '/tmp/project/home/flow.json' })
+    services.workspaceResourceService.readFlow.mockResolvedValue({ steps: [] })
+    services.workspaceResourceService.readParameters.mockResolvedValue({ Design: 'gcd' })
+    services.workspaceResourceService.resolveStepInfo.mockResolvedValue({
+      id: 'layout',
+      info: {},
+      message: [],
+      missing: [],
+      response: 'available',
+      step: 'route',
+    })
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesGetIndex)?.(event),
+    ).resolves.toEqual(index)
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesReadHome)?.(event),
+    ).resolves.toEqual({ flow: '/tmp/project/home/flow.json' })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesReadFlow)?.(event),
+    ).resolves.toEqual({ steps: [] })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesReadParameters)?.(event),
+    ).resolves.toEqual({ Design: 'gcd' })
+    await expect(
+      handlers.get(desktopApiIpcChannels.workspaceResourcesResolveStepInfo)?.(
+        event,
+        { step: 'route', id: 'layout' },
+      ),
+    ).resolves.toMatchObject({
+      id: 'layout',
+      response: 'available',
+      step: 'route',
+    })
+
+    expect(services.workspaceResourceService.getIndex).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.readHome).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.readFlow).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.readParameters).toHaveBeenCalledTimes(1)
+    expect(services.workspaceResourceService.resolveStepInfo).toHaveBeenCalledWith({
+      step: 'route',
+      id: 'layout',
+    })
+  })
+
+  it('executes desktop commands through the runtime manager', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+    const result = {
+      cmd: 'run_step',
+      data: { state: 'Success' },
+      message: ['ok'],
+      ok: true,
+      response: 'success',
+    }
+    services.desktopRuntimeManager.execute.mockResolvedValue(result)
+    const request = {
+      cmd: 'run_step',
+      data: { step: 'place', rerun: false },
+      source: 'terminal',
+    }
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.cliExecute)?.(event, request),
+    ).resolves.toEqual(result)
+
+    expect(services.desktopRuntimeManager.execute).toHaveBeenCalledWith(
+      request,
+      expect.any(Function),
+    )
+  })
+
+  it('forwards command events to the requesting renderer when it is alive', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    const cliEvent = {
+      cmd: 'run_step',
+      jobId: 'job-1',
+      stream: 'system',
+      text: 'queued',
+      type: 'queued',
+    }
+    services.desktopRuntimeManager.execute.mockImplementation(async (_request, listener) => {
+      listener(cliEvent)
+      return {
+        cmd: 'run_step',
+        data: {},
+        message: [],
+        ok: true,
+        response: 'success',
+      }
+    })
+    const request = {
+      cmd: 'run_step',
+      data: { step: 'place', rerun: false },
+      source: 'terminal',
+    }
+
+    await handlers.get(desktopApiIpcChannels.cliExecute)?.({ sender }, request)
+
+    expect(sender.send).toHaveBeenCalledWith(
+      desktopApiEventChannels.cliEvent,
+      expect.objectContaining({ jobId: 'job-1', type: 'queued' }),
+    )
+  })
+
+  it('does not send command events to destroyed renderer windows', async () => {
+    const { handlers, services } = registerHandlers()
+    const destroyedSender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => true),
+      send: vi.fn(),
+    })
+    services.desktopRuntimeManager.execute.mockImplementation(async (_request, listener) => {
+      listener({
+        cmd: 'run_step',
+        jobId: 'job-1',
+        stream: 'stdout',
+        text: 'running',
+        type: 'stdout',
+      })
+      return {
+        cmd: 'run_step',
+        data: {},
+        message: [],
+        ok: true,
+        response: 'success',
+      }
+    })
+
+    await handlers.get(desktopApiIpcChannels.cliExecute)?.(
+      { sender: destroyedSender },
+      {
+        cmd: 'run_step',
+        data: { step: 'place', rerun: false },
+        source: 'terminal',
+      },
+    )
+
+    expect(destroyedSender.send).not.toHaveBeenCalled()
+  })
+
+  it('creates shell sessions and forwards shell output to the requesting renderer', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    const session = {
+      pid: 4242,
+      sessionId: 'shell-1',
+      shell: '/bin/zsh',
+    }
+    services.shellService.createSession.mockImplementation(async (_options, listener) => {
+      listener({
+        data: 'ready\r\n',
+        sessionId: 'shell-1',
+      })
+      listener({
+        exitCode: 0,
+        sessionId: 'shell-1',
+      })
+      return session
+    })
+
+    await expect(
+      handlers.get(desktopApiIpcChannels.shellCreateSession)?.(
+        { sender },
+        { cols: 120, rows: 32 },
+      ),
+    ).resolves.toEqual(session)
+
+    expect(services.shellService.createSession).toHaveBeenCalledWith(
+      { cols: 120, rows: 32 },
+      expect.any(Function),
+    )
+    expect(sender.send).toHaveBeenCalledWith(
+      desktopApiEventChannels.shellData,
+      {
+        data: 'ready\r\n',
+        sessionId: 'shell-1',
+      },
+    )
+    expect(sender.send).toHaveBeenCalledWith(
+      desktopApiEventChannels.shellExit,
+      {
+        exitCode: 0,
+        sessionId: 'shell-1',
+      },
+    )
+    expect(sender.listenerCount('destroyed')).toBe(1)
+  })
+
+  it('does not forward shell events after the requesting renderer is destroyed', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => true),
+      send: vi.fn(),
+    })
+    services.shellService.createSession.mockImplementation(async (_options, listener) => {
+      listener({
+        data: 'hidden',
+        sessionId: 'shell-1',
+      })
+      return {
+        pid: 4242,
+        sessionId: 'shell-1',
+        shell: '/bin/zsh',
+      }
+    })
+
+    await handlers.get(desktopApiIpcChannels.shellCreateSession)?.(
+      { sender },
+      { cols: 80, rows: 24 },
+    )
+
+    expect(sender.send).not.toHaveBeenCalled()
+  })
+
+  it('kills shell sessions when the renderer is destroyed or closes them explicitly', async () => {
+    const { handlers, services } = registerHandlers()
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    })
+    services.shellService.createSession.mockResolvedValue({
+      pid: 4242,
+      sessionId: 'shell-1',
+      shell: '/bin/zsh',
+    })
+
+    await handlers.get(desktopApiIpcChannels.shellCreateSession)?.(
+      { sender },
+      { cols: 80, rows: 24 },
+    )
+    sender.emit('destroyed')
+
+    await vi.waitFor(() => {
+      expect(services.shellService.kill).toHaveBeenCalledWith('shell-1')
+    })
+
+    await handlers.get(desktopApiIpcChannels.shellKill)?.(
+      { sender },
+      'shell-1',
+    )
+
+    expect(services.shellService.kill).toHaveBeenCalledTimes(1)
+    expect(sender.listenerCount('destroyed')).toBe(0)
+  })
+
+  it('delegates shell writes and resizes to the shell service', async () => {
+    const { handlers, services } = registerHandlers()
+    const event = { sender: { id: 'web-contents' } }
+
+    await handlers.get(desktopApiIpcChannels.shellWrite)?.(event, 'shell-1', 'pwd\r')
+    await handlers.get(desktopApiIpcChannels.shellResize)?.(event, 'shell-1', 100, 28)
+
+    expect(services.shellService.write).toHaveBeenCalledWith('shell-1', 'pwd\r')
+    expect(services.shellService.resize).toHaveBeenCalledWith('shell-1', 100, 28)
   })
 
   it('logs missing project binary files in a single normalized warning before returning an IPC error result', async () => {

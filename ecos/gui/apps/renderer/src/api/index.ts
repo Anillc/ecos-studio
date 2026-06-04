@@ -3,24 +3,16 @@
  */
 
 export {
-  alovaInstance,
-  checkApiHealth,
-  initApiPort,
-  waitForApiReady,
-  type WaitForApiReadyOptions,
-  API_BASE_URL
+  waitForRuntimeReady,
+  type WaitForRuntimeReadyOptions
 } from './client'
 export {
   loadWorkspaceApi,
   createWorkspaceApi,
-  setPdkRootApi,
-  checkProjectApiHealth,
   type ProjectInfo,
   type WorkspaceResponse,
-  type SetPdkRootResponse,
   type LoadWorkspaceRequest,
   type CreateWorkspaceRequest,
-  type SetPdkRootRequest
 } from './workspace'
 
 
@@ -29,11 +21,12 @@ export {
 } from './flow'
 
 export {
-  createSSEClient,
-  type SSEClient,
-  type ECCResponse,
-  type NotifyType,
-  type SSEEventHandler,
-  type SSEClientConfig,
-  type SSEClientState
-} from './sse'
+  createRuntimeEventClient,
+  type RuntimeEventClient,
+  type RuntimeEventResponse,
+  type RuntimeNotifyType,
+  type RuntimeEventHandler,
+  type RuntimeEventClientConfig,
+  type RuntimeEventClientState,
+  type RuntimeResponseType
+} from './runtimeEvents'

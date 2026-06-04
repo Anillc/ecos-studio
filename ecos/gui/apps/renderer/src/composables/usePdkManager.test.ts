@@ -42,7 +42,7 @@ const desktopBridge = {
   app: {
     getVersions: async () => ({
       gui: '0.1.0-alpha.4',
-      server: 'unknown',
+      runtime: 'ECC CLI',
       ecc: 'unknown',
       dreamplace: 'unknown',
     }),
@@ -74,7 +74,6 @@ const desktopBridge = {
     pickFiles: async () => null,
   },
   workspace: {
-    getApiPort: async () => 8765,
     isProjectDirectory: async () => false,
     registerProjectRoot: async (path: string) => path,
     clearProjectRoot: async () => undefined,
@@ -90,6 +89,58 @@ const desktopBridge = {
   tiles: {
     generate: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
     getStatus: async () => ({ baseUrl: '', outDir: '', fromCache: false }),
+  },
+  workspaceResources: {
+    getIndex: async () => ({
+      design: '',
+      flow: { steps: [] },
+      home: {
+        checklistJson: { exists: false, kind: 'checklist', path: '' },
+        flowJson: { exists: false, kind: 'flow', path: '' },
+        homeJson: { exists: false, kind: 'home', path: '' },
+        parametersJson: { exists: false, kind: 'parameters', path: '' },
+      },
+      homeData: null,
+      messages: [],
+      parameters: null,
+      pdk: '',
+      root: '',
+      status: 'missing',
+      topModule: '',
+    }),
+    readHome: async () => null,
+    readFlow: async () => null,
+    readParameters: async () => null,
+    resolveStepInfo: async (request) => ({
+      step: request.step,
+      id: request.id,
+      response: 'missing',
+      info: {},
+      missing: [],
+      message: [],
+    }),
+  },
+  cli: {
+    execute: async (request) => ({
+      cmd: request.cmd,
+      data: {},
+      message: [],
+      ok: true,
+      response: 'success',
+    }),
+    onEvent: () => () => undefined,
+  },
+  shell: {
+    createSession: async () => ({
+      pid: 0,
+      sessionId: 'test-shell',
+      shell: '/bin/bash',
+    }),
+    write: async () => undefined,
+    resize: async () => undefined,
+    kill: async () => undefined,
+    onData: () => () => undefined,
+    onExit: () => () => undefined,
   },
 } satisfies DesktopApi
 

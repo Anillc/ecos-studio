@@ -5,10 +5,25 @@
       <!-- 全局顶部菜单栏 -->
       <TopBar :project-name="isWelcome ? null : currentProject?.name" @menu-action="handleMenuAction" />
       <!-- 页面内容 -->
-      <div class="app-content">
-        <router-view />
+      <div
+        class="app-main"
+        :style="terminalExpanded ? { '--terminal-panel-height': terminalPanelHeight } : undefined"
+      >
+        <div class="app-content" :class="{ 'app-content--terminal-safe-area': terminalExpanded }">
+          <router-view />
+        </div>
+        <ECOSTerminal
+          :expanded="terminalExpanded"
+          :maximized="terminalPanelMaximized"
+          @collapse="terminalExpanded = false"
+          @height-change="handleTerminalHeightChange"
+          @toggle-maximize="toggleTerminalMaximized"
+        />
       </div>
-      <StatusBar />
+      <StatusBar
+        :terminal-expanded="terminalExpanded"
+        @toggle-terminal="terminalExpanded = !terminalExpanded"
+      />
     </div>
 
     <!-- 全局 Toast 通知 -->
@@ -21,18 +36,18 @@
 
     <!-- Full-screen loading while the workspace is being prepared (open/new project, session restore) -->
     <Teleport to="body">
-      <Transition name="api-backend-overlay">
+      <Transition name="runtime-backend-overlay">
         <div
-          v-if="apiBackendConnecting"
-          class="api-backend-overlay"
+          v-if="runtimeBackendConnecting"
+          class="runtime-backend-overlay"
           role="status"
           aria-busy="true"
           aria-live="polite"
         >
-          <div class="api-backend-panel">
-            <div class="api-backend-spinner" aria-hidden="true" />
-            <p class="api-backend-title">Preparing your workspace</p>
-            <p class="api-backend-sub">First load or restoring your project may take a moment</p>
+          <div class="runtime-backend-panel">
+            <div class="runtime-backend-spinner" aria-hidden="true" />
+            <p class="runtime-backend-title">{{ runtimeBackendTitle }}</p>
+            <p class="runtime-backend-sub">{{ runtimeBackendSubtitle }}</p>
           </div>
         </div>
       </Transition>
@@ -54,6 +69,7 @@ import { getOptionalDesktopApi, hasDesktopApi, waitForDesktopApi } from '@/platf
 
 import TopBar from '@/components/TopBar.vue'
 import StatusBar from '@/components/StatusBar.vue'
+import ECOSTerminal from '@/components/ECOSTerminal.vue'
 import AboutDialog from '@/components/AboutDialog.vue'
 import Toast from 'primevue/toast'
 import NewProjectWizard from '@/components/NewProjectWizard.vue'
@@ -64,7 +80,16 @@ const router = useRouter()
 const themeStore = useThemeStore()
 const route = useRoute()
 const isWelcome = computed(() => route.path === '/')
-const { loadRecentProjects, currentProject, openProject, newProject, closeProject, apiBackendConnecting } =
+const {
+  loadRecentProjects,
+  currentProject,
+  openProject,
+  newProject,
+  closeProject,
+  runtimeBackendConnecting,
+  runtimeBackendTitle,
+  runtimeBackendSubtitle,
+} =
   useWorkspace()
 const { loadPdks } = usePdkManager()
 const { loadVersions } = useVersion()
@@ -75,6 +100,21 @@ const documentationUrl =
 // ---- 新建工程向导 ----
 const showNewProjectWizard = ref(false)
 const showAboutDialog = ref(false)
+const terminalExpanded = ref(false)
+const terminalPanelHeight = ref('min(300px, 42vh)')
+const terminalPanelRestoredHeight = ref('min(300px, 42vh)')
+const terminalPanelMaximized = ref(false)
+
+function handleTerminalHeightChange(height: string) {
+  terminalPanelHeight.value = height
+  terminalPanelRestoredHeight.value = height
+  terminalPanelMaximized.value = false
+}
+
+function toggleTerminalMaximized() {
+  terminalPanelMaximized.value = !terminalPanelMaximized.value
+  terminalPanelHeight.value = terminalPanelMaximized.value ? '100%' : terminalPanelRestoredHeight.value
+}
 
 const handleWizardCreate = async (config: WorkspaceConfig) => {
   showNewProjectWizard.value = false
@@ -253,7 +293,7 @@ onUnmounted(() => {
 
 <style>
 /* Teleport 到 body，需非 scoped 才能作用在传送后的节点上 */
-.api-backend-overlay {
+.runtime-backend-overlay {
   position: fixed;
   inset: 0;
   z-index: 20050;
@@ -263,7 +303,7 @@ onUnmounted(() => {
   background: rgba(0, 0, 0, 0.42);
 }
 
-.api-backend-panel {
+.runtime-backend-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -276,23 +316,23 @@ onUnmounted(() => {
   min-width: 240px;
 }
 
-.api-backend-spinner {
+.runtime-backend-spinner {
   width: 36px;
   height: 36px;
   border: 3px solid var(--border-color, rgba(128, 128, 128, 0.35));
   border-top-color: var(--accent-color, #4a9eff);
   border-radius: 50%;
-  animation: api-backend-spin 0.75s linear infinite;
+  animation: runtime-backend-spin 0.75s linear infinite;
 }
 
-.api-backend-title {
+.runtime-backend-title {
   margin: 4px 0 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary, #e8e8e8);
 }
 
-.api-backend-sub {
+.runtime-backend-sub {
   margin: 0;
   font-size: 13px;
   color: var(--text-secondary, #9ca3af);
@@ -300,29 +340,29 @@ onUnmounted(() => {
   line-height: 1.45;
 }
 
-@keyframes api-backend-spin {
+@keyframes runtime-backend-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.api-backend-overlay-enter-active,
-.api-backend-overlay-leave-active {
+.runtime-backend-overlay-enter-active,
+.runtime-backend-overlay-leave-active {
   transition: opacity 0.22s ease;
 }
 
-.api-backend-overlay-enter-active .api-backend-panel,
-.api-backend-overlay-leave-active .api-backend-panel {
+.runtime-backend-overlay-enter-active .runtime-backend-panel,
+.runtime-backend-overlay-leave-active .runtime-backend-panel {
   transition: transform 0.22s ease, opacity 0.22s ease;
 }
 
-.api-backend-overlay-enter-from,
-.api-backend-overlay-leave-to {
+.runtime-backend-overlay-enter-from,
+.runtime-backend-overlay-leave-to {
   opacity: 0;
 }
 
-.api-backend-overlay-enter-from .api-backend-panel,
-.api-backend-overlay-leave-to .api-backend-panel {
+.runtime-backend-overlay-enter-from .runtime-backend-panel,
+.runtime-backend-overlay-leave-to .runtime-backend-panel {
   transform: scale(0.96);
   opacity: 0.85;
 }
@@ -424,6 +464,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   max-width: 100vw;
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -445,11 +486,31 @@ body.window-maximized .app-container {
   border: none;
 }
 
-.app-content {
+.app-main {
   flex: 1;
   min-height: 0;
+  position: relative;
   overflow: hidden;
   background: var(--bg-primary);
+}
+
+.app-content {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-primary);
+}
+
+.app-content--terminal-safe-area {
+  scroll-padding-bottom: var(--terminal-panel-height);
+}
+
+.app-content--terminal-safe-area::after {
+  content: '';
+  display: block;
+  height: var(--terminal-panel-height);
+  pointer-events: none;
 }
 
 /* 调整大小的边缘区域 */

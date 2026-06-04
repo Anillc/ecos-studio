@@ -1,9 +1,6 @@
-/**
- * Project API module for ChipCompiler
- */
-
-import { alovaInstance } from './client'
+import { toDesktopCliData } from './desktopPayload'
 import { CMDEnum } from './type'
+import { getDesktopApi } from '@/platform/desktop'
 
 // Types for API requests and responses
 export interface ProjectInfo {
@@ -17,7 +14,7 @@ export interface WorkspaceResponse {
   response: string;
   data: {
     directory: string;
-    workspace_id?: string;  // 前端用于订阅 SSE
+    workspace_id?: string;  // 前端用于订阅 CLI runtime events
   };
   message: string[];
 }
@@ -27,17 +24,6 @@ export interface LoadWorkspaceRequest {
   data: {
     directory: string;
   }
-}
-
-export interface SetPdkRootResponse {
-  cmd: CMDEnum;
-  response: string;
-  data: {
-    pdk: string;
-    pdk_root: string;
-    env_key: string;
-  };
-  message: string[];
 }
 
 export interface CreateWorkspaceRequest {
@@ -54,25 +40,16 @@ export interface CreateWorkspaceRequest {
   }
 }
 
-export interface SetPdkRootRequest {
-  cmd: CMDEnum.set_pdk_root;
-  data: {
-    pdk: string;
-    pdk_root: string;
-  }
-}
-
 /**
  * Open an existing project
  * @param path - Full path to the project directory
  */
 export function loadWorkspaceApi(directory: string) {
-  return alovaInstance.Post<WorkspaceResponse>('/api/workspace/load_workspace', {
-    cmd: CMDEnum.load_workspace,
-    data: {
-      directory: directory
-    }
-  } as LoadWorkspaceRequest)
+  return getDesktopApi().cli.execute({
+    cmd: 'load_workspace',
+    data: { directory },
+    source: 'button',
+  }) as unknown as Promise<WorkspaceResponse>
 }
 
 /**
@@ -93,37 +70,19 @@ export function createWorkspaceApi(
     filelist?: string
   }
 ) {
-  return alovaInstance.Post<WorkspaceResponse>('/api/workspace/create_workspace', {
-    cmd: CMDEnum.create_workspace,
-    data: {
-      directory: options?.directory || '',
-      pdk: options?.pdk || '',
-      parameters: options.parameters || {},
-      origin_def: options.origin_def || '',
-      origin_verilog: options.origin_verilog || '',
-      rtl_list: options.rtl_list || [],
-      pdk_root: options.pdk_root || ''  ,
-      filelist: options.filelist || ''
-    }
-  } as CreateWorkspaceRequest)
-}
-
-export function setPdkRootApi(options: {
-  pdk?: string
-  pdk_root?: string
-}) {
-  return alovaInstance.Post<SetPdkRootResponse>('/api/workspace/set_pdk_root', {
-    cmd: CMDEnum.set_pdk_root,
-    data: {
-      pdk: options?.pdk || '',
-      pdk_root: options?.pdk_root || '',
-    },
-  } as SetPdkRootRequest)
-}
-
-/**
- * Check project API health
- */
-export function checkProjectApiHealth() {
-  return alovaInstance.Get<{ status: string }>('/api/project/health')
+  const data = toDesktopCliData({
+    directory: options?.directory || '',
+    pdk: options?.pdk || '',
+    parameters: options.parameters || {},
+    origin_def: options.origin_def || '',
+    origin_verilog: options.origin_verilog || '',
+    rtl_list: options.rtl_list || [],
+    pdk_root: options.pdk_root || '',
+    filelist: options.filelist || ''
+  })
+  return getDesktopApi().cli.execute({
+    cmd: 'create_workspace',
+    data,
+    source: 'button',
+  }) as unknown as Promise<WorkspaceResponse>
 }

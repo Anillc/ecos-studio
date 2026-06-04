@@ -5,12 +5,18 @@ import {
 } from '../../../../packages/shared/src/constants/ipcChannels.ts'
 import type {
   DesktopApi,
+  DesktopCliCommandEvent,
+  DesktopCliCommandRequest,
   DesktopDirectoryDialogOptions,
   DesktopFileDialogOptions,
   DesktopMenuEventId,
   DesktopProjectFileChangedEvent,
   DesktopProjectLogTailEvent,
   DesktopSettingsValue,
+  DesktopShellDataEvent,
+  DesktopShellExitEvent,
+  DesktopShellSessionOptions,
+  WorkspaceStepInfoRequest,
 } from '@ecos-studio/shared'
 
 function isMissingFileError(error: unknown): boolean {
@@ -117,7 +123,6 @@ const desktopApi: DesktopApi = {
       invokeDesktop(desktopApiIpcChannels.dialogPickFiles, options),
   },
   workspace: {
-    getApiPort: () => invokeDesktop(desktopApiIpcChannels.workspaceGetApiPort),
     isProjectDirectory: (path) =>
       invokeDesktop(desktopApiIpcChannels.workspaceIsProjectDirectory, path),
     registerProjectRoot: (path) =>
@@ -212,6 +217,53 @@ const desktopApi: DesktopApi = {
         throw error
       }
     },
+  },
+  workspaceResources: {
+    getIndex: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesGetIndex),
+    readHome: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesReadHome),
+    readFlow: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesReadFlow),
+    readParameters: () =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesReadParameters),
+    resolveStepInfo: (request: WorkspaceStepInfoRequest) =>
+      invokeDesktop(desktopApiIpcChannels.workspaceResourcesResolveStepInfo, request),
+  },
+  cli: {
+    execute: (request: DesktopCliCommandRequest) =>
+      invokeDesktop(desktopApiIpcChannels.cliExecute, request),
+    onEvent: (listener) =>
+      subscribeToDesktopEvent(
+        desktopApiEventChannels.cliEvent,
+        (_event, payload: unknown) => {
+          listener(payload as DesktopCliCommandEvent)
+        },
+      ),
+  },
+  shell: {
+    createSession: (options: DesktopShellSessionOptions) =>
+      invokeDesktop(desktopApiIpcChannels.shellCreateSession, options),
+    write: (sessionId, data) =>
+      invokeDesktop(desktopApiIpcChannels.shellWrite, sessionId, data),
+    resize: (sessionId, cols, rows) =>
+      invokeDesktop(desktopApiIpcChannels.shellResize, sessionId, cols, rows),
+    kill: (sessionId) =>
+      invokeDesktop(desktopApiIpcChannels.shellKill, sessionId),
+    onData: (listener) =>
+      subscribeToDesktopEvent(
+        desktopApiEventChannels.shellData,
+        (_event, payload: unknown) => {
+          listener(payload as DesktopShellDataEvent)
+        },
+      ),
+    onExit: (listener) =>
+      subscribeToDesktopEvent(
+        desktopApiEventChannels.shellExit,
+        (_event, payload: unknown) => {
+          listener(payload as DesktopShellExitEvent)
+        },
+      ),
   },
 }
 

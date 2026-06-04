@@ -4,7 +4,7 @@ import source from './DrawingArea.vue?raw'
 describe('DrawingArea loading state copy and reset', () => {
   it('uses English copy for missing layout JSON errors', () => {
     expect(source).toContain(
-      'Layout JSON path was not found. Check that get_info(layout) returns a json or info field for the current step.',
+      'Layout JSON path was not found for the current step.',
     )
     expect(source).not.toContain('未找到布局 JSON 路径')
   })

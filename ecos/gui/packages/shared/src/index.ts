@@ -1,10 +1,8 @@
 export {
   desktopApiEventChannels,
   desktopApiIpcChannels,
-  ipcChannels,
   type DesktopApiEventChannel,
   type DesktopApiIpcChannel,
-  type IpcChannel,
 } from './constants/ipcChannels.ts';
 export type {
   DesktopApi,
@@ -19,6 +17,21 @@ export type {
   ScannedPdkDirectory,
   VersionInfo,
 } from './contracts/desktopApi.ts';
+export type {
+  DesktopCliCommandEvent,
+  DesktopCliCommandEventType,
+  DesktopCliCommandName,
+  DesktopCliCommandRequest,
+  DesktopCliCommandResponse,
+  DesktopCliCommandResult,
+  DesktopCliCommandSource,
+} from './contracts/desktopCli.ts';
+export type {
+  DesktopShellDataEvent,
+  DesktopShellExitEvent,
+  DesktopShellSession,
+  DesktopShellSessionOptions,
+} from './contracts/desktopShell.ts';
 export {
   appMenuActionIds,
   desktopMenuEventIds,
@@ -33,6 +46,14 @@ export {
 export type { DesktopErrorCode, DesktopErrorShape } from './contracts/errors.ts';
 export type { DesktopFailure, DesktopResult, DesktopSuccess, VoidDesktopResult } from './types/desktop.ts';
 export type { WorkspaceConfig, WorkspaceParameters, WorkspaceStatus, WorkspaceSummary } from './types/workspace.ts';
+export type {
+  WorkspaceResourceFile,
+  WorkspaceResourceIndex,
+  WorkspaceResourceStatus,
+  WorkspaceStepInfoRequest,
+  WorkspaceStepInfoResult,
+  WorkspaceStepResource,
+} from './types/workspaceResources.ts';
 export type { TileGenerationRequest, TileGenerationResult } from './types/tile.ts';
 export {
   isAbsoluteLocalPath,

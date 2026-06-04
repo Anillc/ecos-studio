@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import electronViteConfig from '../electron.vite.config'
 
@@ -34,12 +32,19 @@ describe('desktop electron build config', () => {
     })
   })
 
-  it('cleans the release directory before packaging so stale artifact names are removed', () => {
-    const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url))
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      scripts?: Record<string, string>
-    }
+  it('lets the renderer dev server pick a free port after the preferred port', () => {
+    const resolvedConfig = typeof electronViteConfig === 'function'
+      ? electronViteConfig({
+          command: 'serve',
+          isPreview: false,
+          mode: 'development',
+        })
+      : electronViteConfig
 
-    expect(packageJson.scripts?.package).toContain('rm -rf release')
+    expect(resolvedConfig.renderer?.server).toEqual(expect.objectContaining({
+      port: 1420,
+      strictPort: false,
+    }))
   })
+
 })

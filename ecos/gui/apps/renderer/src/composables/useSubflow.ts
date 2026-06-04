@@ -1,13 +1,13 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useTauri } from './useTauri'
+import { useDesktopRuntime } from './useDesktopRuntime'
 import { useWorkspace } from './useWorkspace'
 import { convertRemoteToLocalPath } from './useHomeData'
 import { readProjectTextFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
-import { getInfoApi } from '@/api/flow'
-import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '@/api/type'
-import type { ECCResponse } from '@/api/sse'
+import { InfoEnum, StepEnum } from '@/api/type'
+import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
+import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
 
 // ============ 类型定义 ============
 
@@ -112,8 +112,9 @@ function parseTimeString(timeStr: string): number {
  * 负责获取和管理当前步骤的子流程信息
  */
 export function useSubflow() {
-  const { isInTauri } = useTauri()
-  const { sseMessages, currentProject } = useWorkspace()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
+  const { currentProject, resourceVersions } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
   const route = useRoute()
 
   // 状态
@@ -166,28 +167,37 @@ export function useSubflow() {
    * 获取子流程信息
    */
   async function fetchSubflowInfo(stepEnum: StepEnum): Promise<void> {
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
     try {
-      // 1. 调用 get_info API 获取 subflow 文件路径
-      const response = await getInfoApi({
-        cmd: CMDEnum.get_info,
-        data: {
+      const response = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveWorkspaceStepInfoApi({
           step: stepEnum,
           id: InfoEnum.subflow
-        }
-      })
+        }),
+      )
+      if (!isCurrent() || !response) return
 
-      console.log('get_info response:', response)
+      console.log('workspace subflow response:', response)
 
-      if (response.response !== ResponseEnum.success) {
-        console.warn('get_info failed:', response.message)
+      if (response.response === 'error') {
+        console.warn('workspace subflow resolver failed:', response.message)
+        subflowSteps.value = []
+        error.value = response.message[0] || 'Failed to resolve subflow path'
+        return
+      }
+
+      if (response.response === 'missing') {
+        console.warn('Subflow path is missing:', response.message)
         subflowSteps.value = []
         return
       }
 
-      const subflowPath = response.data?.info?.path
+      const subflowPath = typeof response.info?.path === 'string' ? response.info.path : ''
       if (!subflowPath) {
         console.warn('No subflow path in response')
         subflowSteps.value = []
@@ -195,7 +205,7 @@ export function useSubflow() {
       }
 
       // 2. 使用桌面桥接读取 JSON 文件
-      if (!isInTauri) {
+      if (!isDesktopRuntimeAvailable) {
         console.warn('Desktop bridge unavailable, cannot read local file')
         return
       }
@@ -204,12 +214,20 @@ export function useSubflow() {
       const localPath = projectPath
         ? convertRemoteToLocalPath(subflowPath, projectPath)
         : subflowPath
-      const resolvedPath = await resolveProjectPathAccess(localPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(localPath),
+      )
+      if (!isCurrent()) return
       if (!resolvedPath) {
         subflowSteps.value = []
         return
       }
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (!isCurrent() || fileContent === undefined) return
       const subflowData: SubflowData = JSON.parse(fileContent)
 
       console.log('subflow data:', subflowData)
@@ -218,40 +236,54 @@ export function useSubflow() {
       subflowSteps.value = convertSubflowToSteps(subflowData)
 
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to fetch subflow info:', err)
       error.value = err instanceof Error ? err.message : String(err)
       subflowSteps.value = []
     } finally {
-      isLoading.value = false
+      if (isCurrent()) {
+        isLoading.value = false
+      }
     }
   }
 
   /**
    * 从指定路径直接加载子流程数据
-   * 用于 SSE 通知推送的 subflow_path
+   * 用于 runtime event 推送的 subflow_path
    */
   async function loadSubflowFromPath(subflowPath: string): Promise<void> {
-    if (!isInTauri || !subflowPath) {
+    if (!isDesktopRuntimeAvailable || !subflowPath) {
       console.warn('Cannot load subflow: desktop bridge unavailable or path is empty')
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     try {
       const localPath = currentProject.value?.path
         ? convertRemoteToLocalPath(subflowPath, currentProject.value.path)
         : subflowPath
 
-      console.log('Loading subflow from SSE path:', localPath)
-      const resolvedPath = await resolveProjectPathAccess(localPath)
+      console.log('Loading subflow from runtime event path:', localPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(localPath),
+      )
+      if (!isCurrent()) return
       if (!resolvedPath) return
 
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (!isCurrent() || fileContent === undefined) return
       const subflowData: SubflowData = JSON.parse(fileContent)
 
-      console.log('Subflow data from SSE path:', subflowData)
+      console.log('Subflow data from runtime event path:', subflowData)
 
       subflowSteps.value = convertSubflowToSteps(subflowData)
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load subflow from path:', subflowPath, err)
     }
   }
@@ -318,39 +350,13 @@ export function useSubflow() {
     { immediate: true }
   )
 
-  // 监听 SSE 通知，当收到 step 或 subflow 通知时自动刷新当前步骤的子流程数据
   watch(
-    () => sseMessages.value.length,
-    async (newLen, oldLen) => {
-      if (newLen <= (oldLen ?? 0)) return
-
-      const latest: ECCResponse = sseMessages.value[newLen - 1]
-      if (!latest || latest.cmd !== 'notify') return
-
-      const notifyId = latest.data?.id as string | undefined
-      const sseStep = latest.data?.step as string | undefined
-      const info = latest.data?.info as Record<string, unknown> | undefined
-
-      if (notifyId === 'subflow') {
-        const subflowPath = info?.subflow_path as string | undefined
-        if (!subflowPath) return
-
-        console.log('Received SSE subflow notification, step:', sseStep, 'path:', subflowPath)
-
-        const currentRouteStep = getCurrentRouteStep()
-        if (currentRouteStep && sseStep &&
-            currentRouteStep.toLowerCase() === sseStep.toLowerCase()) {
-          await loadSubflowFromPath(subflowPath)
-        }
-      } else if (notifyId === 'step') {
-        console.log('Received SSE step notification in useSubflow, step:', sseStep)
-
-        const currentRouteStep = getCurrentRouteStep()
-        if (currentRouteStep && sseStep &&
-            currentRouteStep.toLowerCase() === sseStep.toLowerCase()) {
-          await fetchSubflowInfo(currentRouteStep)
-        }
-      }
+    () => [
+      resourceVersions.value.step,
+      resourceVersions.value.all,
+    ],
+    async () => {
+      await refreshCurrentSubflow()
     }
   )
 

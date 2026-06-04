@@ -11,7 +11,6 @@ export const desktopApiIpcChannels = {
   settingsDelete: 'settings:delete',
   dialogPickDirectory: 'dialog:pick-directory',
   dialogPickFiles: 'dialog:pick-files',
-  workspaceGetApiPort: 'workspace:get-api-port',
   workspaceIsProjectDirectory: 'workspace:is-project-directory',
   workspaceRegisterProjectRoot: 'workspace:register-project-root',
   workspaceClearProjectRoot: 'workspace:clear-project-root',
@@ -28,8 +27,18 @@ export const desktopApiIpcChannels = {
   workspaceScanPdkDirectory: 'workspace:scan-pdk-directory',
   workspaceWatchProjectFile: 'workspace:watch-project-file',
   workspaceUnwatchProjectFile: 'workspace:unwatch-project-file',
+  workspaceResourcesGetIndex: 'workspace-resources:get-index',
+  workspaceResourcesReadHome: 'workspace-resources:read-home',
+  workspaceResourcesReadFlow: 'workspace-resources:read-flow',
+  workspaceResourcesReadParameters: 'workspace-resources:read-parameters',
+  workspaceResourcesResolveStepInfo: 'workspace-resources:resolve-step-info',
   tilesGenerate: 'tiles:generate',
   tilesStatus: 'tiles:status',
+  cliExecute: 'cli:execute',
+  shellCreateSession: 'shell:create-session',
+  shellWrite: 'shell:write',
+  shellResize: 'shell:resize',
+  shellKill: 'shell:kill',
   systemOpenExternal: 'system:open-external',
 } as const
 
@@ -40,13 +49,9 @@ export const desktopApiEventChannels = {
   windowMaximizedChanged: 'window:maximized-changed',
   workspaceFileChanged: 'workspace:file-changed',
   workspaceLogTail: 'workspace:log-tail',
-} as const
-
-export const ipcChannels = {
-  appReady: 'app:ready',
-  ...desktopApiIpcChannels,
-  workspaceCreate: 'workspace:create',
-  workspaceSetProjectRoot: 'workspace:set-project-root',
+  cliEvent: 'cli:event',
+  shellData: 'shell:data',
+  shellExit: 'shell:exit',
 } as const
 
 export type DesktopApiIpcChannel =
@@ -54,5 +59,3 @@ export type DesktopApiIpcChannel =
 
 export type DesktopApiEventChannel =
   (typeof desktopApiEventChannels)[keyof typeof desktopApiEventChannels]
-
-export type IpcChannel = (typeof ipcChannels)[keyof typeof ipcChannels]

@@ -12,4 +12,9 @@ describe('useHomeData flow log loading strategy', () => {
     expect(useHomeDataSource).toContain('startProjectFileWatcher')
     expect(useHomeDataSource).toContain('setInterval')
   })
+
+  it('uses workspace resource metadata for step log paths instead of rebuilding them locally', () => {
+    expect(useHomeDataSource).toContain('getWorkspaceResourceIndexApi')
+    expect(useHomeDataSource).not.toContain('function stepLogAbsPath')
+  })
 })

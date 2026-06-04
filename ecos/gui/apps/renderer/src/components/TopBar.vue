@@ -50,7 +50,7 @@
 
     <!-- 右侧：窗口控制按钮 -->
     <div class="topbar-right" @mousedown.stop>
-      <button v-if="isWelcome" @click="toggleTheme" class="window-btn theme-btn"
+      <button  @click="toggleTheme" class="window-btn theme-btn"
         :title="isDark ? 'Switch to light theme' : 'Switch to dark theme'">
         <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-base"></i>
       </button>
@@ -114,7 +114,6 @@ interface Menu {
 
 const route = useRoute()
 const router = useRouter()
-const isWelcome = computed(() => route.path === '/')
 const isEcosHome = computed(() => route.name === 'ECOS')
 // ---- Props & Emits ----
 const props = defineProps<{

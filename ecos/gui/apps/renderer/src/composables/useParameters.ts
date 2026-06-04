@@ -1,9 +1,10 @@
 import { ref, reactive, watch, computed } from 'vue'
 import { useWorkspace } from './useWorkspace'
-import { useTauri } from './useTauri'
+import { useDesktopRuntime } from './useDesktopRuntime'
 import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
 import { readProjectTextFile, writeProjectTextFile } from '@/utils/projectFiles'
+import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
 
 // ============ 类型定义 ============
 // 与 ecc/chipcompiler/data/parameter.py 中 ICS55_PARAMETERS_TEMPLATE 及 workspace 写入的 PDK Root 对齐
@@ -230,8 +231,9 @@ export function transformConfigToParameters(config: ConfigData): ParametersData 
  * 负责从 parameters.json 加载配置参数并管理状态
  */
 export function useParameters() {
-  const { isInTauri } = useTauri()
-  const { currentProject, sseMessages, stepRefreshCounter } = useWorkspace()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
+  const { currentProject, resourceVersions, invalidateWorkspaceResources } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
 
   const config = reactive<ConfigData>(getDefaultConfig())
   const isLoading = ref(false)
@@ -241,12 +243,29 @@ export function useParameters() {
 
   let originalConfig: string = ''
   let resolvedParametersPath: string = ''
+  let savingSessionId: string | null = null
+  let saveRequestSequence = 0
+  let activeSaveRequestId = 0
+  let parametersResourceToken = 0
+  let saveWriteQueue: Promise<void> = Promise.resolve()
+
+  function advanceParametersResourceToken(): number {
+    parametersResourceToken += 1
+    isSaving.value = false
+    savingSessionId = null
+    activeSaveRequestId = 0
+    return parametersResourceToken
+  }
 
   function resetParametersState(): void {
+    advanceParametersResourceToken()
     Object.assign(config, getDefaultConfig())
     originalConfig = ''
     resolvedParametersPath = ''
     hasChanges.value = false
+    isSaving.value = false
+    savingSessionId = null
+    activeSaveRequestId = 0
   }
 
   function convertToLocalPath(remotePath: string): string {
@@ -254,21 +273,46 @@ export function useParameters() {
     return projectPath ? convertRemoteToLocalPath(remotePath, projectPath) : remotePath
   }
 
+  function isSaveContextCurrent(options: {
+    sessionId: string
+    requestId: number
+    resourceToken: number
+    parametersPath: string
+    projectPath: string
+  }): boolean {
+    return (
+      workspaceLifecycle.isCurrentSession(options.sessionId)
+      && activeSaveRequestId === options.requestId
+      && parametersResourceToken === options.resourceToken
+      && resolvedParametersPath === options.parametersPath
+      && currentProject.value?.path === options.projectPath
+    )
+  }
+
   async function loadParameters(): Promise<void> {
-    if (!isInTauri || !currentProject.value?.path) {
+    if (!isDesktopRuntimeAvailable || !currentProject.value?.path) {
       console.warn('Cannot load parameters: desktop bridge unavailable or no project is open')
       resetParametersState()
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    if (savingSessionId && savingSessionId !== sessionId) {
+      isSaving.value = false
+      savingSessionId = null
+    }
     isLoading.value = true
     error.value = null
     resolvedParametersPath = ''
+    const loadResourceToken = advanceParametersResourceToken()
 
     try {
       const projectPath = currentProject.value.path
-
-      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
+      const homeData = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => fetchSharedHomeData(projectPath, isDesktopRuntimeAvailable),
+      )
+      if (homeData === undefined && !workspaceLifecycle.isCurrentSession(sessionId)) return
       if (!homeData) {
         console.warn('Failed to get home data')
         resetParametersState()
@@ -282,18 +326,28 @@ export function useParameters() {
       }
 
       const parametersPath = convertToLocalPath(homeData.parameters)
-      const resolvedPath = await resolveProjectPathAccess(parametersPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(parametersPath),
+      )
+      if (resolvedPath === undefined && !workspaceLifecycle.isCurrentSession(sessionId)) return
       console.log('Loading parameters from:', resolvedPath ?? parametersPath)
       if (!resolvedPath) {
         resetParametersState()
         return
       }
 
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (fileContent === undefined && !workspaceLifecycle.isCurrentSession(sessionId)) return
+      if (fileContent === undefined) return
       const parametersData = parseParametersData(fileContent)
 
       console.log('Loaded parameters data:', parametersData)
 
+      if (loadResourceToken !== parametersResourceToken) return
       resolvedParametersPath = resolvedPath
 
       const transformedConfig = transformParametersToConfig(parametersData)
@@ -304,16 +358,19 @@ export function useParameters() {
 
       console.log('Parameters loaded:', config)
     } catch (err) {
+      if (!workspaceLifecycle.isCurrentSession(sessionId)) return
       console.error('Failed to load parameters:', err)
       error.value = err instanceof Error ? err.message : String(err)
       resetParametersState()
     } finally {
-      isLoading.value = false
+      if (workspaceLifecycle.isCurrentSession(sessionId)) {
+        isLoading.value = false
+      }
     }
   }
 
   async function saveParameters(): Promise<boolean> {
-    if (!isInTauri || !currentProject.value?.path) {
+    if (!isDesktopRuntimeAvailable || !currentProject.value?.path) {
       console.warn('Cannot save parameters: desktop bridge unavailable or no project is open')
       return false
     }
@@ -325,30 +382,91 @@ export function useParameters() {
 
     isSaving.value = true
     error.value = null
+    const saveSessionId = workspaceLifecycle.currentSessionId.value
+    const saveRequestId = ++saveRequestSequence
+    const saveResourceToken = parametersResourceToken
+    const saveParametersPath = resolvedParametersPath
+    const saveProjectPath = currentProject.value.path
+    activeSaveRequestId = saveRequestId
+    savingSessionId = saveSessionId
 
     try {
-      console.log('Saving parameters to:', resolvedParametersPath)
-      const resolvedPath = await resolveProjectPathAccess(resolvedParametersPath)
-      if (!resolvedPath) {
-        return false
-      }
-
+      const savedConfigSnapshot = JSON.stringify(config)
       const parametersData = transformConfigToParameters(config)
       const fileContent = JSON.stringify(parametersData, null, 4)
+      let writeSucceeded = false
 
-      await writeProjectTextFile(resolvedPath, fileContent)
+      const writeTask = saveWriteQueue.then(async () => {
+        if (!isSaveContextCurrent({
+          sessionId: saveSessionId,
+          requestId: saveRequestId,
+          resourceToken: saveResourceToken,
+          parametersPath: saveParametersPath,
+          projectPath: saveProjectPath,
+        })) {
+          return
+        }
+        console.log('Saving parameters to:', saveParametersPath)
+        const resolvedPath = await resolveProjectPathAccess(saveParametersPath)
+        if (!resolvedPath) {
+          return
+        }
 
-      originalConfig = JSON.stringify(config)
-      hasChanges.value = false
+        await writeProjectTextFile(resolvedPath, fileContent)
+        writeSucceeded = true
+      })
+      saveWriteQueue = writeTask.catch(() => {})
+      await writeTask
+      if (!writeSucceeded) {
+        return false
+      }
+      if (!isSaveContextCurrent({
+        sessionId: saveSessionId,
+        requestId: saveRequestId,
+        resourceToken: saveResourceToken,
+        parametersPath: saveParametersPath,
+        projectPath: saveProjectPath,
+      })) {
+        return true
+      }
+
+      if (JSON.stringify(config) === savedConfigSnapshot) {
+        originalConfig = savedConfigSnapshot
+        hasChanges.value = false
+      } else {
+        hasChanges.value = true
+      }
+      invalidateWorkspaceResources(['parameters', 'home'], { sessionId: saveSessionId })
 
       console.log('Parameters saved successfully')
       return true
     } catch (err) {
+      if (!isSaveContextCurrent({
+        sessionId: saveSessionId,
+        requestId: saveRequestId,
+        resourceToken: saveResourceToken,
+        parametersPath: saveParametersPath,
+        projectPath: saveProjectPath,
+      })) {
+        return false
+      }
       console.error('Failed to save parameters:', err)
       error.value = err instanceof Error ? err.message : String(err)
       return false
     } finally {
-      isSaving.value = false
+      if (isSaveContextCurrent({
+        sessionId: saveSessionId,
+        requestId: saveRequestId,
+        resourceToken: saveResourceToken,
+        parametersPath: saveParametersPath,
+        projectPath: saveProjectPath,
+      })) {
+        isSaving.value = false
+        if (savingSessionId === saveSessionId) {
+          savingSessionId = null
+        }
+        activeSaveRequestId = 0
+      }
     }
   }
 
@@ -382,6 +500,7 @@ export function useParameters() {
   watch(
     () => currentProject.value?.path,
     async (newPath) => {
+      isSaving.value = false
       if (newPath) {
         await loadParameters()
       } else {
@@ -392,23 +511,15 @@ export function useParameters() {
   )
 
   watch(
-    () => sseMessages.value.length,
-    async (newLen, oldLen) => {
-      if (newLen <= (oldLen ?? 0)) return
-
-      const latest = sseMessages.value[newLen - 1]
-      if (!latest || latest.cmd !== 'notify') return
-
-      const info = latest.data?.info as Record<string, unknown> | undefined
-      if (!info?.home_page) return
-
+    () => [
+      resourceVersions.value.parameters,
+      resourceVersions.value.home,
+      resourceVersions.value.all,
+    ],
+    async () => {
       await reloadParametersIfClean()
-    }
+    },
   )
-
-  watch(stepRefreshCounter, async () => {
-    await reloadParametersIfClean()
-  })
 
   const layerOptions = computed(() => {
     return ROUTING_LAYER_ORDER.map(layer => ({ label: layer, value: layer }))

@@ -5,7 +5,7 @@ import { SelectPlugin } from '@/applications/editor/plugins'
 
 interface Props {
   editor?: Editor | null
-  /** 是否显示「从布局 JSON 生成瓦片」工具（Tauri 开发模式等） */
+  /** 是否显示「从布局 JSON 生成瓦片」工具（desktop runtime 开发模式等） */
   showTileGenerate?: boolean
   /** 正在生成瓦片时禁用按钮 */
   tileGenBusy?: boolean

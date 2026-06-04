@@ -1,11 +1,12 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, getCurrentInstance, onUnmounted, watch } from 'vue'
 import { useWorkspace } from './useWorkspace'
-import { useTauri, isTauri } from './useTauri'
-import { fetchSharedHomeData, convertRemoteToLocalPath } from './useHomeData'
+import { useDesktopRuntime, isDesktopRuntime } from './useDesktopRuntime'
+import { convertRemoteToLocalPath } from './useHomeData'
 import { STEP_METADATA, getStepMetadata } from '@/api/type'
-import type { ECCResponse } from '@/api/sse'
-import { readProjectTextFile } from '@/utils/projectFiles'
+import { readProjectTextFile, watchProjectFile } from '@/utils/projectFiles'
 import { resolveProjectPathAccess } from '@/utils/projectFs'
+import { readWorkspaceFlowResourceApi, readWorkspaceHomeResourceApi } from '@/api/workspaceResources'
+import { useWorkspaceLifecycle } from './useWorkspaceLifecycle'
 
 // ============ 类型定义 ============
 
@@ -76,21 +77,12 @@ function transformFlowData(flowData: FlowData): FlowStage[] {
  * 读取失败时回退为 STEP_METADATA 中 `group === 'run'` 的全集。
  */
 export async function loadFlowRunStepKeysFromProject(projectPath: string): Promise<string[]> {
-  if (!isTauri() || !projectPath) {
+  if (!isDesktopRuntime() || !projectPath) {
     return fallbackRunStepKeys()
   }
   try {
-    const homeData = await fetchSharedHomeData(projectPath, true)
-    if (!homeData?.flow) {
-      return fallbackRunStepKeys()
-    }
-    const localFlowPath = convertRemoteToLocalPath(homeData.flow, projectPath)
-    const resolvedFlowPath = await resolveProjectPathAccess(localFlowPath)
-    if (!resolvedFlowPath) {
-      return fallbackRunStepKeys()
-    }
-    const fileContent = await readProjectTextFile(resolvedFlowPath)
-    const flowData: FlowData = JSON.parse(fileContent)
+    const flowData = await readWorkspaceFlowResourceApi() as FlowData | null
+    if (!flowData) return fallbackRunStepKeys()
     const stages = transformFlowData(flowData)
     return stages.map((s) => s.path)
   } catch (e) {
@@ -112,18 +104,25 @@ function fallbackRunStepKeys(): string[] {
  * 负责从 flow.json 加载流程步骤并管理状态
  */
 export function useFlowStages() {
-  const { isInTauri } = useTauri()
-  const { currentProject, stepRefreshCounter } = useWorkspace()
+  const { isDesktopRuntimeAvailable } = useDesktopRuntime()
+  const { currentProject, resourceVersions } = useWorkspace()
+  const workspaceLifecycle = useWorkspaceLifecycle()
 
   // 动态加载的流程步骤
   const dynamicFlowStages = ref<FlowStage[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  let unwatchFlowJsonFile: (() => void) | null = null
+  let unregisterFlowJsonLifecycleCleanup: (() => void) | null = null
+  let watchSession = 0
 
   // 合并后的完整流程步骤
   const flowStages = computed<FlowStage[]>(() => {
     return [...FIXED_SETUP_STAGES, ...dynamicFlowStages.value]
   })
+  const hasOngoingRunStage = computed(() =>
+    dynamicFlowStages.value.some((stage) => stage.state === 'Ongoing' || stage.state === 'running')
+  )
 
   /**
    * 将远程路径转换为本地项目路径
@@ -137,21 +136,31 @@ export function useFlowStages() {
    * 从指定的 flow.json 路径加载流程步骤
    */
   async function loadFlowStagesFromPath(flowJsonPath: string): Promise<void> {
-    if (!isInTauri || !flowJsonPath) {
+    if (!isDesktopRuntimeAvailable || !flowJsonPath) {
       console.warn('Cannot load flow.json: desktop bridge unavailable or path is empty')
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
     try {
       const localPath = convertToLocalPath(flowJsonPath)
-      const resolvedPath = await resolveProjectPathAccess(localPath)
+      const resolvedPath = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => resolveProjectPathAccess(localPath),
+      )
+      if (!isCurrent()) return
       console.log('Loading flow.json from path:', resolvedPath ?? localPath)
       if (!resolvedPath) return
 
-      const fileContent = await readProjectTextFile(resolvedPath)
+      const fileContent = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readProjectTextFile(resolvedPath),
+      )
+      if (!isCurrent() || fileContent === undefined) return
       const flowData: FlowData = JSON.parse(fileContent)
 
       console.log('Loaded flow data from path:', flowData)
@@ -159,34 +168,14 @@ export function useFlowStages() {
       dynamicFlowStages.value = transformFlowData(flowData)
       console.log('Flow stages loaded from path:', dynamicFlowStages.value)
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load flow.json from path:', flowJsonPath, err)
       error.value = err instanceof Error ? err.message : String(err)
       dynamicFlowStages.value = []
     } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * 从 home.json 路径间接加载 flow stages
-   * 用于 SSE subflow 通知中的 home_page 路径
-   */
-  async function loadFlowStagesFromHomePath(homePath: string): Promise<void> {
-    if (!isInTauri || !homePath) return
-
-    try {
-      const localHomePath = convertToLocalPath(homePath)
-      const resolvedHomePath = await resolveProjectPathAccess(localHomePath)
-      if (!resolvedHomePath) return
-
-      const homeContent = await readProjectTextFile(resolvedHomePath)
-      const homeData = JSON.parse(homeContent)
-      const flowPath = homeData.flow
-      if (flowPath) {
-        await loadFlowStagesFromPath(flowPath)
+      if (isCurrent()) {
+        isLoading.value = false
       }
-    } catch (err) {
-      console.error('Failed to load flow stages from home path:', homePath, err)
     }
   }
 
@@ -195,44 +184,28 @@ export function useFlowStages() {
    * 通过共享缓存获取 home.json 数据（不重复调用 API），从中提取 flow 路径
    */
   async function loadFlowStages(): Promise<void> {
-    if (!isInTauri || !currentProject.value?.path) {
+    if (!isDesktopRuntimeAvailable || !currentProject.value?.path) {
       console.warn('Cannot load flow.json: desktop bridge unavailable or no project is open')
       dynamicFlowStages.value = []
       return
     }
 
+    const sessionId = workspaceLifecycle.currentSessionId.value
+    const isCurrent = () => workspaceLifecycle.isCurrentSession(sessionId)
     isLoading.value = true
     error.value = null
 
     try {
-      const projectPath = currentProject.value.path
-
-      // 通过共享缓存获取 home.json 数据（去重，不会重复请求）
-      const homeData = await fetchSharedHomeData(projectPath, isInTauri)
-      if (!homeData) {
-        console.warn('Failed to get home data')
+      const flowData = await workspaceLifecycle.runForSession(
+        sessionId,
+        () => readWorkspaceFlowResourceApi() as Promise<FlowData | null>,
+      )
+      if (!isCurrent()) return
+      if (!flowData) {
+        console.warn('Failed to read flow data')
         dynamicFlowStages.value = []
         return
       }
-
-      const flowJsonPath = homeData.flow
-      if (!flowJsonPath) {
-        console.warn('No flow path found in home.json')
-        dynamicFlowStages.value = []
-        return
-      }
-
-      console.log('Got flow.json path from home.json:', flowJsonPath)
-
-      // 读取 flow.json
-      const localFlowPath = convertToLocalPath(flowJsonPath)
-      const resolvedFlowPath = await resolveProjectPathAccess(localFlowPath)
-      if (!resolvedFlowPath) {
-        dynamicFlowStages.value = []
-        return
-      }
-      const flowContent = await readProjectTextFile(resolvedFlowPath)
-      const flowData: FlowData = JSON.parse(flowContent)
 
       console.log('Loaded flow data:', flowData)
 
@@ -240,11 +213,62 @@ export function useFlowStages() {
       console.log('Flow stages loaded:', dynamicFlowStages.value)
 
     } catch (err) {
+      if (!isCurrent()) return
       console.error('Failed to load flow stages:', err)
       error.value = err instanceof Error ? err.message : String(err)
       dynamicFlowStages.value = []
     } finally {
-      isLoading.value = false
+      if (isCurrent()) {
+        isLoading.value = false
+      }
+    }
+  }
+
+  function cleanupFlowJsonWatch(): void {
+    unregisterFlowJsonLifecycleCleanup?.()
+    unregisterFlowJsonLifecycleCleanup = null
+    unwatchFlowJsonFile?.()
+    unwatchFlowJsonFile = null
+  }
+
+  async function startFlowJsonWatchForCurrentProject(): Promise<void> {
+    cleanupFlowJsonWatch()
+    const projectPath = currentProject.value?.path
+    if (!isDesktopRuntimeAvailable || !projectPath) return
+
+    const sid = ++watchSession
+    try {
+      const homeData = await readWorkspaceHomeResourceApi() as { flow?: string } | null
+      if (sid !== watchSession || currentProject.value?.path !== projectPath) return
+      const flowJsonPath = homeData?.flow
+      if (!flowJsonPath) return
+
+      const localFlowPath = convertRemoteToLocalPath(flowJsonPath, projectPath)
+      const resolvedFlowPath = await resolveProjectPathAccess(localFlowPath)
+      if (sid !== watchSession || currentProject.value?.path !== projectPath) return
+      if (!resolvedFlowPath) return
+
+      const unwatch = await watchProjectFile(resolvedFlowPath, () => {
+        if (sid !== watchSession || currentProject.value?.path !== projectPath) return
+        void loadFlowStagesFromPath(resolvedFlowPath)
+      })
+      if (sid !== watchSession || currentProject.value?.path !== projectPath) {
+        unwatch?.()
+        return
+      }
+      if (!unwatch) return
+      unwatchFlowJsonFile = unwatch
+      unregisterFlowJsonLifecycleCleanup = workspaceLifecycle.registerCleanup(() => {
+        if (unwatchFlowJsonFile === unwatch) {
+          unwatchFlowJsonFile = null
+        }
+        unwatch()
+      }, {
+        sessionId: workspaceLifecycle.currentSessionId.value,
+        label: 'flow.json watcher',
+      })
+    } catch (err) {
+      console.warn('Failed to watch flow.json for stage updates:', err)
     }
   }
 
@@ -303,7 +327,10 @@ export function useFlowStages() {
     async (newPath) => {
       if (newPath) {
         await loadFlowStages()
+        await startFlowJsonWatchForCurrentProject()
       } else {
+        watchSession++
+        cleanupFlowJsonWatch()
         clearFlowStages()
       }
     },
@@ -311,64 +338,28 @@ export function useFlowStages() {
   )
 
   watch(
-    stepRefreshCounter,
+    () => [
+      resourceVersions.value.flow,
+      resourceVersions.value.all,
+    ],
     async () => {
       if (!currentProject.value?.path) return
       await refreshFlowStages()
     },
   )
 
-  // 监听 SSE 通知，当收到 step/subflow 通知时自动刷新流程步骤
-  const { sseMessages } = useWorkspace()
-
-  watch(
-    () => sseMessages.value.length,
-    async (newLen, oldLen) => {
-      if (newLen <= (oldLen ?? 0)) return
-
-      const latest: ECCResponse = sseMessages.value[newLen - 1]
-      if (!latest || latest.cmd !== 'notify') return
-
-      const notifyId = latest.data?.id as string | undefined
-      const info = latest.data?.info as Record<string, unknown> | undefined
-
-      if (notifyId === 'step') {
-        const stepName = latest.data?.step as string | undefined
-        const stepPath = info?.step_path as string | undefined
-
-        console.log('Received SSE step notification, step:', stepName, 'path:', stepPath)
-        console.log('latest:', latest)
-
-        // 乐观更新：先将对应步骤状态设为 Success，避免等待文件读取的延迟
-        if (stepName) {
-          const stepNameLower = stepName.toLowerCase()
-          const idx = dynamicFlowStages.value.findIndex(s => s.path.toLowerCase() === stepNameLower)
-          if (idx !== -1) {
-            dynamicFlowStages.value[idx] = {
-              ...dynamicFlowStages.value[idx],
-              state: 'Success'
-            }
-          }
-        }
-
-        if (stepPath) {
-          await loadFlowStagesFromPath(stepPath)
-        } else {
-          await refreshFlowStages()
-        }
-      } else if (notifyId === 'subflow') {
-        const homePage = info?.home_page as string | undefined
-        if (homePage) {
-          await loadFlowStagesFromHomePath(homePage)
-        }
-      }
-    }
-  )
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      watchSession++
+      cleanupFlowJsonWatch()
+    })
+  }
 
   return {
     // 状态
     flowStages,
     dynamicFlowStages,
+    hasOngoingRunStage,
     isLoading,
     error,
 

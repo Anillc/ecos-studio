@@ -84,27 +84,17 @@ Electron-side diagnostics:
 # GUI lifecycle diagnostics
 ECOS_ELECTRON_LOG_LEVEL=info ./ECOS-Studio_*.AppImage
 
-# More detailed API server startup diagnostics
+# More detailed desktop runtime diagnostics
 ECOS_ELECTRON_LOG_LEVEL=debug ./ECOS-Studio_*.AppImage
 ```
 
 Available levels: `debug`, `info`, `warning` (default), `error`, `critical`.
 
-**Q: How do I enable Python API server startup logs?**
+**Q: How does the desktop app run workspace and flow actions?**
 
-The Python API server emits startup phase markers (`[API_PHASE]`, `[API_START]`,
-`[API_READY]`, `[API_LOG]`) that are hidden by default (log level `warning`).
-Set `ECOS_API_LOG_LEVEL=info` to show them:
-
-```bash
-# AppImage: show API server startup phases
-ECOS_API_LOG_LEVEL=info ./ECOS-Studio_*.AppImage
-
-# Development: show API server startup phases
-ECOS_API_LOG_LEVEL=info python ecos/server/run_server.py
-
-# Or pass the CLI flag directly
-python ecos/server/run_server.py --log-level info
-```
-
-Available levels: `debug`, `info`, `warning` (default), `error`, `critical`.
+Workspace queries and flow queries are regular CLI request/response calls over
+the Electron desktop bridge. `get_info`, `home_page`, workspace loading, and
+workspace creation return data to their caller and do not enter the runtime
+refresh stream. Runtime events are used only for running flow lifecycle changes
+from `run_step` and `rtl2gds`; stdout and stderr log output is not treated as a
+workspace data-refresh signal.

@@ -62,10 +62,12 @@
 
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
-import { useTauri } from '../composables/useTauri'
+import { useDesktopRuntime } from '../composables/useDesktopRuntime'
 import { useWorkspace } from '../composables/useWorkspace'
+import { useWorkspaceLifecycle } from '../composables/useWorkspaceLifecycle'
 import { useMessageStore } from '../stores/messageStore'
 import { readProjectBlobUrl } from '@/utils/projectFiles'
+import { convertRemoteToLocalPath } from '@/utils/projectPaths'
 
 // Props
 interface MapInfo {
@@ -84,8 +86,9 @@ const emit = defineEmits<{
   (e: 'select', key: string, item: MapInfo, blobUrl: string): void
 }>()
 
-const { isInTauri } = useTauri()
+const { isDesktopRuntimeAvailable } = useDesktopRuntime()
 const { currentProject } = useWorkspace()
+const workspaceLifecycle = useWorkspaceLifecycle()
 const messageStore = useMessageStore()
 
 /** 聊天里仍引用着的 blob:，卸载 Maps 时不可 revoke，否则切回 Chat 会裂图 */
@@ -109,35 +112,6 @@ const errorImages = ref<Record<string, boolean>>({})
 // 存储加载后的 blob URL
 const imageUrls = ref<Record<string, string>>({})
 
-// 将远程路径转换为本地项目路径
-function convertToLocalPath(remotePath: string): string {
-  if (!remotePath.includes('/nfs/')) {
-    return remotePath
-  }
-
-  const projectPath = currentProject.value?.path
-  if (!projectPath) {
-    console.warn('No current project path available')
-    return remotePath
-  }
-
-  const projectName = projectPath.split('/').filter(Boolean).pop()
-  if (!projectName) {
-    console.warn('Cannot extract project name from path:', projectPath)
-    return remotePath
-  }
-
-  const projectNameIndex = remotePath.indexOf(`/${projectName}/`)
-  if (projectNameIndex === -1) {
-    console.warn('Project name not found in remote path:', remotePath)
-    return remotePath
-  }
-
-  const relativePath = remotePath.slice(projectNameIndex + projectName.length + 2)
-  const localPath = `${projectPath}/${relativePath}`
-  return localPath
-}
-
 // 异步加载图片并创建 blob URL
 async function loadImage(key: string, path: string): Promise<void> {
   // 如果已经加载过，跳过
@@ -148,16 +122,17 @@ async function loadImage(key: string, path: string): Promise<void> {
   errorImages.value[key] = false
 
   try {
-    if (!isInTauri) {
+    if (!isDesktopRuntimeAvailable) {
       // 开发模式下使用占位图
       imageUrls.value[key] = `https://placehold.co/200x200/1a1a2e/16a085?text=${encodeURIComponent(key.slice(0, 10))}`
       loadingImages.value[key] = false
       return
     }
 
-    const localPath = convertToLocalPath(path)
+    const localPath = convertRemoteToLocalPath(path, currentProject.value?.path ?? '')
     console.log('Loading image from:', localPath)
     const blobUrl = await readProjectBlobUrl(localPath)
+    workspaceLifecycle.registerBlobUrl(blobUrl)
     imageUrls.value[key] = blobUrl
 
     console.log('Created blob URL for', key, ':', blobUrl)
@@ -193,7 +168,7 @@ onUnmounted(() => {
   const keep = blobUrlsStillUsedInChat()
   Object.values(imageUrls.value).forEach(url => {
     if (url.startsWith('blob:') && !keep.has(url)) {
-      URL.revokeObjectURL(url)
+      workspaceLifecycle.revokeBlobUrl(url)
     }
   })
 })

@@ -35,10 +35,6 @@
           </span>
         </router-link>
       </div>
-      <button @click="toggleTheme" class="p-2 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-        title="Toggle theme">
-        <i :class="isDark ? 'ri-sun-line' : 'ri-moon-line'" class="text-lg"></i>
-      </button>
     </div>
 
     <!-- 第二栏：流程进度面板 (Configure 页面不显示) -->
@@ -194,10 +190,10 @@
 
         <!-- 底部操作栏 -->
         <div class="p-3 border-t border-(--border-color) bg-(--bg-secondary)/30 space-y-2">
-          <!-- SSE 消息显示区域 -->
-          <!-- <div v-if="sseMessages.length > 0"
+          <!-- Runtime event message display area -->
+          <!-- <div v-if="runtimeEvents.length > 0"
             class="max-h-32 overflow-y-auto bg-(--bg-secondary) rounded p-2 text-[10px] space-y-1">
-            <div v-for="(msg, idx) in sseMessages.slice(-5)" :key="idx" class="flex items-center gap-1" :class="{
+            <div v-for="(msg, idx) in runtimeEvents.slice(-5)" :key="idx" class="flex items-center gap-1" :class="{
               'text-blue-400': msg.data?.type === 'step_start',
               'text-green-500': msg.data?.type === 'step_complete' || msg.data?.type === 'task_complete',
               'text-amber-500': msg.data?.type === 'data_ready',
@@ -231,7 +227,7 @@
             <!-- 模式选择器（Cursor 风格下拉） -->
             <div class="mode-selector" @click.stop>
               <!-- 当前模式显示 + 触发器 -->
-              <button class="mode-trigger" @click="showModeMenu = !showModeMenu" :disabled="isRunning">
+              <button class="mode-trigger" @click="showModeMenu = !showModeMenu" :disabled="flowRunControlBusy">
                 <i :class="runModes[runMode].icon" class="mode-trigger-icon"></i>
                 <span>{{ runModes[runMode].label }}</span>
                 <i class="ri-arrow-down-s-line mode-chevron" :class="{ open: showModeMenu }"></i>
@@ -251,8 +247,8 @@
             </div>
 
             <!-- 执行按钮 -->
-            <button @click="handleRunFlow" :disabled="isRunning" class="run-go-btn" :class="{ running: isRunning }">
-              <i :class="isRunning ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
+            <button @click="handleRunFlow" :disabled="flowRunControlBusy" class="run-go-btn" :class="{ running: flowRunControlBusy }">
+              <i :class="flowRunControlBusy ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
             </button>
           </div>
         </div>
@@ -390,10 +386,10 @@
         <div class="p-3 border-t border-(--border-color) bg-(--bg-secondary)/30 space-y-2">
           <!-- 操作按钮组 -->
           <div class="flex gap-2">
-            <button @click="handleRunFlow" :disabled="isRunning"
+            <button @click="handleRunFlow" :disabled="flowRunControlBusy"
               class="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-(--accent-color) text-white text-[11px] font-bold rounded hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-(--accent-color)/20">
-              <i :class="isRunning ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
-              {{ isRunning ? 'RUNNING' : 'RUN' }}
+              <i :class="flowRunControlBusy ? 'ri-loader-4-line animate-spin' : 'ri-play-fill'"></i>
+              {{ flowRunControlBusy ? 'RUNNING' : 'RUN' }}
             </button>
           </div>
         </div>
@@ -404,7 +400,6 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { useThemeStore } from '@/stores/themeStore'
 import { useFlowStages } from '@/composables/useFlowStages'
 import { useSubflow } from '@/composables/useSubflow'
 import { useFlowRunner } from '@/composables/useFlowRunner'
@@ -413,10 +408,15 @@ import { useWorkspace } from '@/composables/useWorkspace'
 
 // ============ Composables ============
 
-const themeStore = useThemeStore()
 
 // 流程阶段管理
-const { flowStages, refreshFlowStages, setFirstRunStepOngoing, setRunStepOngoingByPath } = useFlowStages()
+const {
+  flowStages,
+  hasOngoingRunStage,
+  refreshFlowStages,
+  setFirstRunStepOngoing,
+  setRunStepOngoingByPath,
+} = useFlowStages()
 
 // 子流程管理
 const {
@@ -439,8 +439,8 @@ const {
   runAllFlow,
 } = useFlowRunner()
 
-// Workspace SSE 消息
-// const { sseMessages } = useWorkspace()
+// Workspace runtime events
+// const { runtimeEvents } = useWorkspace()
 
 // 当前阶段
 const { currentStage, showProgressPanel, showOverviewPanel, showSubflowPanel } = useCurrentStage()
@@ -474,12 +474,8 @@ const flowResult = computed(() => {
   return 'none'
 })
 
-// ============ 主题相关 ============
-const isDark = computed(() => themeStore.themeName === 'dark')
+const flowRunControlBusy = computed(() => isRunning.value || hasOngoingRunStage.value)
 
-const toggleTheme = () => {
-  themeStore.toggleTheme()
-}
 
 // ============ 运行模式 ============
 const runMode = ref('run')
@@ -495,12 +491,13 @@ const closeMenu = () => { showModeMenu.value = false }
 onMounted(() => document.addEventListener('click', closeMenu))
 onUnmounted(() => document.removeEventListener('click', closeMenu))
 
-// 跨组件刷新信号
-const { ensureApiReady, triggerStepRefresh } = useWorkspace()
+const { ensureApiReady } = useWorkspace()
 
 // ============ 事件处理 ============
 const handleRunFlow = async () => {
   closeMenu()
+  if (flowRunControlBusy.value) return
+
   if (!(await ensureApiReady())) {
     await refreshFlowStages()
     return
@@ -517,8 +514,6 @@ const handleRunFlow = async () => {
       refreshCurrentSubflow(),
       refreshFlowStages()
     ])
-    // 通知 DrawingArea / ThumbnailGallery 等组件刷新数据
-    triggerStepRefresh()
   }
 }
 </script>

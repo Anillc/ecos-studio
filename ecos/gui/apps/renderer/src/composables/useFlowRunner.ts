@@ -1,14 +1,46 @@
-import { ref } from 'vue'
+import { computed, ref, shallowReactive } from 'vue'
 import { useRoute } from 'vue-router'
-import { useTauri } from './useTauri'
+import { useDesktopRuntime } from './useDesktopRuntime'
 import { useWorkspace } from './useWorkspace'
 import { CMDEnum, StateEnum, StepEnum } from '@/api/type'
 import { runStepApi, rtl2gdsApi, type RunStepResponse } from '@/api/flow'
+import type { WorkspaceInvalidationScope } from './useWorkspaceLifecycle'
 
 // ============ 模块级运行标志（run_step / rtl2gds 共用）============
 
 /** 任意流程命令执行中为 true，供 Home flow log 等订阅，避免多实例 composable 状态不一致 */
 export const flowExecutionActive = ref(false)
+const activeFlowWorkspaces = shallowReactive(new Set<string>())
+const RUN_STEP_FALLBACK_SCOPES: WorkspaceInvalidationScope[] = ['home', 'parameters']
+
+function normalizeWorkspacePath(path: string): string {
+  const normalized = path.trim().replace(/\\/g, '/')
+  return normalized.length > 1 && normalized.endsWith('/')
+    ? normalized.slice(0, -1)
+    : normalized
+}
+
+function refreshGlobalFlowExecutionActive() {
+  flowExecutionActive.value = activeFlowWorkspaces.size > 0
+}
+
+export function markFlowExecutionActiveForWorkspace(path: string): void {
+  const workspacePath = normalizeWorkspacePath(path)
+  if (!workspacePath) return
+  activeFlowWorkspaces.add(workspacePath)
+  refreshGlobalFlowExecutionActive()
+}
+
+export function clearFlowExecutionActiveForWorkspace(path: string): void {
+  const workspacePath = normalizeWorkspacePath(path)
+  if (!workspacePath) return
+  activeFlowWorkspaces.delete(workspacePath)
+  refreshGlobalFlowExecutionActive()
+}
+
+export function isFlowExecutionActiveForWorkspace(path: string | undefined | null): boolean {
+  return Boolean(path && activeFlowWorkspaces.has(normalizeWorkspacePath(path)))
+}
 
 /**
  * Flow execution should not inherit transient global interaction locks.
@@ -30,16 +62,23 @@ function clearTransientInteractionLocks() {
  * 流程运行器 Hook
  * 负责处理流程的运行、停止、重置等操作
  * 
- * SSE 通知由 useWorkspace 管理（workspace 级别长连接），
- * 本 Hook 只负责调用 API 并等待结果。
+ * Runtime lifecycle events 由 useWorkspace 管理（workspace 级别订阅），
+ * 本 Hook 只负责调用 CLI-backed runtime command 并等待结果。
  */
 export function useFlowRunner() {
-  const { ensureTauri } = useTauri()
-  const { ensureApiReady, showToast, triggerStepRefresh } = useWorkspace()
+  const { ensureDesktopRuntime } = useDesktopRuntime()
+  const {
+    currentProject,
+    ensureApiReady,
+    showToast,
+    invalidateWorkspaceResources,
+    resourceVersions,
+    workspaceSession,
+  } = useWorkspace()
   const route = useRoute()
 
-  // 状态（与 flowExecutionActive 同一引用）
-  const isRunning = flowExecutionActive
+  // 状态：当前 workspace 的运行态。flowExecutionActive 仍保留为全局兼容信号。
+  const isRunning = computed(() => isFlowExecutionActiveForWorkspace(currentProject.value?.path))
   const state = ref<StateEnum>(StateEnum.Invalid)
   const error = ref<string | null>(null)
   const lastRunResult = ref<RunStepResponse | null>(null)
@@ -64,6 +103,11 @@ export function useFlowRunner() {
     })
   }
 
+  function getCurrentWorkspacePath(): string | null {
+    const path = currentProject.value?.path
+    return path ? normalizeWorkspacePath(path) : null
+  }
+
   /**
    * 运行当前步骤
    */
@@ -76,9 +120,9 @@ export function useFlowRunner() {
       return null
     }
 
-    // 检查是否在 Tauri 环境中
-    if (!ensureTauri()) {
-      console.warn('Not running in Tauri environment, cannot execute Python script')
+    // 检查是否在 desktop runtime 环境中
+    if (!ensureDesktopRuntime()) {
+      console.warn('Not running in desktop runtime environment, cannot execute ECC CLI flow command')
       showDesktopRequiredToast()
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
@@ -87,25 +131,46 @@ export function useFlowRunner() {
       return { step: step as StepEnum, state: StateEnum.Invalid }
     }
 
+    const directory = getCurrentWorkspacePath()
+    if (!directory) {
+      showToast({
+        severity: 'error',
+        summary: 'No Workspace Open',
+        detail: 'Open a workspace before running a flow step.',
+        life: 5000,
+      })
+      return { step: step as StepEnum, state: StateEnum.Invalid }
+    }
+
     if (isRunning.value) {
       return { step: step as StepEnum, state: StateEnum.Ongoing }
     }
 
     clearTransientInteractionLocks()
-    isRunning.value = true
+    markFlowExecutionActiveForWorkspace(directory)
     state.value = StateEnum.Ongoing
     error.value = null
     try {
       console.log('handleRunFlow', step)
+      const versionsBeforeRunStep = { ...resourceVersions.value }
+      const runSessionId = workspaceSession.value.sessionId
 
       const result = await runStepApi({
         cmd: CMDEnum.run_step,
         data: {
+          directory,
           step: step as StepEnum,
           rerun: false
         }
       })
       console.log('run step result', result)
+
+      const homeAndParametersAlreadyInvalidated = RUN_STEP_FALLBACK_SCOPES.every(
+        (key) => resourceVersions.value[key] !== versionsBeforeRunStep[key],
+      )
+      if (!homeAndParametersAlreadyInvalidated) {
+        invalidateWorkspaceResources(RUN_STEP_FALLBACK_SCOPES, { sessionId: runSessionId })
+      }
 
       if (result.data?.state === StateEnum.Success) {
         showToast({
@@ -123,7 +188,6 @@ export function useFlowRunner() {
         })
       }
 
-      triggerStepRefresh()
       return result.data
     } catch (err) {
       console.error('Single-step run failed:', err)
@@ -135,7 +199,7 @@ export function useFlowRunner() {
       })
     } finally {
       clearTransientInteractionLocks()
-      isRunning.value = false
+      clearFlowExecutionActiveForWorkspace(directory)
     }
     return null
   }
@@ -143,14 +207,14 @@ export function useFlowRunner() {
   /**
    * 运行所有步骤
    * 
-   * 调用 rtl2gds API（同步等待后端执行完成）。
-   * 执行过程中，后端通过 notify_service 发送 step_complete 等通知，
-   * 前端通过 useWorkspace 中已建立的 SSE 连接实时接收。
+   * 调用 rtl2gds runtime command（同步等待 CLI 执行完成）。
+   * 执行过程中，Electron runtime 转发 CLI lifecycle events，
+   * 前端通过 useWorkspace 中已建立的 runtime event 连接实时接收。
    */
   async function runAllFlow(): Promise<any | null> {
-    // 检查是否在 Tauri 环境中
-    if (!ensureTauri()) {
-      console.warn('Not running in Tauri environment, cannot execute Python script')
+    // 检查是否在 desktop runtime 环境中
+    if (!ensureDesktopRuntime()) {
+      console.warn('Not running in desktop runtime environment, cannot execute ECC CLI flow command')
       showDesktopRequiredToast()
       return null
     }
@@ -159,12 +223,23 @@ export function useFlowRunner() {
       return null
     }
 
+    const directory = getCurrentWorkspacePath()
+    if (!directory) {
+      showToast({
+        severity: 'error',
+        summary: 'No Workspace Open',
+        detail: 'Open a workspace before running the flow.',
+        life: 5000,
+      })
+      return null
+    }
+
     if (isRunning.value) {
       return null
     }
 
     clearTransientInteractionLocks()
-    isRunning.value = true
+    markFlowExecutionActiveForWorkspace(directory)
     state.value = StateEnum.Ongoing
     error.value = null
 
@@ -174,6 +249,7 @@ export function useFlowRunner() {
       const result = await rtl2gdsApi({
         cmd: CMDEnum.rtl2gds,
         data: {
+          directory,
           rerun: false
         }
       })
@@ -198,7 +274,6 @@ export function useFlowRunner() {
         })
       }
 
-      triggerStepRefresh()
       return result.data
     } catch (err) {
       console.error('Run-all flow failed:', err)
@@ -212,7 +287,7 @@ export function useFlowRunner() {
       })
     } finally {
       clearTransientInteractionLocks()
-      isRunning.value = false
+      clearFlowExecutionActiveForWorkspace(directory)
     }
     return null
   }

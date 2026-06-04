@@ -26,12 +26,10 @@ chmod +x <latest-release-file>.AppImage
 
 ### Platform Support
 
-Server development and release builds currently require Linux x86_64 with glibc
-2.34 or newer. The server uv environment is locked to pinned GitHub Release
-wheels for `ecc-dreamplace` and `ecc-tools`, and those native wheels are
-published as manylinux_2_34_x86_64 artifacts. macOS, Windows, non-x86_64 Linux
-hosts, and Linux distributions with older glibc are not supported by `make dev`,
-`make use-local-ecc`, or `make build` yet.
+Release builds currently require Linux x86_64 with glibc 2.34 or newer because
+the packaged ECC CLI runtime includes native manylinux_2_34_x86_64 artifacts.
+macOS, Windows, non-x86_64 Linux hosts, and Linux distributions with older glibc
+are not supported by `make build` yet.
 
 ### Development
 
@@ -53,23 +51,20 @@ when you need more detail while debugging the desktop shell:
 # GUI lifecycle diagnostics
 cd ecos/gui && ECOS_ELECTRON_LOG_LEVEL=info pnpm dev
 
-# More detailed API server startup diagnostics
+# More detailed desktop runtime diagnostics
 cd ecos/gui && ECOS_ELECTRON_LOG_LEVEL=debug pnpm dev
 ```
 
 Available levels: `debug`, `info`, `warning` (default), `error`, `critical`.
 
-Python API server startup markers (`[API_PHASE]`, `[API_START]`, `[API_READY]`,
-`[API_LOG]`) are suppressed by default. Set `ECOS_API_LOG_LEVEL=info` to show
-them, or pass `--log-level info` to `run_server.py`:
+Normal desktop workspace and flow actions run through the ECC CLI managed by the
+Electron desktop bridge.
 
-```bash
-# Show API server startup phases
-cd ecos/server && ECOS_API_LOG_LEVEL=info python run_server.py
-
-# Equivalent via CLI flag
-cd ecos/server && python run_server.py --log-level info
-```
+The renderer calls the Electron desktop bridge for workspace and flow commands.
+Read-only commands such as `get_info` and `home_page` return their data through
+the CLI command response. Runtime events are reserved for flow lifecycle changes
+from `run_step` and `rtl2gds`; stdout and stderr log streams are shown as logs
+and do not trigger workspace data reloads.
 
 ### DreamPlace Development
 
@@ -81,24 +76,12 @@ bazel run //bazel/scripts:install_dreamplace    # Build + install .so files
 bazel run //bazel/scripts:clean_dreamplace      # Remove installed artifacts (manifest-based)
 ```
 
-### Release Wheels
-
-Release builds use pinned GitHub Release wheels through `ecos/server/pyproject.toml` and `ecos/server/uv.lock`.
-
-```bash
-# Re-sync the server environment from the locked release wheels
-cd ecos/server && uv sync --frozen --all-groups --python 3.11
-
-# Optional: switch the server venv to the local ECC checkout for development
-make use-local-ecc
-```
-
 ### Release Build
 
 `make build` runs the full pipeline:
 
 ```
-uv sync locked release wheels → PyInstaller bundle → AppImage
+ECC CLI packaging environment → ECC CLI runtime resources → Electron build → AppImage
 ```
 
 ```bash
@@ -108,8 +91,6 @@ make build
 # Launch the built AppImage
 make gui
 ```
-
-The release wheels are installed as **non-editable** packages so that PyInstaller's `collect_all("dreamplace")` and `collect_all("chipcompiler")` can discover all package files during bundling.
 
 ## Documentation
 

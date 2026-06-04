@@ -1,10 +1,26 @@
 import type { TileGenerationRequest, TileGenerationResult } from '../types/tile.ts'
 import type {
+  WorkspaceResourceIndex,
+  WorkspaceStepInfoRequest,
+  WorkspaceStepInfoResult,
+} from '../types/workspaceResources.ts'
+import type {
+  DesktopCliCommandEvent,
+  DesktopCliCommandRequest,
+  DesktopCliCommandResult,
+} from './desktopCli.ts'
+import type {
   DesktopEventUnsubscribe,
   DesktopMenuEventId,
   DesktopProjectFileChangedEvent,
   DesktopProjectLogTailEvent,
 } from './desktopEvents.ts'
+import type {
+  DesktopShellDataEvent,
+  DesktopShellExitEvent,
+  DesktopShellSession,
+  DesktopShellSessionOptions,
+} from './desktopShell.ts'
 
 export type DesktopSettingsValue =
   | string
@@ -47,9 +63,10 @@ export interface ScannedPdkDirectory {
 
 export interface VersionInfo {
   gui: string
-  server: string
+  runtime: string
   ecc: string
   dreamplace: string
+  eccTools?: string
 }
 
 export interface DesktopProjectTextFileTail {
@@ -104,7 +121,6 @@ export interface DesktopApi {
     pickFiles(options?: DesktopFileDialogOptions): Promise<string[] | null>
   }
   workspace: {
-    getApiPort(): Promise<number>
     isProjectDirectory(path: string): Promise<boolean>
     registerProjectRoot(path: string): Promise<string>
     clearProjectRoot(): Promise<void>
@@ -137,5 +153,24 @@ export interface DesktopApi {
   tiles: {
     generate(request: TileGenerationRequest): Promise<TileGenerationResult>
     getStatus(request: TileGenerationRequest): Promise<TileGenerationResult>
+  }
+  workspaceResources: {
+    getIndex(): Promise<WorkspaceResourceIndex>
+    readHome(): Promise<Record<string, unknown> | null>
+    readFlow(): Promise<Record<string, unknown> | null>
+    readParameters(): Promise<Record<string, unknown> | null>
+    resolveStepInfo(request: WorkspaceStepInfoRequest): Promise<WorkspaceStepInfoResult>
+  }
+  cli: {
+    execute(request: DesktopCliCommandRequest): Promise<DesktopCliCommandResult>
+    onEvent(listener: (event: DesktopCliCommandEvent) => void): DesktopEventUnsubscribe
+  }
+  shell: {
+    createSession(options: DesktopShellSessionOptions): Promise<DesktopShellSession>
+    write(sessionId: string, data: string): Promise<void>
+    resize(sessionId: string, cols: number, rows: number): Promise<void>
+    kill(sessionId: string): Promise<void>
+    onData(listener: (event: DesktopShellDataEvent) => void): DesktopEventUnsubscribe
+    onExit(listener: (event: DesktopShellExitEvent) => void): DesktopEventUnsubscribe
   }
 }

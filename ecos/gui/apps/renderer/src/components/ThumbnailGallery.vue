@@ -99,19 +99,21 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessageStore } from '../stores/messageStore'
-import { getInfoApi } from '../api/flow'
-import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '../api/type'
-import { useTauri } from '../composables/useTauri'
+import { InfoEnum, StepEnum } from '../api/type'
+import { resolveWorkspaceStepInfoApi } from '../api/workspaceResources'
+import { useDesktopRuntime } from '../composables/useDesktopRuntime'
 import { useWorkspace } from '../composables/useWorkspace'
 import { requestProjectPathAccess } from '@/utils/projectFs'
 import { readProjectTextFile } from '@/utils/projectFiles'
+import { convertRemoteToLocalPath } from '@/utils/projectPaths'
 import MapsGallery from './MapsGallery.vue'
 import type { MapInfo as MapInfoType } from '../types'
+import { clearStepTabCache } from './thumbnailGalleryCache'
 
 const route = useRoute()
 const messageStore = useMessageStore()
-const { isInTauri } = useTauri()
-const { currentProject, sseMessages, stepRefreshCounter } = useWorkspace()
+const { isDesktopRuntimeAvailable } = useDesktopRuntime()
+const { currentProject, resourceVersions } = useWorkspace()
 
 // Tabs 定义
 const tabs = [
@@ -269,47 +271,8 @@ function getFileFormat(value: unknown): 'json' | 'csv' | 'text' | 'html' {
   return 'text'
 }
 
-// 将远程路径转换为本地项目路径
-// 例如: /nfs/share/home/xxx/benchmark/sky130_gcd/place_ecc/feature/file
-// 转换为: /Users/ekko/projects/place_ecc/feature/file
 function convertToLocalPath(remotePath: string): string {
-  // 如果不是远程路径，直接返回
-  if (!remotePath.includes('/nfs/')) {
-    return remotePath
-  }
-
-  // 获取当前项目路径
-  const projectPath = currentProject.value?.path
-  console.log('projectPath:', currentProject.value)
-  if (!projectPath) {
-    console.warn('No current project path available')
-    return remotePath
-  }
-
-  // 从项目路径中提取项目名称（最后一个目录名）
-  const projectName = projectPath.split('/').filter(Boolean).pop()
-  console.log('projectName:', projectName)
-  if (!projectName) {
-    console.warn('Cannot extract project name from path:', projectPath)
-    return remotePath
-  }
-
-  // 在远程路径中找到项目名称的位置
-  const projectNameIndex = remotePath.indexOf(`/${projectName}/`)
-  if (projectNameIndex === -1) {
-    console.warn('Project name not found in remote path:', remotePath)
-    return remotePath
-  }
-
-  // 截取项目名称之后的相对路径部分
-  const relativePath = remotePath.slice(projectNameIndex + projectName.length + 2) // +2 for the two '/'
-
-  console.log('projectPath:', projectPath, 'relativePath:', relativePath)
-  // 拼接本地项目路径
-  const localPath = `${projectPath}/${relativePath}`
-  console.log('Path converted:', remotePath, '->', localPath)
-
-  return localPath
+  return convertRemoteToLocalPath(remotePath, currentProject.value?.path ?? '')
 }
 
 // 获取 Tab 数据
@@ -325,22 +288,19 @@ async function fetchTabInfo(tabId: InfoEnum) {
   setTabError(null)
 
   try {
-    const response = await getInfoApi({
-      cmd: CMDEnum.get_info,
-      data: {
-        step: currentStep.value,
-        id: tabId
-      }
+    const response = await resolveWorkspaceStepInfoApi({
+      step: currentStep.value,
+      id: tabId
     })
 
-    console.log('getInfoApi response:', response)
+    console.log('workspace resource tab response:', response)
 
-    if (response.response !== ResponseEnum.success) {
+    if (response.response === 'error') {
       setTabError(response.message?.join(', ') || 'Failed to get info')
       return
     }
 
-    const infoObj = response.data?.info
+    const infoObj = response.info
     if (infoObj && typeof infoObj === 'object') {
       tabInfoCache.value[cacheKey] = infoObj as Record<string, unknown>
     }
@@ -373,7 +333,7 @@ async function handleKeyClick(key: string, value: unknown) {
 
     // 如果有 path，尝试读取文件
     if (path) {
-      if (!isInTauri) {
+      if (!isDesktopRuntimeAvailable) {
         content = `File path: ${path}\n(Readable only in the ECOS Studio desktop runtime)`
       } else {
         // 转换远程路径为本地路径
@@ -479,51 +439,17 @@ watch(currentStep, async (newStep) => {
   }
 }, { immediate: true })
 
-// SSE 通知驱动：subflow/step 通知到达时清除缓存并刷新当前 tab
 watch(
-  () => sseMessages.value.length,
-  async (newLen, oldLen) => {
-    if (newLen <= (oldLen ?? 0)) return
-    const latest = sseMessages.value[newLen - 1]
-    if (!latest || latest.cmd !== 'notify') return
-
-    const notifyId = latest.data?.id as string | undefined
-    const sseStep = latest.data?.step as string | undefined
-    if (notifyId !== 'subflow' && notifyId !== 'step') return
-
-    if (!currentStep.value || !sseStep) return
-    if (currentStep.value.toLowerCase() !== sseStep.toLowerCase()) return
-
-    const keysToDelete = Object.keys(tabInfoCache.value)
-      .filter(k => k.startsWith(`${currentStep.value}_`))
-    for (const key of keysToDelete) {
-      delete tabInfoCache.value[key]
-    }
-    const errorKeysToDelete = Object.keys(tabErrorCache.value)
-      .filter(k => k.startsWith(`${currentStep.value}_`))
-    for (const key of errorKeysToDelete) {
-      delete tabErrorCache.value[key]
-    }
-
+  () => [
+    resourceVersions.value.maps,
+    resourceVersions.value.step,
+    resourceVersions.value.logs,
+    resourceVersions.value.all,
+  ],
+  async () => {
+    if (!currentStep.value) return
+    clearStepTabCache(tabInfoCache.value, tabErrorCache.value, currentStep.value)
     await fetchTabInfo(activeTab.value)
-  }
+  },
 )
-
-// runFlow 完成后的手动刷新信号（兜底：SSE 通知未就绪时使用）
-watch(stepRefreshCounter, async () => {
-  if (!currentStep.value) return
-
-  const keysToDelete = Object.keys(tabInfoCache.value)
-    .filter(k => k.startsWith(`${currentStep.value}_`))
-  for (const key of keysToDelete) {
-    delete tabInfoCache.value[key]
-  }
-  const errorKeysToDelete = Object.keys(tabErrorCache.value)
-    .filter(k => k.startsWith(`${currentStep.value}_`))
-  for (const key of errorKeysToDelete) {
-    delete tabErrorCache.value[key]
-  }
-
-  await fetchTabInfo(activeTab.value)
-})
 </script>

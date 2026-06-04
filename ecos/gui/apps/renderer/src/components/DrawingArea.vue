@@ -17,7 +17,7 @@ import DrawingToolbar from './DrawingToolbar.vue'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useEDA } from '@/composables/useEDA'
 import { useLayoutState } from '@/composables/useLayoutState'
-import { isTauri } from '@/composables/useTauri'
+import { isDesktopRuntime } from '@/composables/useDesktopRuntime'
 import {
   deriveDrcStepPathFromLayoutJsonRelative,
   getLayoutTileGenerationStatus,
@@ -30,21 +30,21 @@ import { requestProjectPathAccess } from '@/utils/projectFs'
 import { readOptionalProjectTextFile } from '@/utils/projectFiles'
 import { runLayoutTileGenerationSingleFlight } from '@/composables/layoutTilePipeline'
 import { useLayoutTilePrefetchStore } from '@/stores/layoutTilePrefetchStore'
-import { getInfoApi } from '@/api/flow'
-import { CMDEnum, InfoEnum, StepEnum, ResponseEnum } from '@/api/type'
+import { InfoEnum, StepEnum } from '@/api/type'
+import { resolveWorkspaceStepInfoApi } from '@/api/workspaceResources'
 import { RULER_THICKNESS } from '@/applications/editor/core/rulerConfig'
 
 const route = useRoute()
-const { currentProject, sseMessages, stepRefreshCounter } = useWorkspace()
+const { currentProject, resourceVersions, workspaceSession } = useWorkspace()
 const { getResourceUrl } = useEDA()
 const layoutState = useLayoutState()
 const tilePrefetchStore = useLayoutTilePrefetchStore()
 
 const editor = shallowRef<Editor | null>(null)
 
-/** get_info(layout) 返回的布局 JSON 相对路径，供工具栏生成瓦片 */
+/** Resource resolver 返回的布局 JSON 相对路径，供工具栏生成瓦片 */
 const layoutJsonRelativePath = ref<string | null>(null)
-/** DRC 结果 JSON 相对路径：get_info 显式字段，或与布局同目录的 `drc.step.json` */
+/** DRC 结果 JSON 相对路径：resolver 显式字段，或与布局同目录的 `drc.step.json` */
 const drcJsonRelativePath = ref<string | null>(null)
 /** 当前步骤预览图相对路径（与 handleStageChange 中 info.image 一致），供「矢量 / 预览图」切换 */
 const previewImageRelativePath = ref<string | null>(null)
@@ -54,7 +54,7 @@ const currentLayoutTileCacheReady = ref(false)
 const tileGenBusy = ref(false)
 /** 矢量 ↔ 预览图切换中（与生成瓦片并列禁用工具栏） */
 const previewModeSwitchBusy = ref(false)
-const showTileGenerate = computed(() => isTauri())
+const showTileGenerate = computed(() => isDesktopRuntime())
 
 const showPreviewModeToggle = computed(() =>
   showTileGenerate.value
@@ -69,6 +69,24 @@ const currentStepKey = computed(() => {
   const pathParts = route.path.split('/')
   return pathParts[pathParts.length - 1] || 'home'
 })
+
+interface DrawingAsyncGuard {
+  isCurrent: () => boolean
+}
+
+function createDrawingAsyncGuard(expectedStep = currentStepKey.value): DrawingAsyncGuard {
+  const expectedProjectPath = currentProject.value?.path ?? null
+  const expectedSessionId = workspaceSession.value.sessionId
+  const expectedEditor = editor.value
+
+  return {
+    isCurrent: () =>
+      editor.value === expectedEditor
+      && currentProject.value?.path === expectedProjectPath
+      && workspaceSession.value.sessionId === expectedSessionId
+      && currentStepKey.value === expectedStep,
+  }
+}
 
 /** 鼠标在画布上时的 EDA/显示坐标（屏幕 → 世界 → display，与标尺一致） */
 const cursorEda = ref<{ x: number; y: number } | null>(null)
@@ -111,10 +129,14 @@ watch(
     const prevPath = prev?.[0] ?? null
     if (projectPath !== prevPath) {
       resetLoadingState()
-      tilePrefetchStore.setProject(projectPath)
+      tilePrefetchStore.setProject(projectPath, {
+        sessionId: workspaceSession.value.sessionId,
+      })
     }
     if (projectPath) {
-      tilePrefetchStore.notifyNavigatedStep(stepKey)
+      tilePrefetchStore.notifyNavigatedStep(stepKey, {
+        sessionId: workspaceSession.value.sessionId,
+      })
     }
   },
   { immediate: true },
@@ -245,7 +267,7 @@ async function refreshCurrentLayoutTileCacheStatus(): Promise<void> {
   const rel = layoutJsonRelativePath.value
   const stepKey = currentStepKey.value
   currentLayoutTileCacheReady.value = false
-  if (!projectPath || !rel || !isTauri()) {
+  if (!projectPath || !rel || !isDesktopRuntime()) {
     return
   }
 
@@ -341,11 +363,16 @@ function manifestLayerIdsWithGeometry(
   return ids
 }
 
-async function loadDrcViolationOverlayAfterTiles(_ed: Editor, dieWorldH: number): Promise<void> {
+async function loadDrcViolationOverlayAfterTiles(
+  _ed: Editor,
+  dieWorldH: number,
+  guard: DrawingAsyncGuard = createDrawingAsyncGuard(currentStepKey.value),
+): Promise<void> {
   layoutState.drcOverlayReady.value = false
   layoutState.drcViolationCount.value = 0
   layoutState.drcViolations.value = []
-  if (!isTauri() || !drcViolationOverlay) return
+  if (!isDesktopRuntime() || !drcViolationOverlay) return
+  const overlay = drcViolationOverlay
 
   const projectPath = currentProject.value?.path
   const drcRel = drcJsonRelativePath.value
@@ -353,26 +380,34 @@ async function loadDrcViolationOverlayAfterTiles(_ed: Editor, dieWorldH: number)
 
   try {
     const abs = await resolveLayoutJsonAbsolutePath(projectPath, drcRel)
+    if (!guard.isCurrent() || drcViolationOverlay !== overlay) return
     if (!(await requestProjectPathAccess(abs))) return
     const text = await readOptionalProjectTextFile(abs)
+    if (!guard.isCurrent() || drcViolationOverlay !== overlay) return
     if (text === null) return
     const raw = JSON.parse(text) as unknown
     const violations = parseDrcStepJson(raw, dieWorldH)
-    drcViolationOverlay.setViolations(violations)
+    if (!guard.isCurrent() || drcViolationOverlay !== overlay) return
+    overlay.setViolations(violations)
     layoutState.drcViolations.value = violations
     layoutState.drcViolationCount.value = violations.length
     layoutState.drcOverlayReady.value = true
   } catch (e) {
     console.warn('[drc overlay] load failed:', e)
-    drcViolationOverlay.setViolations([])
+    if (!guard.isCurrent() || drcViolationOverlay !== overlay) return
+    overlay.setViolations([])
     layoutState.drcViolations.value = []
   }
 }
 
 /** @param localRoot 瓦片输出目录绝对路径；桌面端通过桥接按项目作用域读取该 bundle 根目录下的文件。 */
-async function loadTileLayout(baseUrl: string, localRoot?: string): Promise<void> {
+async function loadTileLayout(
+  baseUrl: string,
+  localRoot?: string,
+  guard: DrawingAsyncGuard = createDrawingAsyncGuard(currentStepKey.value),
+): Promise<void> {
   const ed = editor.value
-  if (!ed?.view) return
+  if (!ed?.view || !guard.isCurrent()) return
 
   cleanupLayout()
 
@@ -383,6 +418,10 @@ async function loadTileLayout(baseUrl: string, localRoot?: string): Promise<void
     tileManager = markRaw(new TileManager(ed.view, baseUrl, localRoot))
     await tileManager.init()
     await Promise.all([tileManager.cellStore.ready, tileManager.globalStore.ready])
+    if (!guard.isCurrent() || editor.value !== ed || tileManager == null) {
+      cleanupLayout()
+      return
+    }
 
     // 与 COORDINATES.md 一致：瓦片数据是 Pixi 世界坐标 [0,dieW)×[0,dieH)，须同步 Editor 世界盒，
     // 否则 worldToDisplay / 标尺使用的 worldHeight 仍是旧值（如默认 4000），鼠标 EDA 读数会错。
@@ -524,7 +563,7 @@ async function loadTileLayout(baseUrl: string, localRoot?: string): Promise<void
     // 瓦片就绪后去掉步骤预览用的底图，避免与矢量/栅格瓦片叠在一起
     ed.clearBackground()
 
-    void loadDrcViolationOverlayAfterTiles(ed, mf.dieArea.h)
+    void loadDrcViolationOverlayAfterTiles(ed, mf.dieArea.h, guard)
 
     layoutState.renderMode.value = 'layout'
     layoutState.loadingState.value = 'ready'
@@ -560,6 +599,7 @@ function _enterPlacement(cellId: number, orient: number): void {
 
 const handleStageChange = async (stage: string) => {
   if (!editor.value || !stage) return
+  const guard = createDrawingAsyncGuard(stage)
   resetLoadingState()
 
   const stepEnum = getStepEnumFromPath(stage)
@@ -574,14 +614,14 @@ const handleStageChange = async (stage: string) => {
   }
 
   try {
-    // Try to load structured layout JSON first
-    const layoutResponse = await getInfoApi({
-      cmd: CMDEnum.get_info,
-      data: { step: stepEnum, id: InfoEnum.layout }
+    const layoutResponse = await resolveWorkspaceStepInfoApi({
+      step: stepEnum,
+      id: InfoEnum.layout,
     })
+    if (!guard.isCurrent()) return
 
-    if (layoutResponse.response === ResponseEnum.success && layoutResponse.data?.info) {
-      const info = layoutResponse.data.info
+    if (layoutResponse.response === 'available' || layoutResponse.response === 'missing') {
+      const info = layoutResponse.info
       layoutJsonRelativePath.value = pickLayoutJsonPath(info)
       drcJsonRelativePath.value = pickDrcJsonPath(info)
         ?? deriveDrcStepPathFromLayoutJsonRelative(layoutJsonRelativePath.value ?? '')
@@ -597,6 +637,7 @@ const handleStageChange = async (stage: string) => {
       if (imagePath) {
         cleanupLayout()
         const imageUrl = await getResourceUrl(imagePath, currentProject.value?.path || '')
+        if (!guard.isCurrent()) return
         await editor.value?.setBackgroundImage(imageUrl)
         layoutState.renderMode.value = 'image'
         void nextTick(() => {
@@ -632,11 +673,12 @@ async function onGenerateTilesFromToolbar(): Promise<void> {
   if (!projectPath || !rel) {
     layoutState.loadingState.value = 'error'
     layoutState.loadingMessage.value =
-      'Layout JSON path was not found. Check that get_info(layout) returns a json or info field for the current step.'
+      'Layout JSON path was not found for the current step.'
     return
   }
 
   tileGenBusy.value = true
+  const guard = createDrawingAsyncGuard(currentStepKey.value)
   layoutState.loadingState.value = 'loading'
   layoutState.loadingMessage.value = 'Rendering layout…'
   try {
@@ -647,12 +689,15 @@ async function onGenerateTilesFromToolbar(): Promise<void> {
       stepKey: currentStepKey.value,
       source: 'user',
     })
+    if (!guard.isCurrent()) return
     if (fromCache) {
       layoutState.loadingMessage.value = 'Loading cached layout tiles...'
     }
-    await loadTileLayout(baseUrl, outDir)
+    await loadTileLayout(baseUrl, outDir, guard)
+    if (!guard.isCurrent()) return
     currentLayoutTileCacheReady.value = true
   } catch (err) {
+    if (!guard.isCurrent()) return
     console.error('Tile generation failed:', err)
     layoutState.loadingState.value = 'error'
     layoutState.loadingMessage.value = String(err)
@@ -708,34 +753,20 @@ watch(() => route.path, (newPath) => {
   handleStageChange(stage)
 })
 
-// SSE 通知驱动：subflow/step 通知到达时刷新当前 step 的版图
+// CLI 运行命令完成后的兜底刷新信号。
 watch(
-  () => sseMessages.value.length,
-  async (newLen, oldLen) => {
-    if (newLen <= (oldLen ?? 0)) return
-    const latest = sseMessages.value[newLen - 1]
-    if (!latest || latest.cmd !== 'notify') return
-
-    const notifyId = latest.data?.id as string | undefined
-    const sseStep = latest.data?.step as string | undefined
-    if (notifyId !== 'subflow' && notifyId !== 'step') return
-
+  () => [
+    resourceVersions.value.step,
+    resourceVersions.value.tiles,
+    resourceVersions.value.all,
+  ],
+  () => {
     const pathParts = route.path.split('/')
-    const currentStage = pathParts[pathParts.length - 1] || ''
-    if (sseStep && currentStage.toLowerCase() === sseStep.toLowerCase()) {
-      tilePrefetchStore.invalidateStep(currentStage)
-      await handleStageChange(currentStage)
-    }
+    const stage = pathParts[pathParts.length - 1] || 'home'
+    tilePrefetchStore.invalidateStep(stage)
+    handleStageChange(stage)
   }
 )
-
-// runFlow 完成后的手动刷新信号（兜底：SSE 通知未就绪时使用）
-watch(stepRefreshCounter, () => {
-  const pathParts = route.path.split('/')
-  const stage = pathParts[pathParts.length - 1] || 'home'
-  tilePrefetchStore.invalidateStep(stage)
-  handleStageChange(stage)
-})
 
 // ─── 工具切换 → Tile 交互模式管理 ─────────────────────────────────────────────
 
