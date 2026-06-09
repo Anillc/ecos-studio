@@ -11,6 +11,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'soc', name: 'SoCGallery', component: () => import('../views/SoCTemplateGalleryView.vue') },
       { path: 'soc/:templateId', name: 'SoCTemplateDetail', component: () => import('../views/SoCTemplateDetailView.vue'), props: true },
       { path: 'ecc', name: 'ECC', component: () => import('../views/ECCView.vue') },
+      { path: 'tools', name: 'PluginTools', component: () => import('../views/PluginToolsView.vue') },
       { path: 'projects', name: 'Projects', component: () => import('../views/ProjectsView.vue') }
     ],
     meta: {

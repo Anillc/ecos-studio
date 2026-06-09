@@ -6,6 +6,7 @@ export {
   waitForRuntimeReady,
   type WaitForRuntimeReadyOptions
 } from './client'
+
 export {
   loadWorkspaceApi,
   createWorkspaceApi,
@@ -30,3 +31,36 @@ export {
   type RuntimeEventClientState,
   type RuntimeResponseType
 } from './runtimeEvents'
+
+export {
+  activatePdkApi,
+  getToolStatusApi,
+  importPdkPathApi,
+  installResourceApi,
+  installToolApi,
+  listResourcesApi,
+  listToolsApi,
+  refreshRegistryApi,
+  removePdkReferenceApi,
+  resourceJobToInstallProgress,
+  resourceListToResources,
+  resourceListToTools,
+  resourceToResourceItem,
+  subscribePluginProgress,
+  subscribeResourceProgress,
+  uninstallResourceApi,
+  uninstallToolApi,
+  updateResourceApi,
+  updateToolApi,
+  validatePdkApi,
+  type InstallProgress,
+  type ResourceAction,
+  type ResourceInfo,
+  type ResourceItem,
+  type ResourceJob,
+  type ResourceList,
+  type ResourceStatus,
+  type ResourceType,
+  type ToolInfo,
+  type ToolStatus,
+} from './plugin'
