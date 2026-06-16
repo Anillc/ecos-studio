@@ -1,4 +1,4 @@
-.PHONY: help setup check-setup check-platform build dev gui clean-gui demo-gcd demo-soc demo-retrosoc docker-build docker-verify-all install-deps install-apt-deps install-tools
+.PHONY: help setup check-setup check-platform build demo-gcd demo-soc demo-retrosoc docker-build docker-verify-all install-deps install-apt-deps install-tools
 
 ECC_TAR := ecc/dist/ecc.tar
 BUILD_DIR := build
@@ -17,9 +17,6 @@ help:
 	@echo "  make install-tools    - Install CLI tools only (Node.js, pnpm, Rust, uv)"
 	@echo "  make setup      - Init submodules and setup PDK"
 	@echo "  make build      - Build ECOS Studio bundle"
-	@echo "  make dev        - Setup development environment"
-	@echo "  make gui        - Launch GUI (release version)"
-	@echo "  make clean-gui  - Clean extracted GUI bundle"
 	@echo "  make demo-gcd   - Run GCD demo"
 	@echo "  make demo-soc   - Run SoC demo"
 	@echo "  make demo-retrosoc - Run retroSoC demo"
@@ -107,9 +104,6 @@ check-platform:
 		exit 1; \
 	fi
 
-dev: check-setup
-	@cd ecos/gui && pnpm install --frozen-lockfile
-
 $(ECC_TAR):
 	bash ./ecos/scripts/build-ecc.sh
 
@@ -121,10 +115,6 @@ $(BUILD_MARKER): check-setup check-platform $(ECC_TAR)
 	@touch "$(BUILD_MARKER)"
 
 build: $(BUILD_MARKER)
-
-gui: $(BUILD_MARKER)
-	@APPIMAGE=$$(find $(BUILD_DIR) -name "*.AppImage" | head -1); \
-	chmod +x "$$APPIMAGE" && "$$APPIMAGE"
 
 clean:
 	rm -rf $(BUILD_DIR) ecc/build ecc/dist

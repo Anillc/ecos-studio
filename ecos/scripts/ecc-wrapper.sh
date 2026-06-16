@@ -8,4 +8,4 @@ if command -v direnv; then
   eval "$(direnv export bash)"
 fi
 
-exec uv run -m chipcompiler.cli.main "$@"
+exec uv run ecc "$@"
