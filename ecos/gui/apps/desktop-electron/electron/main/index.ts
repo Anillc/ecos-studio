@@ -100,6 +100,7 @@ function getDesktopServices() {
     adapter: new EccCliAdapter({
       env: runtimeEnv,
       envProvider: runtimeEnvProvider,
+      isPackaged: app.isPackaged,
     }),
   })
   const workspaceService = new WorkspaceService({
