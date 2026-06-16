@@ -34,11 +34,12 @@
         {
           devShells.default = pkgs.mkShell {
             ELECTRON_EXEC_PATH = "${pkgs.electron}/bin/electron";
+            CUSTOM_FPM_PATH = "${pkgs.fpm}/bin/fpm";
             nativeBuildInputs = with pkgs; [
               ecc.inputs.infra.packages.${system}.yosysWithSlang
               nodejs
               pnpm
-              uv
+              appimage-run
               nixfmt
               git
             ];

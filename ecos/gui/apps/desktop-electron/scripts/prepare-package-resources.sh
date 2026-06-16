@@ -14,17 +14,14 @@ resolve_ecc_cli_artifact() {
     return 0
   fi
 
-  if ! command -v bazel >/dev/null 2>&1; then
-    echo "ERROR: bazel is required to resolve the packaged ECC CLI artifact automatically." >&2
-    echo "Set ECOS_ECC_CLI_ARTIFACT explicitly or install bazel." >&2
-    exit 1
+  local default_artifact="$REPO_ROOT/ecc/dist/ecc.tar"
+  if [[ -f "$default_artifact" ]]; then
+    readlink -f "$default_artifact"
+    return 0
   fi
 
-  (
-    cd "$REPO_ROOT"
-    bazel build @ecc//:build_ecc_cli_bundle >/dev/null
-    readlink -f "$(bazel cquery --output=files @ecc//:build_ecc_cli_bundle 2>/dev/null | head -n 1)"
-  )
+  bash "$REPO_ROOT/ecos/scripts/build-ecc.sh" >&2
+  readlink -f "$default_artifact"
 }
 
 install_ecc_cli_artifact() {
@@ -64,7 +61,7 @@ main() {
   local ecc_cli_artifact
   if ! ecc_cli_artifact="$(resolve_ecc_cli_artifact)"; then
     echo "ERROR: ECC CLI artifact is required for desktop packaging." >&2
-    echo "Set ECOS_ECC_CLI_ARTIFACT to the bundled ECC CLI artifact." >&2
+    echo "Set ECOS_ECC_CLI_ARTIFACT to a bundled ECC CLI artifact, or run ecos/scripts/build-ecc.sh." >&2
     exit 1
   fi
 

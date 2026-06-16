@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
     cat <<EOF
-Usage: $0 --gui-src-dir <dir> --out-tar <path> --ecc-cli-artifact <path> [--oss-cad-bin <ignored>]
+Usage: $0 --gui-src-dir <dir> --out-dir <path> --ecc-cli-artifact <path> [--oss-cad-bin <ignored>]
 EOF
 }
 
@@ -19,22 +19,24 @@ read_repo_node_version() {
         search_dir="$(dirname "$search_dir")"
     done
 
-    echo "ERROR: .nvmrc not found while searching upward from $1" >&2
-    exit 1
+    return 1
 }
 
 pnpm_with_repo_node() {
     local gui_dir="$1"
     shift
 
-    local node_version
-    node_version="$(read_repo_node_version "$gui_dir")"
     if ! command -v pnpm >/dev/null 2>&1; then
         echo "ERROR: pnpm not found in PATH. Run the Node.js/pnpm setup before building the GUI bundle." >&2
         exit 1
     fi
 
-    npx -y -p "node@${node_version}" -- bash -c 'exec pnpm --dir "$1" "${@:2}"' bash "$gui_dir" "$@"
+    local node_version
+    if node_version="$(read_repo_node_version "$gui_dir")"; then
+        npx -y -p "node@${node_version}" -- bash -c 'exec pnpm --dir "$1" "${@:2}"' bash "$gui_dir" "$@"
+    else
+        pnpm --dir "$gui_dir" "$@"
+    fi
 }
 
 normalize_csv() {
@@ -145,7 +147,7 @@ validate_requested_linux_artifacts() {
 
 main() {
     GUI_SRC_DIR=""
-    OUT_TAR=""
+    OUT_DIR=""
     ECC_CLI_ARTIFACT=""
 
     while [[ $# -gt 0 ]]; do
@@ -154,8 +156,8 @@ main() {
                 GUI_SRC_DIR="$2"
                 shift 2
                 ;;
-            --out-tar)
-                OUT_TAR="$2"
+            --out-dir)
+                OUT_DIR="$2"
                 shift 2
                 ;;
             --oss-cad-bin)
@@ -178,7 +180,7 @@ main() {
         esac
     done
 
-    if [[ -z "$GUI_SRC_DIR" || -z "$OUT_TAR" || -z "$ECC_CLI_ARTIFACT" ]]; then
+    if [[ -z "$GUI_SRC_DIR" || -z "$OUT_DIR" || -z "$ECC_CLI_ARTIFACT" ]]; then
         echo "ERROR: missing required arguments" >&2
         usage >&2
         exit 1
@@ -201,9 +203,7 @@ main() {
     rm -rf "$WORK_ROOT"
     mkdir -p "$GUI_DIR"
 
-    # Bazel sandbox exposes source files as symlinks. Vite/Rollup may resolve
-    # realpaths outside the workspace root and reject emitted asset names.
-    # Copy with dereference to build from a physical tree, while leaving local
+    # Build from a physical source copy while leaving local
     # dependency trees and generated bundles behind. Those directories may contain
     # stale pnpm symlinks after switching branches.
     (
@@ -269,8 +269,9 @@ main() {
 
     validate_requested_linux_artifacts "$RELEASE_DIR" "$ECOS_ELECTRON_LINUX_TARGETS"
 
-    mkdir -p "$(dirname "$OUT_TAR")"
-    tar -cf "$OUT_TAR" -C "$RELEASE_DIR" .
+    rm -rf "$OUT_DIR"
+    mkdir -p "$OUT_DIR"
+    cp -a "$RELEASE_DIR"/. "$OUT_DIR"/
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

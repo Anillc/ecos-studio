@@ -13,7 +13,7 @@ async function createWorkspace() {
   const rootDir = await mkdtemp(join(tmpdir(), 'ecos-prepare-resources-'))
   tempDirs.push(rootDir)
 
-  const appDir = join(rootDir, 'apps', 'desktop-electron')
+  const appDir = join(rootDir, 'ecos', 'gui', 'apps', 'desktop-electron')
   const scriptsDir = join(appDir, 'scripts')
   await mkdir(scriptsDir, { recursive: true })
 
@@ -50,35 +50,12 @@ afterEach(async () => {
 })
 
 describe('prepare-package-resources.sh', () => {
-  it('resolves the Bazel-built ECC CLI artifact when no override is provided', async () => {
+  it('resolves the local ECC CLI artifact when no override is provided', async () => {
     const workspace = await createWorkspace()
-    const fakeBinDir = join(workspace.rootDir, 'bin')
-    const outputDir = join(workspace.rootDir, 'bazel-out')
-    const artifactPath = join(outputDir, 'ecc-cli.tar')
-    await mkdir(fakeBinDir, { recursive: true })
+    const outputDir = join(workspace.rootDir, 'ecc', 'dist')
+    const artifactPath = join(outputDir, 'ecc.tar')
     await mkdir(outputDir, { recursive: true })
     await writeFile(artifactPath, 'fake-tar')
-    await writeFile(join(fakeBinDir, 'bazel'), `#!/usr/bin/env bash
-set -euo pipefail
-if [[ "$1" == "build" ]]; then
-  if [[ "$2" != "@ecc//:build_ecc_cli_bundle" ]]; then
-    echo "unexpected bazel build target: $*" >&2
-    exit 1
-  fi
-  exit 0
-fi
-if [[ "$1" == "cquery" ]]; then
-  if [[ "$3" != "@ecc//:build_ecc_cli_bundle" ]]; then
-    echo "unexpected bazel cquery target: $*" >&2
-    exit 1
-  fi
-  printf '%s\\n' "${artifactPath}"
-  exit 0
-fi
-echo "unexpected bazel invocation: $*" >&2
-exit 1
-`)
-    await chmod(join(fakeBinDir, 'bazel'), 0o755)
 
     await expect(execFile('bash', [
       '-lc',
@@ -88,7 +65,6 @@ exit 1
       env: {
         ...process.env,
         ECOS_ECC_CLI_ARTIFACT: '',
-        PATH: `${fakeBinDir}:${process.env.PATH ?? ''}`,
       },
     })).resolves.toMatchObject({
       stdout: `${artifactPath}\n`,
