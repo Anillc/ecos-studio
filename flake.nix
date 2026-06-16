@@ -32,6 +32,10 @@
           ...
         }:
         {
+          packages.default = pkgs.callPackage ./ecos/gui {
+            chipcompiler-cli = ecc.packages.${system}.default;
+            inherit (ecc.inputs.infra.packages.${system}) yosysWithSlang;
+          };
           devShells.default = pkgs.mkShell {
             ELECTRON_EXEC_PATH = "${pkgs.electron}/bin/electron";
             CUSTOM_FPM_PATH = "${pkgs.fpm}/bin/fpm";
@@ -51,9 +55,6 @@
               nixfmt.package = pkgs.nixfmt;
             };
             flakeCheck = true;
-          };
-          packages = {
-            inherit (pkgs) ecos-studio;
           };
         };
     };
