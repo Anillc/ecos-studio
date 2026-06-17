@@ -75,18 +75,16 @@ jobs:
 
       - name: Build Electron release bundle
         env:
-          ENABLE_OSS_CAD_SUITE: "true"
-          ECOS_ELECTRON_LINUX_TARGETS: AppImage
           GH_TOKEN: ${{ github.token }}
         run: make build
 
       - name: Verify AppImage artifact
         run: |
-          find build -type f -name '*.AppImage' | sort > /tmp/ecos-release-files.txt
+          find -L build -type f -name '*.AppImage' | sort > /tmp/ecos-release-files.txt
           if [ ! -s /tmp/ecos-release-files.txt ]; then
             echo "ERROR: AppImage artifact not found in build/" >&2
             echo "Build contents:" >&2
-            find build -maxdepth 4 -mindepth 1 -print | sed -n '1,200p' >&2
+            find -L build -maxdepth 4 -mindepth 1 -print | sed -n '1,200p' >&2
             exit 1
           fi
 

@@ -1,9 +1,5 @@
 .PHONY: help setup check-setup check-platform build demo-gcd demo-soc demo-retrosoc docker-build docker-verify-all install-deps install-apt-deps install-tools
 
-ECC_TAR := ecc/dist/ecc.tar
-BUILD_DIR := build
-BUILD_MARKER := $(BUILD_DIR)/.ecos-studio-built
-
 PDK_ROOT ?= ./pdk/icsprout55-pdk
 ECC_CLI ?= ./eda/ecc\#cli
 GCD_WS ?= ./ws/gcd
@@ -104,20 +100,16 @@ check-platform:
 		exit 1; \
 	fi
 
-$(ECC_TAR):
-	bash ./ecos/scripts/build-ecc.sh
-
-$(BUILD_MARKER): check-setup check-platform $(ECC_TAR)
-	bash ./ecos/scripts/build-gui.sh \
-		--gui-src-dir "$(CURDIR)/ecos/gui" \
-		--ecc-cli-artifact "$(CURDIR)/$(ECC_TAR)" \
-		--out-dir "$(CURDIR)/$(BUILD_DIR)"
-	@touch "$(BUILD_MARKER)"
-
-build: $(BUILD_MARKER)
+build: check-setup check-platform
+	bash .github/scripts/build-ecc.sh
+	rm -rf ecos/gui/apps/desktop-electron/resources
+	mkdir -p ecos/gui/apps/desktop-electron/resources/binaries
+	cp -r ecc/dist/ecc/* ecos/gui/apps/desktop-electron/resources/binaries
+	@cd ecos/gui && pnpm run --filter @ecos-studio/desktop-electron package
+	ln -sf ecos/gui/apps/desktop-electron/release build
 
 clean:
-	rm -rf $(BUILD_DIR) ecc/build ecc/dist
+	rm -rf build ecc/build ecc/dist
 	@rm -f .setup-done
 
 demo-gcd: check-setup

@@ -6,15 +6,14 @@ cd "$SCRIPT_FILE/../../ecc"
 
 if [[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
   version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)"
-  : "${version:?missing version in pyproject.toml}"
 
-  mkdir -p dist
+  mkdir -p dist/ecc
   gh release download "v$version" \
     --repo openecos-projects/ecc \
     --pattern '*.tar.gz' \
     --output dist/ecc.tar.gz \
     --clobber
-  gzip -dc dist/ecc.tar.gz > dist/ecc.tar
+  tar -xvf dist/ecc.tar.gz -C dist/ecc
   exit 0
 fi
 
@@ -23,4 +22,3 @@ if command -v direnv; then
 fi
 
 uv run pyinstaller ecc.spec --clean --noconfirm
-tar -cf dist/ecc.tar -C dist/ecc .
