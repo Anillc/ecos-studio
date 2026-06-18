@@ -2,7 +2,7 @@ import { spawn as spawnChild } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type {
   DesktopCliCommandName,
   DesktopCliCommandRequest,
@@ -19,6 +19,7 @@ export interface EccCliAdapterOptions {
   command?: string
   env?: NodeJS.ProcessEnv
   envProvider?: RuntimeEnvProvider
+  isPackaged?: boolean
   spawn?: SpawnLike
   tempDir?: string
 }
@@ -213,10 +214,16 @@ function resolveCommandFromPath(command: string, env: NodeJS.ProcessEnv): string
   return '(not found)'
 }
 
+function resolveEccWrapperFallback(): string | null {
+  const wrapperPath = resolve(__dirname, '../../../../../scripts', 'ecc-wrapper.sh')
+  return existsSync(wrapperPath) ? wrapperPath : null
+}
+
 export class EccCliAdapter {
   private readonly command: string
   private readonly env: NodeJS.ProcessEnv
   private readonly envProvider?: RuntimeEnvProvider
+  private readonly isPackaged: boolean
   private readonly spawnImpl: SpawnLike
   private readonly tempDir: string
   private activeWorkspace: string | null = null
@@ -225,6 +232,7 @@ export class EccCliAdapter {
     this.command = options.command ?? 'ecc'
     this.env = { ...(options.env ?? process.env) }
     this.envProvider = options.envProvider
+    this.isPackaged = options.isPackaged ?? true
     this.spawnImpl = options.spawn ?? spawnChild
     this.tempDir = options.tempDir ?? tmpdir()
   }
@@ -384,16 +392,23 @@ export class EccCliAdapter {
       let stderrText = ''
       let invalidJsonLine: string | null = null
       const start = Date.now()
+      const resolvedCommand = resolveCommandFromPath(this.command, env)
+      const fallbackCommand = !this.isPackaged
+        && this.command === 'ecc'
+        && resolvedCommand === '(not found)'
+        ? resolveEccWrapperFallback()
+        : null
+      const spawnCommand = fallbackCommand ?? this.command
 
       electronLogger.debug(
         '[ECC CLI] spawn command=%s resolved=%s args=%s pathHead=%s',
-        this.command,
-        resolveCommandFromPath(this.command, env),
+        spawnCommand,
+        fallbackCommand ?? resolvedCommand,
         prepared.args.join(' '),
         pathHeadForEnv(env),
       )
 
-      const child = this.spawnImpl(this.command, prepared.args, {
+      const child = this.spawnImpl(spawnCommand, prepared.args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
       })
