@@ -12,6 +12,7 @@ import {
 } from '../services/desktopLogPaths'
 import { EccCliAdapter } from '../services/eccCliAdapter'
 import { createEccCliRuntimeEnv } from '../services/eccCliRuntime'
+import { LayoutViewerService } from '../services/layoutViewerService'
 import { configureElectronLoggerFile, electronLogger } from '../services/logger'
 import { registerApplicationMenu } from '../services/menuService'
 import { ProjectScopeService } from '../services/projectScopeService'
@@ -19,7 +20,6 @@ import { RemoteContentService } from '../services/remoteContentService'
 import { ResourceManagerService } from '../services/resourceManagerService'
 import { SettingsStore } from '../services/settingsStore'
 import { ShellPtyService } from '../services/shellPtyService'
-import { TileService } from '../services/tileService'
 import { bindWindowEvents } from '../services/windowService'
 import { WorkspaceResourceService } from '../services/workspaceResourceService'
 import { WorkspaceService } from '../services/workspaceService'
@@ -32,8 +32,8 @@ let services:
       remoteContentService: RemoteContentService
       settingsStore: SettingsStore
       resourceManagerService: ResourceManagerService
+      layoutViewerService: LayoutViewerService
       shellService: ShellPtyService
-      tileService: TileService
       workspaceResourceService: WorkspaceResourceService
       workspaceService: WorkspaceService
     }
@@ -114,8 +114,13 @@ function getDesktopServices() {
     env: runtimeEnv,
     envProvider: runtimeEnvProvider,
   })
-  const tileService = new TileService({
-    projectRootProvider: projectScopeService,
+  const layoutViewerService = new LayoutViewerService({
+    appPath: app.getAppPath(),
+    cwd: process.cwd(),
+    env: runtimeEnv,
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    resourcesPath: process.resourcesPath,
   })
 
   services = {
@@ -123,9 +128,9 @@ function getDesktopServices() {
     desktopRuntimeManager,
     remoteContentService,
     resourceManagerService,
+    layoutViewerService,
     settingsStore,
     shellService,
-    tileService,
     workspaceResourceService,
     workspaceService,
   }
@@ -142,9 +147,9 @@ async function launchMainWindow(): Promise<void> {
       desktopRuntimeManager: desktopServices.desktopRuntimeManager,
       remoteContentService: desktopServices.remoteContentService,
       resourceManagerService: desktopServices.resourceManagerService,
+      layoutViewerService: desktopServices.layoutViewerService,
       settingsStore: desktopServices.settingsStore,
       shellService: desktopServices.shellService,
-      tileService: desktopServices.tileService,
       workspaceResourceService: desktopServices.workspaceResourceService,
       workspaceService: desktopServices.workspaceService,
     })

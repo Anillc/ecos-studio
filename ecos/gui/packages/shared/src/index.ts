@@ -13,6 +13,8 @@ export type {
   DesktopProjectTextFileTail,
   DesktopProjectTextFileUpdate,
   DesktopSettingsValue,
+  LayoutViewerOpenRequest,
+  LayoutViewerOpenResult,
   PdkDetectedFiles,
   ScannedPdkDirectory,
   VersionInfo,
@@ -74,7 +76,6 @@ export type {
   WorkspaceStepResource,
   WorkspaceTechResources,
 } from './types/workspaceResources.ts';
-export type { TileGenerationRequest, TileGenerationResult } from './types/tile.ts';
 export {
   isAbsoluteLocalPath,
   isWindowsDrivePath,
