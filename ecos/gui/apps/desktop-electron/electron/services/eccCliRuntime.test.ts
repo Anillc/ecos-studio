@@ -22,7 +22,7 @@ function createRepoFixture(): { appPath: string; repoRoot: string; userDataPath:
 }
 
 describe('createEccCliRuntimeEnv', () => {
-  it('prepends a repo ecc development shim when the submodule exists without a venv', () => {
+  it('prepends a repo ecc development shim when the submodule exists', () => {
     const fixture = createRepoFixture()
     mkdirSync(join(fixture.repoRoot, 'ecc'), { recursive: true })
     const pyprojectPath = join(fixture.repoRoot, 'ecc', 'pyproject.toml')
@@ -50,12 +50,15 @@ describe('createEccCliRuntimeEnv', () => {
     expect(existsSync(shimPath)).toBe(true)
   })
 
-  it('prepends the repo ecc venv bin directory ahead of host ecc installs', () => {
+  it('uses the repo ecc wrapper even when a venv exists', () => {
     const fixture = createRepoFixture()
     writeFileSync(join(fixture.repoRoot, 'ecc', 'pyproject.toml'), '[project]\nname = "ecc"\n')
     const venvBin = join(fixture.repoRoot, 'ecc', '.venv', 'bin')
     mkdirSync(venvBin, { recursive: true })
     writeFileSync(join(venvBin, 'ecc'), '#!/usr/bin/env bash\n')
+    const wrapperDir = join(fixture.repoRoot, 'ecos', 'scripts')
+    mkdirSync(wrapperDir, { recursive: true })
+    writeFileSync(join(wrapperDir, 'ecc-wrapper.sh'), '#!/usr/bin/env bash\n')
 
     const env = createEccCliRuntimeEnv({
       appPath: fixture.appPath,
@@ -68,7 +71,9 @@ describe('createEccCliRuntimeEnv', () => {
       userDataPath: fixture.userDataPath,
     })
 
-    expect(env.PATH).toBe(`${venvBin}:/home/ecos/.local/ecos/ecc:/usr/bin`)
+    expect(env.PATH).toBe(
+      `${join(fixture.userDataPath, 'runtime-bin')}:/home/ecos/.local/ecos/ecc:/usr/bin`,
+    )
   })
 
   it('leaves Windows development env unchanged', () => {
