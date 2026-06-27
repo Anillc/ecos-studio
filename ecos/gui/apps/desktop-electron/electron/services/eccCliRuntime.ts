@@ -58,19 +58,6 @@ function resolvePackagedResourcesPath(options: EccCliRuntimeEnvOptions): string 
     ?? join(options.appPath, 'resources')
 }
 
-function repoEccVenvBinDir(repoRoot: string, platform: RuntimePlatform): string | null {
-  const venvBin = join(repoRoot, 'ecc', '.venv', 'bin')
-  const candidates = platform === 'win32'
-    ? ['ecc.exe', 'ecc.cmd', 'ecc']
-    : ['ecc']
-
-  if (candidates.some((name) => existsSync(join(venvBin, name)))) {
-    return venvBin
-  }
-
-  return null
-}
-
 function ensureRepoEccDevShim(
   userDataPath: string,
   wrapperScript: string,
@@ -95,11 +82,6 @@ function resolveDevelopmentEccBinDir(options: EccCliRuntimeEnvOptions): string |
   const repoRoot = findRepoRootFromAppPath(options.appPath)
   if (!repoRoot) {
     return null
-  }
-
-  const venvBin = repoEccVenvBinDir(repoRoot, options.platform)
-  if (venvBin) {
-    return venvBin
   }
 
   const wrapperScript = join(repoRoot, 'ecos', 'scripts', 'ecc-wrapper.sh')
