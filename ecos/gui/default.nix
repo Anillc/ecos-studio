@@ -4,6 +4,7 @@
   fetchPnpmDeps,
   chipcompiler-cli,
   electron,
+  layout-viewer,
   makeWrapper,
   nodejs,
   pnpmConfigHook,
@@ -79,7 +80,13 @@ stdenv.mkDerivation (finalAttrs: {
 
     makeWrapper ${electron}/bin/electron "$out/bin/ecos-studio" \
       --add-flags "$app_root/apps/desktop-electron" \
-      --prefix PATH : ${lib.makeBinPath [ chipcompiler-cli yosysWithSlang ]} \
+      --prefix PATH : ${
+        lib.makeBinPath [
+          chipcompiler-cli
+          layout-viewer
+          yosysWithSlang
+        ]
+      }
 
     runHook postInstall
   '';
