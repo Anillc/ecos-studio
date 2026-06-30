@@ -44,6 +44,14 @@
             ELECTRON_EXEC_PATH = "${pkgs.electron}/bin/electron";
             CUSTOM_FPM_PATH = "${pkgs.fpm}/bin/fpm";
             ECOS_ECC_USE_NIX = true;
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (
+              with pkgs;
+              [
+                libxkbcommon
+                libGL
+                wayland
+              ]
+            );
             nativeBuildInputs = with pkgs; [
               ecc.inputs.infra.packages.${system}.yosysWithSlang
               nodejs

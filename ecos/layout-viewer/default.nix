@@ -8,6 +8,7 @@
   libxcursor,
   libxi,
   libxrandr,
+  makeWrapper,
   wayland,
 }:
 
@@ -32,6 +33,7 @@ rustPlatform.buildRustPackage {
   };
 
   nativeBuildInputs = [
+    makeWrapper
     pkg-config
   ];
 
@@ -70,6 +72,14 @@ rustPlatform.buildRustPackage {
 
     install -m755 "$packer_path" "$out/bin/ecos-layout-packer"
     install -m755 "$viewer_path" "$out/bin/layout-viewer-native"
+    wrapProgram "$out/bin/layout-viewer-native" \
+      --prefix LD_LIBRARY_PATH : ${
+        lib.makeLibraryPath [
+          libxkbcommon
+          libGL
+          wayland
+        ]
+      }
 
     runHook postInstall
   '';
